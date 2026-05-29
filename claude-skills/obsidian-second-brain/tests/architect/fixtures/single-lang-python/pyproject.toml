@@ -1,0 +1,7 @@
+[project]
+name = "fixture-single-lang-python"
+version = "0.1.0"
+dependencies = ["requests>=2.31.0", "pydantic>=2.0"]
+
+[project.scripts]
+fixture-cli = "src.api.routes:main"

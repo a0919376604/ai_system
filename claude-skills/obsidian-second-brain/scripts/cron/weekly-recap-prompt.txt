@@ -1,0 +1,22 @@
+Saturday 12:00 langlive-line-oa weekly recap (triggered by launchd).
+
+Steps:
+1. Run /obsidian-board langlive-line-oa --refresh (incremental). This ensures the recap reads a fresh board.
+2. Run /obsidian-recap --project=langlive-line-oa --weekly. The command writes Projects/langlive-line-oa/Recaps/<YYYY-WXX>.md.
+3. Read the just-written recap file. Translate its content to Notion-ready Chinese:
+   - Strip technical noise (T-XXX codes, commit SHAs, file paths) where it doesn't aid clarity
+   - Reframe in product/business language for the user's future-self review
+   - Preserve the section structure: ## Shipped → 本週 ship 的東西; ## In flight → 進行中; ## Decisions made → 重大決策; ## Learnings → 學到的事; ## Board diff → Now/Next/Later 變動; ## Open questions → 下週要想的問題
+   - Cap at ~400 words
+4. Post to Discord #langlive-line-oa (in main channel timeline, NOT a thread):
+   "📊 langlive-line-oa <YYYY-WXX> 週報 (<date-range>)
+
+   <Chinese recap content>
+
+   回覆: ok / edit: <說明> / redo"
+5. STOP. Do not attempt to wait for the reply or call /obsidian-notion-sync here — the reply triggers a separate Claude session via the discord plugin's channel watcher (see vault _CLAUDE.md "Discord reply handling" section).
+6. Append to today's Logs/YYYY-MM-DD.md: "**HH:MM** - weekly-recap | W<NN> posted, awaiting approval".
+
+If translation fails (LLM error, empty input), post "❌ Weekly recap translation failed: <error>" to Discord and STOP — don't post a half-baked recap.
+
+You are running as a non-interactive `claude -p` invocation. Do not ask clarifying questions. Execute the steps and exit when done.

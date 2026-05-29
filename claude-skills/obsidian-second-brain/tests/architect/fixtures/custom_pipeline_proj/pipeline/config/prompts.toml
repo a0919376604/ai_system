@@ -1,0 +1,5 @@
+[summarize]
+template = "Summarize this conversation:\n{conversation}\n\nReturn 3 bullets."
+
+[classify]
+template = "Classify the intent: {text}"

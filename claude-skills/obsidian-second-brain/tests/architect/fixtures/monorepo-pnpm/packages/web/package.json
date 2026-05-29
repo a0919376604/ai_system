@@ -1,0 +1,1 @@
+{ "name": "web", "version": "0.1.0", "main": "index.js", "dependencies": { "react": "^18.0.0" } }

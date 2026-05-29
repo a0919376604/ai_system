@@ -1,0 +1,6 @@
+[project]
+name = "flat-repo"
+version = "0.1.0"
+
+[project.scripts]
+flat = "main:main"

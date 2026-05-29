@@ -1,0 +1,29 @@
+[project]
+name = "obsidian-second-brain-research"
+version = "1.0.0-dev"
+description = "Research toolkit for obsidian-second-brain — free-source web/academic/discourse research that saves to your vault"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.32.0",
+    "python-dotenv>=1.0.0",
+    "youtube-transcript-api>=0.6.2",
+    "tomli>=2.0.0 ; python_version < '3.11'",
+    "pyyaml>=6.0.1",
+    "pathspec>=0.12.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "responses>=0.25.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: hits live APIs (skipped by default; opt-in with -m live)",
+]

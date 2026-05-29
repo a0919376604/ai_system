@@ -1,0 +1,58 @@
+[
+  {
+    "short_id": "abc123",
+    "short_id_url": "https://lobste.rs/s/abc123",
+    "created_at": "2026-05-20T10:00:00.000-05:00",
+    "title": "A Rust pattern for fearless concurrency",
+    "url": "https://example.com/rust-concurrency",
+    "score": 142,
+    "flags": 0,
+    "comment_count": 37,
+    "comments_url": "https://lobste.rs/s/abc123/a_rust_pattern",
+    "description": "An exploration of Send + Sync.",
+    "description_plain": "An exploration of Send + Sync.",
+    "submitter_user": "rustacean",
+    "user_is_author": false,
+    "tags": [
+      "rust",
+      "programming"
+    ]
+  },
+  {
+    "short_id": "def456",
+    "short_id_url": "https://lobste.rs/s/def456",
+    "created_at": "2026-05-18T14:30:00.000-05:00",
+    "title": "Why Rust ownership matters",
+    "url": "https://example.org/rust-ownership",
+    "score": 88,
+    "flags": 1,
+    "comment_count": 22,
+    "comments_url": "https://lobste.rs/s/def456/why_rust_ownership",
+    "description": "Borrow checker explained.",
+    "description_plain": "Borrow checker explained.",
+    "submitter_user": "ferris",
+    "user_is_author": true,
+    "tags": [
+      "rust"
+    ]
+  },
+  {
+    "short_id": "ghi789",
+    "short_id_url": "https://lobste.rs/s/ghi789",
+    "created_at": "2026-05-15T09:15:00.000-05:00",
+    "title": "Rust async runtime comparison",
+    "url": "https://example.net/rust-async",
+    "score": 65,
+    "flags": 0,
+    "comment_count": 14,
+    "comments_url": "https://lobste.rs/s/ghi789/rust_async",
+    "description": "tokio vs async-std vs smol.",
+    "description_plain": "tokio vs async-std vs smol.",
+    "submitter_user": "asyncfan",
+    "user_is_author": false,
+    "tags": [
+      "rust",
+      "async"
+    ]
+  }
+]

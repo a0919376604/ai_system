@@ -1,0 +1,12 @@
+Mon-Fri 09:00 langlive-line-oa board refresh (triggered by launchd).
+
+Steps:
+1. Run /obsidian-board langlive-line-oa --refresh (incremental from last-refresh timestamp in board frontmatter).
+2. The command reports a one-line summary like "59 done, 6 in-flight, 8 buckets" and updates board.md.
+3. Read the previous board state's totals from frontmatter to compare. If no commits or spec/plan files have been added since the previous refresh (i.e., `git log --since=<last-refresh>` is empty AND no new specs/plans), DO NOT post to Discord — exit silently.
+4. Otherwise, post to Discord #langlive-line-oa: "☀️ Board refreshed: N done (+M new), K in-flight, P backlog across J buckets" (use the diff vs. yesterday's totals).
+5. Append a one-line entry to today's Logs/YYYY-MM-DD.md.
+
+If anything fails, post "❌ Daily board refresh failed: <error>" to Discord and exit.
+
+You are running as a non-interactive `claude -p` invocation. Do not ask clarifying questions. Execute the steps and exit when done.

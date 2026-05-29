@@ -1,0 +1,35 @@
+{
+  "query": "python rag",
+  "number_of_results": 0,
+  "results": [
+    {
+      "url": "https://example.com/python-rag-guide",
+      "title": "Python RAG: A complete guide",
+      "content": "Building retrieval-augmented generation with Python and LangChain.",
+      "engine": "duckduckgo",
+      "score": 1.0,
+      "category": "general"
+    },
+    {
+      "url": "https://example.org/rag-tutorial",
+      "title": "Tutorial: RAG in Python",
+      "content": "Step-by-step guide to setting up a RAG pipeline in Python.",
+      "engine": "google",
+      "score": 0.9,
+      "category": "general"
+    },
+    {
+      "url": "https://example.net/python-llm-rag",
+      "title": "LLM + RAG with Python",
+      "content": "How to combine LLMs and retrieval in production Python apps.",
+      "engine": "bing",
+      "score": 0.8,
+      "category": "general"
+    }
+  ],
+  "answers": [],
+  "corrections": [],
+  "infoboxes": [],
+  "suggestions": [],
+  "unresponsive_engines": []
+}

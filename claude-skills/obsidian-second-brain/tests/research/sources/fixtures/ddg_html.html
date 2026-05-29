@@ -1,0 +1,642 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<!--[if IE 6]><html class="ie6" xmlns="http://www.w3.org/1999/xhtml"><![endif]-->
+<!--[if IE 7]><html class="lt-ie8 lt-ie9" xmlns="http://www.w3.org/1999/xhtml"><![endif]-->
+<!--[if IE 8]><html class="lt-ie9" xmlns="http://www.w3.org/1999/xhtml"><![endif]-->
+<!--[if gt IE 8]><!--><html xmlns="http://www.w3.org/1999/xhtml"><!--<![endif]-->
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=1" />
+  <meta name="referrer" content="origin" />
+  <meta name="HandheldFriendly" content="true" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>python rag at DuckDuckGo</title>
+  <link title="DuckDuckGo (HTML)" type="application/opensearchdescription+xml" rel="search" href="//duckduckgo.com/opensearch_html_v2.xml" />
+  <link href="//duckduckgo.com/favicon.ico" rel="shortcut icon" />
+  <link rel="icon" href="//duckduckgo.com/favicon.ico" type="image/x-icon" />
+  <link id="icon60" rel="apple-touch-icon" href="//duckduckgo.com/assets/icons/meta/DDG-iOS-icon_60x60.png?v=2"/>
+  <link id="icon76" rel="apple-touch-icon" sizes="76x76" href="//duckduckgo.com/assets/icons/meta/DDG-iOS-icon_76x76.png?v=2"/>
+  <link id="icon120" rel="apple-touch-icon" sizes="120x120" href="//duckduckgo.com/assets/icons/meta/DDG-iOS-icon_120x120.png?v=2"/>
+  <link id="icon152" rel="apple-touch-icon" sizes="152x152" href="//duckduckgo.com/assets/icons/meta/DDG-iOS-icon_152x152.png?v=2"/>
+  <link rel="image_src" href="//duckduckgo.com/assets/icons/meta/DDG-icon_256x256.png">
+  <link rel="stylesheet" media="handheld, all" href="//duckduckgo.com/dist/h.238c80a7d9b754cfcdd5.css" type="text/css"/>
+</head>
+
+<body class="body--html">
+  <a name="top" id="top"></a>
+
+  <form action="/html/" method="post">
+    <input type="text" name="state_hidden" id="state_hidden" />
+  </form>
+
+  <div>
+    <div class="site-wrapper-border"></div>
+
+    <div id="header" class="header cw header--html">
+      <a title="DuckDuckGo" href="/html/" class="header__logo-wrap"></a>
+
+      <form name="x" class="header__form" action="/html/" method="post">
+        <div class="search search--header">
+          <input name="q" autocomplete="off" class="search__input" id="search_form_input_homepage" type="text" value="python rag" />
+          <input name="b" id="search_button_homepage" class="search__button search__button--html" value="" title="Search" alt="Search" type="submit" />
+        </div>
+
+        
+        
+        
+        
+
+        <div class="frm__select">
+          <select name="kl">
+            
+              <option value="" >All Regions</option>
+            
+              <option value="ar-es" >Argentina</option>
+            
+              <option value="au-en" >Australia</option>
+            
+              <option value="at-de" >Austria</option>
+            
+              <option value="be-fr" >Belgium (fr)</option>
+            
+              <option value="be-nl" >Belgium (nl)</option>
+            
+              <option value="br-pt" >Brazil</option>
+            
+              <option value="bg-bg" >Bulgaria</option>
+            
+              <option value="ca-en" >Canada (en)</option>
+            
+              <option value="ca-fr" >Canada (fr)</option>
+            
+              <option value="ct-ca" >Catalonia</option>
+            
+              <option value="cl-es" >Chile</option>
+            
+              <option value="cn-zh" >China</option>
+            
+              <option value="co-es" >Colombia</option>
+            
+              <option value="hr-hr" >Croatia</option>
+            
+              <option value="cz-cs" >Czech Republic</option>
+            
+              <option value="dk-da" >Denmark</option>
+            
+              <option value="ee-et" >Estonia</option>
+            
+              <option value="fi-fi" >Finland</option>
+            
+              <option value="fr-fr" >France</option>
+            
+              <option value="de-de" >Germany</option>
+            
+              <option value="gr-el" >Greece</option>
+            
+              <option value="hk-tzh" >Hong Kong</option>
+            
+              <option value="hu-hu" >Hungary</option>
+            
+              <option value="is-is" >Iceland</option>
+            
+              <option value="in-en" >India (en)</option>
+            
+              <option value="id-en" >Indonesia (en)</option>
+            
+              <option value="ie-en" >Ireland</option>
+            
+              <option value="il-en" >Israel (en)</option>
+            
+              <option value="it-it" >Italy</option>
+            
+              <option value="jp-jp" >Japan</option>
+            
+              <option value="kr-kr" >Korea</option>
+            
+              <option value="lv-lv" >Latvia</option>
+            
+              <option value="lt-lt" >Lithuania</option>
+            
+              <option value="my-en" >Malaysia (en)</option>
+            
+              <option value="mx-es" >Mexico</option>
+            
+              <option value="nl-nl" >Netherlands</option>
+            
+              <option value="nz-en" >New Zealand</option>
+            
+              <option value="no-no" >Norway</option>
+            
+              <option value="pk-en" >Pakistan (en)</option>
+            
+              <option value="pe-es" >Peru</option>
+            
+              <option value="ph-en" >Philippines (en)</option>
+            
+              <option value="pl-pl" >Poland</option>
+            
+              <option value="pt-pt" >Portugal</option>
+            
+              <option value="ro-ro" >Romania</option>
+            
+              <option value="ru-ru" >Russia</option>
+            
+              <option value="xa-ar" >Saudi Arabia</option>
+            
+              <option value="sg-en" >Singapore</option>
+            
+              <option value="sk-sk" >Slovakia</option>
+            
+              <option value="sl-sl" >Slovenia</option>
+            
+              <option value="za-en" >South Africa</option>
+            
+              <option value="es-ca" >Spain (ca)</option>
+            
+              <option value="es-es" >Spain (es)</option>
+            
+              <option value="se-sv" >Sweden</option>
+            
+              <option value="ch-de" >Switzerland (de)</option>
+            
+              <option value="ch-fr" >Switzerland (fr)</option>
+            
+              <option value="tw-tzh" >Taiwan</option>
+            
+              <option value="th-en" >Thailand (en)</option>
+            
+              <option value="tr-tr" >Turkey</option>
+            
+              <option value="us-en" >US (English)</option>
+            
+              <option value="us-es" >US (Spanish)</option>
+            
+              <option value="ua-uk" >Ukraine</option>
+            
+              <option value="uk-en" >United Kingdom</option>
+            
+              <option value="vn-en" >Vietnam (en)</option>
+            
+          </select>
+        </div>
+
+        <div class="frm__select frm__select--last">
+          <select class="" name="df">
+            
+              <option value="" selected>Any Time</option>
+            
+              <option value="d" >Past Day</option>
+            
+              <option value="w" >Past Week</option>
+            
+              <option value="m" >Past Month</option>
+            
+              <option value="y" >Past Year</option>
+            
+          </select>
+        </div>
+      </form>
+    </div>
+
+    
+
+    
+      <!-- Web results are present -->
+      <div>
+        <div class="serp__results">
+          <div id="links" class="results">
+            
+
+            
+              
+                <div class="result results_links results_links_deep web-result ">
+                  <div class="links_main links_deep result__body"> <!-- This is the visible part -->
+                    
+                      <h2 class="result__title">
+                        <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.askpython.com%2Fpython%2Fexamples%2Fbuilding%2Drag%2Dapplications%2Dwith%2Dpython&amp;rut=969670acf725742c04f8268912346ce54f7b2db1a1123893d18a7a99aae0d27f">Building RAG Applications with Python: Complete 2026 Guide</a>
+                      </h2>
+
+                    
+
+                    
+                      <div class="result__extras">
+                        <div class="result__extras__url">
+                          <span class="result__icon">
+                            <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.askpython.com%2Fpython%2Fexamples%2Fbuilding%2Drag%2Dapplications%2Dwith%2Dpython&amp;rut=969670acf725742c04f8268912346ce54f7b2db1a1123893d18a7a99aae0d27f">
+                              <img class="result__icon__img" width="16" height="16" alt="" src="//external-content.duckduckgo.com/ip3/www.askpython.com.ico" name="i15" />
+                            </a>
+                          </span>
+                          <a class="result__url" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.askpython.com%2Fpython%2Fexamples%2Fbuilding%2Drag%2Dapplications%2Dwith%2Dpython&amp;rut=969670acf725742c04f8268912346ce54f7b2db1a1123893d18a7a99aae0d27f">
+                            www.askpython.com/python/examples/building-rag-applications-with-python
+                          </a>
+                          
+                            <span>&nbsp; &nbsp; 2026-01-30T00:00:00.0000000</span>
+                          
+                        </div>
+                      </div>
+                    
+
+                    
+                      
+                        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.askpython.com%2Fpython%2Fexamples%2Fbuilding%2Drag%2Dapplications%2Dwith%2Dpython&amp;rut=969670acf725742c04f8268912346ce54f7b2db1a1123893d18a7a99aae0d27f">Sound familiar? <b>RAG</b> (Retrieval Augmented Generation) solves this by connecting your LLM to actual documents, so it answers based on facts, not fiction. In this guide, you&#x27;ll build a working <b>RAG</b> system in <b>Python</b>-from basic document search to production patterns with hybrid retrieval and re-ranking.</a>
+                      
+                    
+
+                    <div class="clear"></div>
+                  </div>
+                </div>
+              
+            
+              
+                <div class="result results_links results_links_deep web-result ">
+                  <div class="links_main links_deep result__body"> <!-- This is the visible part -->
+                    
+                      <h2 class="result__title">
+                        <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdocs.langchain.com%2Foss%2Fpython%2Flangchain%2Frag&amp;rut=ae1ae45b89e3773f5e400e0ce737177ddea785181d92979c502bf653931c511a">Build a RAG agent with LangChain - Docs by LangChain</a>
+                      </h2>
+
+                    
+
+                    
+                      <div class="result__extras">
+                        <div class="result__extras__url">
+                          <span class="result__icon">
+                            <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdocs.langchain.com%2Foss%2Fpython%2Flangchain%2Frag&amp;rut=ae1ae45b89e3773f5e400e0ce737177ddea785181d92979c502bf653931c511a">
+                              <img class="result__icon__img" width="16" height="16" alt="" src="//external-content.duckduckgo.com/ip3/docs.langchain.com.ico" name="i15" />
+                            </a>
+                          </span>
+                          <a class="result__url" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdocs.langchain.com%2Foss%2Fpython%2Flangchain%2Frag&amp;rut=ae1ae45b89e3773f5e400e0ce737177ddea785181d92979c502bf653931c511a">
+                            docs.langchain.com/oss/python/langchain/rag
+                          </a>
+                          
+                        </div>
+                      </div>
+                    
+
+                    
+                      
+                        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdocs.langchain.com%2Foss%2Fpython%2Flangchain%2Frag&amp;rut=ae1ae45b89e3773f5e400e0ce737177ddea785181d92979c502bf653931c511a"><b>RAG</b> chains In the above agentic <b>RAG</b> formulation we allow the LLM to use its discretion in generating a tool call to help answer user queries. This is a good general-purpose solution, but comes with some trade-offs:</a>
+                      
+                    
+
+                    <div class="clear"></div>
+                  </div>
+                </div>
+              
+            
+              
+                <div class="result results_links results_links_deep web-result ">
+                  <div class="links_main links_deep result__body"> <!-- This is the visible part -->
+                    
+                      <h2 class="result__title">
+                        <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fmedium.com%2F%40amalhan43%2Fbuild%2Drag%2Dfrom%2Dscratch%2Da%2Dbeginners%2Dstep%2Dby%2Dstep%2Dguide%2Dfd3cbdc0b2fd&amp;rut=41111b3b2af8d8b175c232a0919a5c1856797074db36923150c95ced1d59c14a">Build RAG From Scratch: A Beginner&#x27;s Step-by-Step Guide</a>
+                      </h2>
+
+                    
+
+                    
+                      <div class="result__extras">
+                        <div class="result__extras__url">
+                          <span class="result__icon">
+                            <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fmedium.com%2F%40amalhan43%2Fbuild%2Drag%2Dfrom%2Dscratch%2Da%2Dbeginners%2Dstep%2Dby%2Dstep%2Dguide%2Dfd3cbdc0b2fd&amp;rut=41111b3b2af8d8b175c232a0919a5c1856797074db36923150c95ced1d59c14a">
+                              <img class="result__icon__img" width="16" height="16" alt="" src="//external-content.duckduckgo.com/ip3/medium.com.ico" name="i15" />
+                            </a>
+                          </span>
+                          <a class="result__url" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fmedium.com%2F%40amalhan43%2Fbuild%2Drag%2Dfrom%2Dscratch%2Da%2Dbeginners%2Dstep%2Dby%2Dstep%2Dguide%2Dfd3cbdc0b2fd&amp;rut=41111b3b2af8d8b175c232a0919a5c1856797074db36923150c95ced1d59c14a">
+                            medium.com/@amalhan43/build-rag-from-scratch-a-beginners-step-by-step-guide-fd3cbdc0b2fd
+                          </a>
+                          
+                            <span>&nbsp; &nbsp; 2025-12-27T00:00:00.0000000</span>
+                          
+                        </div>
+                      </div>
+                    
+
+                    
+                      
+                        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fmedium.com%2F%40amalhan43%2Fbuild%2Drag%2Dfrom%2Dscratch%2Da%2Dbeginners%2Dstep%2Dby%2Dstep%2Dguide%2Dfd3cbdc0b2fd&amp;rut=41111b3b2af8d8b175c232a0919a5c1856797074db36923150c95ced1d59c14a">In this guide, you&#x27;ll build a working <b>RAG</b> system from scratch using <b>Python</b> — no magic abstractions, no hidden steps, and no theory overload.</a>
+                      
+                    
+
+                    <div class="clear"></div>
+                  </div>
+                </div>
+              
+            
+              
+                <div class="result results_links results_links_deep web-result ">
+                  <div class="links_main links_deep result__body"> <!-- This is the visible part -->
+                    
+                      <h2 class="result__title">
+                        <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Ftech%2Dinsider.org%2Fhow%2Dto%2Dbuild%2Drag%2Dchatbot%2Dpython%2Dlangchain%2Dtutorial%2F&amp;rut=0fb2e8cd07e9204cc75d1e5accc514e5fda3365814df2dba96af3015e91b16d2">Build a RAG Chatbot in 30 Min with Python + LangChain [2026]</a>
+                      </h2>
+
+                    
+
+                    
+                      <div class="result__extras">
+                        <div class="result__extras__url">
+                          <span class="result__icon">
+                            <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Ftech%2Dinsider.org%2Fhow%2Dto%2Dbuild%2Drag%2Dchatbot%2Dpython%2Dlangchain%2Dtutorial%2F&amp;rut=0fb2e8cd07e9204cc75d1e5accc514e5fda3365814df2dba96af3015e91b16d2">
+                              <img class="result__icon__img" width="16" height="16" alt="" src="//external-content.duckduckgo.com/ip3/tech-insider.org.ico" name="i15" />
+                            </a>
+                          </span>
+                          <a class="result__url" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Ftech%2Dinsider.org%2Fhow%2Dto%2Dbuild%2Drag%2Dchatbot%2Dpython%2Dlangchain%2Dtutorial%2F&amp;rut=0fb2e8cd07e9204cc75d1e5accc514e5fda3365814df2dba96af3015e91b16d2">
+                            tech-insider.org/how-to-build-rag-chatbot-python-langchain-tutorial/
+                          </a>
+                          
+                            <span>&nbsp; &nbsp; 2026-03-20T00:00:00.0000000</span>
+                          
+                        </div>
+                      </div>
+                    
+
+                    
+                      
+                        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Ftech%2Dinsider.org%2Fhow%2Dto%2Dbuild%2Drag%2Dchatbot%2Dpython%2Dlangchain%2Dtutorial%2F&amp;rut=0fb2e8cd07e9204cc75d1e5accc514e5fda3365814df2dba96af3015e91b16d2">Step-by-step tutorial to build a <b>RAG</b> chatbot using <b>Python</b> and LangChain. Includes vector store setup, prompt templates, and 3 retrieval strategies that cut hallucinations by 90%.</a>
+                      
+                    
+
+                    <div class="clear"></div>
+                  </div>
+                </div>
+              
+            
+              
+                <div class="result results_links results_links_deep web-result ">
+                  <div class="links_main links_deep result__body"> <!-- This is the visible part -->
+                    
+                      <h2 class="result__title">
+                        <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fmachinelearningmastery.com%2F5%2Dpython%2Dlibraries%2Dbuild%2Doptimized%2Drag%2Dsystem%2F&amp;rut=8d3c5309a1c24526c3c6e7edd8a426351563125148a1cfb53ae49a205aefaad2">5 Python Libraries to Build an Optimized RAG System</a>
+                      </h2>
+
+                    
+
+                    
+                      <div class="result__extras">
+                        <div class="result__extras__url">
+                          <span class="result__icon">
+                            <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fmachinelearningmastery.com%2F5%2Dpython%2Dlibraries%2Dbuild%2Doptimized%2Drag%2Dsystem%2F&amp;rut=8d3c5309a1c24526c3c6e7edd8a426351563125148a1cfb53ae49a205aefaad2">
+                              <img class="result__icon__img" width="16" height="16" alt="" src="//external-content.duckduckgo.com/ip3/machinelearningmastery.com.ico" name="i15" />
+                            </a>
+                          </span>
+                          <a class="result__url" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fmachinelearningmastery.com%2F5%2Dpython%2Dlibraries%2Dbuild%2Doptimized%2Drag%2Dsystem%2F&amp;rut=8d3c5309a1c24526c3c6e7edd8a426351563125148a1cfb53ae49a205aefaad2">
+                            machinelearningmastery.com/5-python-libraries-build-optimized-rag-system/
+                          </a>
+                          
+                            <span>&nbsp; &nbsp; 2025-04-21T00:00:00.0000000</span>
+                          
+                        </div>
+                      </div>
+                    
+
+                    
+                      
+                        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fmachinelearningmastery.com%2F5%2Dpython%2Dlibraries%2Dbuild%2Doptimized%2Drag%2Dsystem%2F&amp;rut=8d3c5309a1c24526c3c6e7edd8a426351563125148a1cfb53ae49a205aefaad2">Retrieval augmented generation (<b>RAG</b>) has become a vital technique in contemporary AI systems, allowing large language models (LLMs) to integrate external data in real time. This approach empowers models to ground their responses in precise information extracted from relevant sources, leading to better performance in tasks such as question-answering, summarization, and content generation. By ...</a>
+                      
+                    
+
+                    <div class="clear"></div>
+                  </div>
+                </div>
+              
+            
+              
+                <div class="result results_links results_links_deep web-result ">
+                  <div class="links_main links_deep result__body"> <!-- This is the visible part -->
+                    
+                      <h2 class="result__title">
+                        <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fblog.eduonix.com%2F2026%2F04%2Fhow%2Dto%2Dbuild%2Da%2Drag%2Dsystem%2Dstep%2Dby%2Dstep%2Dguide%2F&amp;rut=fd6bea4a4fa18b4626065e2c330940f8be54d7227f50e38aba5ee96fc1952535">How to Build a RAG System (Step-by-Step Guide with Python Example)</a>
+                      </h2>
+
+                    
+
+                    
+                      <div class="result__extras">
+                        <div class="result__extras__url">
+                          <span class="result__icon">
+                            <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fblog.eduonix.com%2F2026%2F04%2Fhow%2Dto%2Dbuild%2Da%2Drag%2Dsystem%2Dstep%2Dby%2Dstep%2Dguide%2F&amp;rut=fd6bea4a4fa18b4626065e2c330940f8be54d7227f50e38aba5ee96fc1952535">
+                              <img class="result__icon__img" width="16" height="16" alt="" src="//external-content.duckduckgo.com/ip3/blog.eduonix.com.ico" name="i15" />
+                            </a>
+                          </span>
+                          <a class="result__url" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fblog.eduonix.com%2F2026%2F04%2Fhow%2Dto%2Dbuild%2Da%2Drag%2Dsystem%2Dstep%2Dby%2Dstep%2Dguide%2F&amp;rut=fd6bea4a4fa18b4626065e2c330940f8be54d7227f50e38aba5ee96fc1952535">
+                            blog.eduonix.com/2026/04/how-to-build-a-rag-system-step-by-step-guide/
+                          </a>
+                          
+                            <span>&nbsp; &nbsp; 2026-04-23T00:00:00.0000000</span>
+                          
+                        </div>
+                      </div>
+                    
+
+                    
+                      
+                        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fblog.eduonix.com%2F2026%2F04%2Fhow%2Dto%2Dbuild%2Da%2Drag%2Dsystem%2Dstep%2Dby%2Dstep%2Dguide%2F&amp;rut=fd6bea4a4fa18b4626065e2c330940f8be54d7227f50e38aba5ee96fc1952535">Learn how to build a <b>RAG</b> system step by step using <b>Python</b>, FAISS, and LLMs. Beginner-friendly guide with code examples, architecture, and best practices.</a>
+                      
+                    
+
+                    <div class="clear"></div>
+                  </div>
+                </div>
+              
+            
+              
+                <div class="result results_links results_links_deep web-result ">
+                  <div class="links_main links_deep result__body"> <!-- This is the visible part -->
+                    
+                      <h2 class="result__title">
+                        <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.dataquest.io%2Fblog%2Fbuild%2Da%2Drag%2Dsystem%2Dfrom%2Dscratch%2F&amp;rut=1d9eb2566b7a989de4845c76712ff0bd07a4aae8faffa6a7ae66b8cdb060f1dd">What It Takes to Build a RAG System from Scratch in Python</a>
+                      </h2>
+
+                    
+
+                    
+                      <div class="result__extras">
+                        <div class="result__extras__url">
+                          <span class="result__icon">
+                            <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.dataquest.io%2Fblog%2Fbuild%2Da%2Drag%2Dsystem%2Dfrom%2Dscratch%2F&amp;rut=1d9eb2566b7a989de4845c76712ff0bd07a4aae8faffa6a7ae66b8cdb060f1dd">
+                              <img class="result__icon__img" width="16" height="16" alt="" src="//external-content.duckduckgo.com/ip3/www.dataquest.io.ico" name="i15" />
+                            </a>
+                          </span>
+                          <a class="result__url" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.dataquest.io%2Fblog%2Fbuild%2Da%2Drag%2Dsystem%2Dfrom%2Dscratch%2F&amp;rut=1d9eb2566b7a989de4845c76712ff0bd07a4aae8faffa6a7ae66b8cdb060f1dd">
+                            www.dataquest.io/blog/build-a-rag-system-from-scratch/
+                          </a>
+                          
+                            <span>&nbsp; &nbsp; 2026-03-24T00:00:00.0000000</span>
+                          
+                        </div>
+                      </div>
+                    
+
+                    
+                      
+                        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.dataquest.io%2Fblog%2Fbuild%2Da%2Drag%2Dsystem%2Dfrom%2Dscratch%2F&amp;rut=1d9eb2566b7a989de4845c76712ff0bd07a4aae8faffa6a7ae66b8cdb060f1dd">We built a <b>RAG</b> system from scratch in <b>Python</b> and documented every failure along the way. Real code, real outputs, and a 4-step checklist for debugging <b>RAG</b>.</a>
+                      
+                    
+
+                    <div class="clear"></div>
+                  </div>
+                </div>
+              
+            
+              
+                <div class="result results_links results_links_deep web-result ">
+                  <div class="links_main links_deep result__body"> <!-- This is the visible part -->
+                    
+                      <h2 class="result__title">
+                        <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2FRUC%2DNLPIR%2FFlashRAG&amp;rut=cdc8714fcea03125754693152e6f050450b34962293e70b9e04d8dcb974db684">⚡FlashRAG: A Python Toolkit for Efficient RAG Research - GitHub</a>
+                      </h2>
+
+                    
+
+                    
+                      <div class="result__extras">
+                        <div class="result__extras__url">
+                          <span class="result__icon">
+                            <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2FRUC%2DNLPIR%2FFlashRAG&amp;rut=cdc8714fcea03125754693152e6f050450b34962293e70b9e04d8dcb974db684">
+                              <img class="result__icon__img" width="16" height="16" alt="" src="//external-content.duckduckgo.com/ip3/github.com.ico" name="i15" />
+                            </a>
+                          </span>
+                          <a class="result__url" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2FRUC%2DNLPIR%2FFlashRAG&amp;rut=cdc8714fcea03125754693152e6f050450b34962293e70b9e04d8dcb974db684">
+                            github.com/RUC-NLPIR/FlashRAG
+                          </a>
+                          
+                        </div>
+                      </div>
+                    
+
+                    
+                      
+                        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2FRUC%2DNLPIR%2FFlashRAG&amp;rut=cdc8714fcea03125754693152e6f050450b34962293e70b9e04d8dcb974db684">FlashRAG is a <b>Python</b> toolkit for the reproduction and development of Retrieval Augmented Generation (<b>RAG</b>) research. Our toolkit includes 36 pre-processed benchmark <b>RAG</b> datasets and 23 state-of-the-art <b>RAG</b> algorithms, including 7 reasoning-based methods that combine reasoning ability with retrieval.</a>
+                      
+                    
+
+                    <div class="clear"></div>
+                  </div>
+                </div>
+              
+            
+              
+                <div class="result results_links results_links_deep web-result ">
+                  <div class="links_main links_deep result__body"> <!-- This is the visible part -->
+                    
+                      <h2 class="result__title">
+                        <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdasroot.net%2Fposts%2F2026%2F03%2Fpython%2Drag%2Dprojects%2Dgithub%2F&amp;rut=9b6e11a7f1835351f69da6123f34df47d3f0ea85aec304fc636e4fd0613b3402">The Ultimate List of Python RAG Projects on GitHub</a>
+                      </h2>
+
+                    
+
+                    
+                      <div class="result__extras">
+                        <div class="result__extras__url">
+                          <span class="result__icon">
+                            <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdasroot.net%2Fposts%2F2026%2F03%2Fpython%2Drag%2Dprojects%2Dgithub%2F&amp;rut=9b6e11a7f1835351f69da6123f34df47d3f0ea85aec304fc636e4fd0613b3402">
+                              <img class="result__icon__img" width="16" height="16" alt="" src="//external-content.duckduckgo.com/ip3/dasroot.net.ico" name="i15" />
+                            </a>
+                          </span>
+                          <a class="result__url" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdasroot.net%2Fposts%2F2026%2F03%2Fpython%2Drag%2Dprojects%2Dgithub%2F&amp;rut=9b6e11a7f1835351f69da6123f34df47d3f0ea85aec304fc636e4fd0613b3402">
+                            dasroot.net/posts/2026/03/python-rag-projects-github/
+                          </a>
+                          
+                            <span>&nbsp; &nbsp; 2026-03-02T00:00:00.0000000</span>
+                          
+                        </div>
+                      </div>
+                    
+
+                    
+                      
+                        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdasroot.net%2Fposts%2F2026%2F03%2Fpython%2Drag%2Dprojects%2Dgithub%2F&amp;rut=9b6e11a7f1835351f69da6123f34df47d3f0ea85aec304fc636e4fd0613b3402">Explore the latest <b>Python</b> <b>RAG</b> projects on GitHub, featuring top frameworks like LangChain, LlamaIndex, and RAGFlow. Learn about advanced techniques, deployment best practices, and future trends in <b>RAG</b> development.</a>
+                      
+                    
+
+                    <div class="clear"></div>
+                  </div>
+                </div>
+              
+            
+              
+                <div class="result results_links results_links_deep web-result ">
+                  <div class="links_main links_deep result__body"> <!-- This is the visible part -->
+                    
+                      <h2 class="result__title">
+                        <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdev.to%2Finiyarajan86%2Fcomplete%2Drag%2Dtutorial%2Dpython%2Dbuild%2Dyour%2Dfirst%2Dagent%2D47jg&amp;rut=3ef79d3f3e9fcf404f41a146eb7ca9db62877b7fa3fa40555f53d9e3ff503570">Complete RAG Tutorial Python: Build Your First Agent</a>
+                      </h2>
+
+                    
+
+                    
+                      <div class="result__extras">
+                        <div class="result__extras__url">
+                          <span class="result__icon">
+                            <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdev.to%2Finiyarajan86%2Fcomplete%2Drag%2Dtutorial%2Dpython%2Dbuild%2Dyour%2Dfirst%2Dagent%2D47jg&amp;rut=3ef79d3f3e9fcf404f41a146eb7ca9db62877b7fa3fa40555f53d9e3ff503570">
+                              <img class="result__icon__img" width="16" height="16" alt="" src="//external-content.duckduckgo.com/ip3/dev.to.ico" name="i15" />
+                            </a>
+                          </span>
+                          <a class="result__url" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdev.to%2Finiyarajan86%2Fcomplete%2Drag%2Dtutorial%2Dpython%2Dbuild%2Dyour%2Dfirst%2Dagent%2D47jg&amp;rut=3ef79d3f3e9fcf404f41a146eb7ca9db62877b7fa3fa40555f53d9e3ff503570">
+                            dev.to/iniyarajan86/complete-rag-tutorial-python-build-your-first-agent-47jg
+                          </a>
+                          
+                            <span>&nbsp; &nbsp; 2026-03-11T00:00:00.0000000</span>
+                          
+                        </div>
+                      </div>
+                    
+
+                    
+                      
+                        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdev.to%2Finiyarajan86%2Fcomplete%2Drag%2Dtutorial%2Dpython%2Dbuild%2Dyour%2Dfirst%2Dagent%2D47jg&amp;rut=3ef79d3f3e9fcf404f41a146eb7ca9db62877b7fa3fa40555f53d9e3ff503570">Complete <b>RAG</b> tutorial <b>Python</b> guide. Build production-ready Retrieval-Augmented Generation systems with LangChain, vector databases, and AI agents.</a>
+                      
+                    
+
+                    <div class="clear"></div>
+                  </div>
+                </div>
+              
+            
+
+            
+              
+              
+                <div class="nav-link">
+                  <form action="/html/" method="post">
+                    <input type="submit" class='btn btn--alt' value="Next" />
+                    <input type="hidden" name="q" value="python rag" />
+                    <input type="hidden" name="s" value="10" />
+                    <input type="hidden" name="nextParams" value="" />
+                    <input type="hidden" name="v" value="l" />
+                    <input type="hidden" name="o" value="json" />
+                    <input type="hidden" name="dc" value="11" />
+                    <input type="hidden" name="api" value="d.js" />
+                    <input type="hidden" name="vqd" value="4-288581197513122484300070671427883187628" />
+
+                    
+                    
+                    
+                      <input name="kl" value="wt-wt" type="hidden" />
+                    
+                    
+                    
+                    
+                  </form>
+                </div>
+              
+            
+
+            <div class="feedback-btn">
+              <a rel="nofollow" href="//duckduckgo.com/feedback.html" target="_new">Feedback</a>
+            </div>
+            <div class="clear"></div>
+          </div>
+        </div>
+      </div> <!-- links wrapper //-->
+    
+  </div>
+
+  <div id="bottom_spacing2"></div>
+
+  
+    <img src="//duckduckgo.com/t/sl_h"/>
+  
+</body>
+</html>

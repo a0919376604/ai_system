@@ -1,0 +1,101 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <id>https://arxiv.org/api/Sihv7M8qh44HktLRpAS846XvhmE</id>
+  <title>arXiv Query: search_query=all:retrieval OR all:augmented OR all:generation&amp;id_list=&amp;start=0&amp;max_results=3</title>
+  <updated>2026-05-24T18:06:50Z</updated>
+  <link href="https://arxiv.org/api/query?search_query=all:retrieval+OR+(all:augmented+OR+all:generation)&amp;start=0&amp;max_results=3&amp;id_list=" type="application/atom+xml"/>
+  <opensearch:itemsPerPage>3</opensearch:itemsPerPage>
+  <opensearch:totalResults>955043</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <entry>
+    <id>http://arxiv.org/abs/2506.06962v3</id>
+    <title>AR-RAG: Autoregressive Retrieval Augmentation for Image Generation</title>
+    <updated>2025-06-14T00:40:34Z</updated>
+    <link href="https://arxiv.org/abs/2506.06962v3" rel="alternate" type="text/html"/>
+    <link href="https://arxiv.org/pdf/2506.06962v3" rel="related" type="application/pdf" title="pdf"/>
+    <summary>We introduce Autoregressive Retrieval Augmentation (AR-RAG), a novel paradigm that enhances image generation by autoregressively incorporating knearest neighbor retrievals at the patch level. Unlike prior methods that perform a single, static retrieval before generation and condition the entire generation on fixed reference images, AR-RAG performs context-aware retrievals at each generation step, using prior-generated patches as queries to retrieve and incorporate the most relevant patch-level visual references, enabling the model to respond to evolving generation needs while avoiding limitations (e.g., over-copying, stylistic bias, etc.) prevalent in existing methods. To realize AR-RAG, we propose two parallel frameworks: (1) Distribution-Augmentation in Decoding (DAiD), a training-free plug-and-use decoding strategy that directly merges the distribution of model-predicted patches with the distribution of retrieved patches, and (2) Feature-Augmentation in Decoding (FAiD), a parameter-efficient fine-tuning method that progressively smooths the features of retrieved patches via multi-scale convolution operations and leverages them to augment the image generation process. We validate the effectiveness of AR-RAG on widely adopted benchmarks, including Midjourney-30K, GenEval and DPG-Bench, demonstrating significant performance gains over state-of-the-art image generation models.</summary>
+    <category term="cs.CV" scheme="http://arxiv.org/schemas/atom"/>
+    <published>2025-06-08T01:33:05Z</published>
+    <arxiv:comment>Image Generation, Retrieval Augmented Generation</arxiv:comment>
+    <arxiv:primary_category term="cs.CV"/>
+    <author>
+      <name>Jingyuan Qi</name>
+    </author>
+    <author>
+      <name>Zhiyang Xu</name>
+    </author>
+    <author>
+      <name>Qifan Wang</name>
+    </author>
+    <author>
+      <name>Lifu Huang</name>
+    </author>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2504.13684v1</id>
+    <title>Intelligent Interaction Strategies for Context-Aware Cognitive Augmentation</title>
+    <updated>2025-04-18T13:35:21Z</updated>
+    <link href="https://arxiv.org/abs/2504.13684v1" rel="alternate" type="text/html"/>
+    <link href="https://arxiv.org/pdf/2504.13684v1" rel="related" type="application/pdf" title="pdf"/>
+    <summary>Human cognition is constrained by processing limitations, leading to cognitive overload and inefficiencies in knowledge synthesis and decision-making. Large Language Models (LLMs) present an opportunity for cognitive augmentation, but their current reactive nature limits their real-world applicability. This position paper explores the potential of context-aware cognitive augmentation, where LLMs dynamically adapt to users' cognitive states and task environments to provide appropriate support. Through a think-aloud study in an exhibition setting, we examine how individuals interact with multi-modal information and identify key cognitive challenges in structuring, retrieving, and applying knowledge. Our findings highlight the need for AI-driven cognitive support systems that integrate real-time contextual awareness, personalized reasoning assistance, and socially adaptive interactions. We propose a framework for AI augmentation that seamlessly transitions between real-time cognitive support and post-experience knowledge organization, contributing to the design of more effective human-centered AI systems.</summary>
+    <category term="cs.HC" scheme="http://arxiv.org/schemas/atom"/>
+    <published>2025-04-18T13:35:21Z</published>
+    <arxiv:comment>Presented at the 2025 ACM Workshop on Human-AI Interaction for Augmented Reasoning, Report Number: CHI25-WS-AUGMENTED-REASONING</arxiv:comment>
+    <arxiv:primary_category term="cs.HC"/>
+    <arxiv:journal_ref>Proceedings of the 2025 ACM CHI Workshop on Human-AI Interaction for Augmented Reasoning</arxiv:journal_ref>
+    <author>
+      <name> Xiangrong</name>
+      <arxiv:affiliation>Daniel</arxiv:affiliation>
+    </author>
+    <author>
+      <name> Zhu</name>
+    </author>
+    <author>
+      <name>Yuan Xu</name>
+    </author>
+    <author>
+      <name>Tianjian Liu</name>
+    </author>
+    <author>
+      <name>Jingwei Sun</name>
+    </author>
+    <author>
+      <name>Yu Zhang</name>
+    </author>
+    <author>
+      <name>Xin Tong</name>
+    </author>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2504.17204v1</id>
+    <title>Factually: Exploring Wearable Fact-Checking for Augmented Truth Discernment</title>
+    <updated>2025-04-24T02:29:50Z</updated>
+    <link href="https://arxiv.org/abs/2504.17204v1" rel="alternate" type="text/html"/>
+    <link href="https://arxiv.org/pdf/2504.17204v1" rel="related" type="application/pdf" title="pdf"/>
+    <summary>Wearable devices are transforming human capabilities by seamlessly augmenting cognitive functions. In this position paper, we propose a voice-based, interactive learning companion designed to amplify and extend cognitive abilities through informal learning. Our vision is threefold: (1) to enable users to discover new knowledge on-the-go through contextual interactive quizzes, fostering critical thinking and mindfulness, (2) to proactively detect misinformation, empowering users to critically assess information in real time, and (3) to provide spoken language correction and prompting hints for second language learning and effective communication. As an initial step toward this vision, we present Factually - a proactive, wearable fact-checking system integrated into devices like smartwatches or rings. Factually discreetly alerts users to potential falsehoods via vibrotactile feedback, helping them assess information critically. We demonstrate its utility through three illustrative scenarios, highlighting its potential to extend cognitive abilities for real-time misinformation detection. Early qualitative feedback suggests that Factually can enhance users' fact-checking capabilities, offering both practical and experiential benefits.</summary>
+    <category term="cs.HC" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.ET" scheme="http://arxiv.org/schemas/atom"/>
+    <published>2025-04-24T02:29:50Z</published>
+    <arxiv:comment>Presented at the 2025 ACM Workshop on Human-AI Interaction for Augmented Reasoning, Report Number: CHI25-WS-AUGMENTED-REASONING</arxiv:comment>
+    <arxiv:primary_category term="cs.HC"/>
+    <arxiv:journal_ref>Proceedings of the 2025 ACM CHI Workshop on Human-AI Interaction for Augmented Reasoning</arxiv:journal_ref>
+    <author>
+      <name>Chitralekha Gupta</name>
+    </author>
+    <author>
+      <name>Hanjun Wu</name>
+    </author>
+    <author>
+      <name>Praveen Sasikumar</name>
+    </author>
+    <author>
+      <name>Shreyas Sridhar</name>
+    </author>
+    <author>
+      <name>Priambudi Bagaskara</name>
+    </author>
+    <author>
+      <name>Suranga Nanayakkara</name>
+    </author>
+  </entry>
+</feed>
