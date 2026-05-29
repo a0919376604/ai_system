@@ -1,0 +1,1 @@
+/Users/leric/.claude/skills/gstack/plan-ceo-review/SKILL.md
