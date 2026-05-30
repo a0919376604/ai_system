@@ -28,38 +28,52 @@ To locate the codebase for `--refresh`: read `Projects/<name>/<name>.md` frontma
 
 ### Refresh mode (`--refresh` flag set)
 
-1. Resolve `local-path` from `Projects/<name>/<name>.md` frontmatter
-2. Read `Projects/<name>/board.md` frontmatter for `last-refresh:` timestamp (full rebuild if missing or `--full` passed)
-3. Scan codebase for new work since `last-refresh`:
-   - `cd <local-path> && git log --all --since=<last-refresh> --pretty=format:"%H %s %D"` - capture commits + branch names
-   - `ls -t <local-path>/docs/superpowers/specs/*.md <local-path>/docs/superpowers/plans/*.md` - list spec/plan files; keep those modified since `last-refresh`
-4. Cluster discovered items into topic buckets:
-   - Preserve existing bucket names from the current `board.md` if present (`## Customer Service tools`, `## Chat / LINE messaging`, etc.)
-   - For items not matching any existing bucket: group by spec/plan title keywords; if uncertain, create or extend an "## Misc / Untriaged" bucket
-5. Classify each item's status:
-   - ✅ Done: a commit referencing the item landed on the trunk branch (main/master)
-   - 🔨 In Progress: an active `brainstorm/*` branch references it, or a spec/plan exists without a trunk merge
-   - 📋 Backlog: spec exists but no implementation activity
-6. Write the regenerated board to `Projects/<name>/board.md`:
-   - **PRESERVE** these sections from the existing file (do not overwrite):
-     - `## For future Claude` preamble
-     - Frontmatter (just update `last-refresh:` timestamp and totals)
-     - `## 🔥 This Week` section (manually maintained Now/Next/Later overlay)
-     - `## 待辦` / `## 進行中` / `## 已完成` synthesis sections (if user has manually customized them; if they look auto-synthesized — see SYNTHESIZE rule below — re-synthesize on each refresh)
-     - `## Patterns observed` section, if present (only re-compute totals)
-     - `## Bucket summary` table (recompute counts)
-   - **SYNTHESIZE if missing** — if any of `## 🔥 This Week`, `## 待辦`, `## 進行中`, `## 已完成` sections do NOT exist in the current board, ADD them at the top (after the preamble + horizontal rule, before the first topic bucket). Synthesize content from the regenerated topic buckets:
-     - `## 🔥 This Week → Now (≤3)`: pick the 1–3 highest-priority In Progress items across all topic buckets (priority signal: most recent commit activity, or topic-bucket recency)
-     - `## 🔥 This Week → Next`: items with a spec but no impl commits yet (effectively the first Backlog → Next promotion)
-     - `## 🔥 This Week → Later`: remaining Backlog items
-     - `## 待辦`: union of all 📋 Backlog from topic buckets (empty placeholder text if none)
-     - `## 進行中`: union of all 🔨 In Progress from topic buckets, each item prefixed with `[<bucket-name>]`
-     - `## 已完成 (本週)`: union of last 7 days of ✅ Done items from topic buckets (date-sorted desc)
-   - **REGENERATE** the topic bucket sections (Done / In Progress / Backlog within each)
-7. Append one line to `Logs/YYYY-MM-DD.md`:
-   `**HH:MM** - board | <name> refreshed - N done, M in-flight, P backlog across K buckets`
-8. Update `last-refresh:` timestamp in board frontmatter to now (for next incremental run)
-9. Report a one-line summary to the caller (used by the daily-cron prompt to decide whether to post Discord notification - see Plan 2)
+The deterministic refresh logic is implemented in `scripts/board/refresh.py:refresh_board()`. Invocation:
+
+```python
+import shlex
+tokens = shlex.split(args, posix=True)
+if not tokens:
+    abort("missing <repo> argument. Usage: /obsidian-board <repo> --refresh [--full]")
+repo_token = tokens[0]
+flags = tokens[1:]
+
+from scripts.commands.repo_resolver import resolve_repo_arg
+resolution = resolve_repo_arg(
+    repo_token,
+    vault_root=Path("~/Documents/SecondBrain").expanduser(),
+    allow_global=False,
+)
+if resolution.state == "ambiguous":
+    ask_user_to_pick(resolution.candidates)
+elif resolution.state != "project":
+    abort(resolution.message)
+
+from scripts.board.refresh import refresh_board
+result = refresh_board(
+    project_dir=resolution.project_dir,
+    signals=None,
+    full=("--full" in flags),
+)
+
+if result.status == "skipped":
+    print(result.message)
+    return  # nothing to do
+```
+
+After helper returns:
+
+1. Append activity log line to `Logs/YYYY-MM-DD.md ## Activity` (idempotent - only if today's log doesn't already have a matching `**HH:MM** - board | <P> refreshed` line for the same minute):
+   ```
+   **HH:MM** - board | <P> refreshed - <done> done, <in-flight> in-flight, <backlog> backlog across <N> buckets
+   ```
+
+2. Return a one-line summary to the caller (used by cron Discord notification):
+   `board refreshed | <P> | <done>D <in-flight>P <backlog>B | <N> buckets`
+
+3. The LLM (Claude executing this command body) is then responsible for regenerating the topic-bucket body sections in `board.md` based on `result.new_items` and `result.buckets`. The helper has already updated frontmatter `last-refresh` + totals; the LLM step is purely about prose-level reformatting of the bucket bodies (preserving the SYNTHESIZE rule for `## 🔥 This Week` / `## 待辦` / `## 進行中` / `## 已完成` if those sections don't exist yet).
+
+If `--full` flag was passed, force full rebuild ignoring last-refresh. The helper handles this via its `full=True` parameter.
 
 ---
 

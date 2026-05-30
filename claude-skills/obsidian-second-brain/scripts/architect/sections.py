@@ -51,6 +51,13 @@ SECTION_TYPES = {
     # v4.3 cross-flow lenses
     "ai-memory": "architecture-ai-memory",
     "ai-rag": "architecture-ai-rag",
+    # v4.4 — brainstorm (project-level interview)
+    "brainstorm": "project-brainstorm",
+    # v4.6 — AI companion archetype (4-layer schema)
+    "character-card": "architecture-character-card",
+    "world": "architecture-world",
+    "storyline": "architecture-storyline",
+    "companion-overview": "architecture-companion-overview",
 }
 
 
@@ -220,6 +227,39 @@ _BLOCK_NAMES = {
         "improvements",
         "dependencies",
     ),
+    # v4.4 — brainstorm (9 blocks for the project interview output)
+    "brainstorm": (
+        "context",
+        "opening-provocations",
+        "drilled-explorations",
+        "distilled-imps",
+        "hypotheses",
+        "parked",
+        "open-questions",
+        "meta-reflection",
+        "dependencies",
+    ),
+    # v4.6 — AI companion archetype
+    "character-card": (
+        "summary", "card-schema", "definitions-inventory",
+        "prompt-template-binding", "versioning-and-overrides",
+        "strengths", "weaknesses", "improvements", "dependencies",
+    ),
+    "world": (
+        "summary", "world-schema", "lore-inventory", "world-state",
+        "loading-strategy", "mutation-rules",
+        "strengths", "weaknesses", "improvements", "dependencies",
+    ),
+    "storyline": (
+        "summary", "storyline-dsl", "state-machine", "progression-rules",
+        "branching-logic", "persistence", "authoring-workflow",
+        "strengths", "weaknesses", "improvements", "dependencies",
+    ),
+    "companion-overview": (
+        "summary", "four-layer-diagram", "data-flow", "bind-points",
+        "layer-maturity-table",
+        "strengths", "weaknesses", "improvements", "dependencies",
+    ),
 }
 
 # v4 — these sections are still callable for backward compat but no longer
@@ -297,6 +337,38 @@ _BLOCK_HEADINGS = {
     "vector-store-config": "## Vector store config",
     "retrieve-strategy": "## Retrieve strategy",
     "embedding-providers": "## Embedding providers",
+    # v4.4 brainstorm block headings
+    "context": "## Session context",
+    "opening-provocations": "## Opening provocations",
+    "drilled-explorations": "## Drilled explorations",
+    "distilled-imps": "## Distilled improvements",
+    "hypotheses": "## Hypotheses to validate",
+    "parked": "## Parked",
+    "open-questions": "## Open questions",
+    "meta-reflection": "## Meta reflection",
+    # v4.6 character-card block headings
+    "card-schema": "## Card schema",
+    "definitions-inventory": "## Definitions inventory",
+    "prompt-template-binding": "## Prompt template binding",
+    "versioning-and-overrides": "## Versioning & overrides",
+    # v4.6 world block headings
+    "world-schema": "## World schema",
+    "lore-inventory": "## Lore inventory",
+    "world-state": "## Mutable world state",
+    "loading-strategy": "## Loading strategy",
+    "mutation-rules": "## Mutation rules",
+    # v4.6 storyline block headings
+    "storyline-dsl": "## Storyline DSL",
+    "state-machine": "## State machine",
+    "progression-rules": "## Progression rules",
+    "branching-logic": "## Branching logic",
+    "persistence": "## Persistence",
+    "authoring-workflow": "## Authoring workflow",
+    # v4.6 companion-overview block headings
+    "four-layer-diagram": "## Four-layer dependency diagram",
+    "data-flow": "## Per-turn data flow",
+    "bind-points": "## Bind points",
+    "layer-maturity-table": "## Layer maturity table",
 }
 
 
@@ -483,6 +555,329 @@ def compose_ai_rag_note(
     return note.replace("ai-first: true", extra_fm + "ai-first: true", 1)
 
 
+def build_character_card_prompt(
+    *,
+    project: str,
+    layer_evidence: dict,
+    repomix_packed: str,
+    output_lang: str,
+) -> str:
+    """v4.6 character-card layer synthesis prompt. Demands 9 strict-JSON blocks."""
+    if output_lang == "zh-TW":
+        lang_directive = (
+            "請以繁體中文 (zh-TW) 撰寫散文。Code identifier / 檔案路徑 / "
+            "function name / env var / wikilink 檔名段保持英文。"
+        )
+        improvement_shape = "**為什麼:** / **證據:** / **Effort:** / **未做的風險:** / **Confidence:**"
+    else:
+        lang_directive = "Write all prose in English. Code identifiers stay verbatim."
+        improvement_shape = "**Why:** / **Evidence:** / **Effort:** / **Risk if not done:** / **Confidence:**"
+
+    import json as _json
+    evidence_json = _json.dumps(layer_evidence, indent=2, ensure_ascii=False, default=str)
+
+    return "\n".join([
+        f"You are documenting the **Character Card** layer for AI-companion project `{project}`.",
+        f"Output language: {output_lang}.",
+        lang_directive,
+        "",
+        "## Critical rules",
+        "1. NO invention. Empty signal → acknowledge absence.",
+        "2. Wikilink-out cross-layer references — use [[ai-flows/world#World state]] etc.",
+        "3. Tight bullet shape for strengths/weaknesses: **Title (≤30 char).** clarification (≤80 char).",
+        "4. Full prompt body in collapsible callout `> [!quote]-` when system prompt detected.",
+        "",
+        "## Output: 9 @generated blocks (JSON keys)",
+        "",
+        "### `summary` — 1 paragraph (card count, format, customization model)",
+        "### `card-schema` — data structure + validation rules, cite `code:path:line`",
+        "### `definitions-inventory` — markdown table: Name | Source | Key traits | Active",
+        "### `prompt-template-binding` — how card → system prompt; variables; full prompt callout",
+        "### `versioning-and-overrides` — schema evolution + user-customization paths",
+        f"### `strengths` — 3-5 tight bullets",
+        f"### `weaknesses` — 3-5 tight bullets + failure modes",
+        f"### `improvements` — 3-5 Imps: {improvement_shape}",
+        "### `dependencies` — wikilinks only",
+        "",
+        "Return strict JSON: {\"summary\": \"...\", \"card-schema\": \"...\", ...all 9 keys...}.",
+        "",
+        "## Layer evidence (scanner signals)",
+        evidence_json,
+        "",
+        "## Repomix-packed module context",
+        repomix_packed[:50000],
+    ])
+
+
+def compose_character_card_note(
+    *,
+    project: str,
+    repo_label: str,
+    commit: str,
+    signal_sources: list[str],
+    confidence: str,
+    output_lang: str,
+    generated_blocks: dict[str, str],
+    card_count: int,
+    schema_version: str | None,
+) -> str:
+    """Wrap compose_note(section='character-card', ...) + merge frontmatter."""
+    note = compose_note(
+        section="character-card", project=project, repo_label=repo_label,
+        commit=commit, signal_sources=signal_sources, confidence=confidence,
+        output_lang=output_lang, generated_blocks=generated_blocks,
+    )
+    sv = schema_version if schema_version else "unknown"
+    extra_fm = (
+        f"layer: character-card\n"
+        f'depends-on: ["world", "storyline"]\n'
+        f"mutated-by: []\n"
+        f"card-count: {card_count}\n"
+        f"schema-version: {sv}\n"
+    )
+    return note.replace("ai-first: true", extra_fm + "ai-first: true", 1)
+
+
+def build_world_prompt(
+    *,
+    project: str,
+    layer_evidence: dict,
+    repomix_packed: str,
+    output_lang: str,
+) -> str:
+    if output_lang == "zh-TW":
+        lang_directive = "請以繁體中文撰寫。Code identifier 保持英文。"
+        improvement_shape = "**為什麼:** / **證據:** / **Effort:** / **未做的風險:** / **Confidence:**"
+    else:
+        lang_directive = "Write all prose in English."
+        improvement_shape = "**Why:** / **Evidence:** / **Effort:** / **Risk if not done:** / **Confidence:**"
+
+    import json as _json
+    evidence_json = _json.dumps(layer_evidence, indent=2, ensure_ascii=False, default=str)
+
+    return "\n".join([
+        f"You are documenting the **World** layer for AI-companion project `{project}`.",
+        f"Output language: {output_lang}. {lang_directive}",
+        "",
+        "## Critical rules",
+        "1. NO invention.",
+        "2. Wikilink-out cross-layer refs.",
+        "3. Tight bullets for strengths/weaknesses.",
+        "",
+        "## Output: 10 @generated blocks",
+        "",
+        "### `summary` — 1 paragraph (world count, static-vs-mutable, multi-world)",
+        "### `world-schema` — data structure",
+        "### `lore-inventory` — static content index (table or list)",
+        "### `world-state` — mutable fields + persistence store",
+        "### `loading-strategy` — when loaded into LLM context, cache, token budget",
+        "### `mutation-rules` — who mutates, when, conflict resolution",
+        "### `strengths` — 3-5 tight bullets",
+        "### `weaknesses` — 3-5 (corruption / consistency / token explosion)",
+        f"### `improvements` — 3-5 Imps: {improvement_shape}",
+        "### `dependencies` — wikilinks only",
+        "",
+        "Return strict JSON with all 10 keys.",
+        "",
+        "## Layer evidence",
+        evidence_json,
+        "",
+        "## Repomix-packed module context",
+        repomix_packed[:50000],
+    ])
+
+
+def compose_world_note(
+    *,
+    project: str,
+    repo_label: str,
+    commit: str,
+    signal_sources: list[str],
+    confidence: str,
+    output_lang: str,
+    generated_blocks: dict[str, str],
+    world_count: int,
+    mutable: bool,
+) -> str:
+    note = compose_note(
+        section="world", project=project, repo_label=repo_label,
+        commit=commit, signal_sources=signal_sources, confidence=confidence,
+        output_lang=output_lang, generated_blocks=generated_blocks,
+    )
+    extra_fm = (
+        f"layer: world\n"
+        f"depends-on: []\n"
+        f'mutated-by: ["storyline"]\n'
+        f"world-count: {world_count}\n"
+        f"mutable: {str(mutable).lower()}\n"
+    )
+    return note.replace("ai-first: true", extra_fm + "ai-first: true", 1)
+
+
+def build_storyline_prompt(
+    *,
+    project: str,
+    layer_evidence: dict,
+    repomix_packed: str,
+    output_lang: str,
+) -> str:
+    if output_lang == "zh-TW":
+        lang_directive = "請以繁體中文撰寫。Code identifier 保持英文。"
+        improvement_shape = "**為什麼:** / **證據:** / **Effort:** / **未做的風險:** / **Confidence:**"
+    else:
+        lang_directive = "Write all prose in English."
+        improvement_shape = "**Why:** / **Evidence:** / **Effort:** / **Risk if not done:** / **Confidence:**"
+
+    import json as _json
+    evidence_json = _json.dumps(layer_evidence, indent=2, ensure_ascii=False, default=str)
+
+    return "\n".join([
+        f"You are documenting the **Storyline** layer for AI-companion project `{project}`.",
+        f"Output language: {output_lang}. {lang_directive}",
+        "",
+        "## Critical rules",
+        "1. NO invention.",
+        "2. Wikilink-out cross-layer refs.",
+        "3. Mermaid state diagram in `state-machine` block when applicable.",
+        "",
+        "## Output: 11 @generated blocks",
+        "",
+        "### `summary` — DSL shape, storyline count, branching, state",
+        "### `storyline-dsl` — Grammar + example code block",
+        "### `state-machine` — States / transitions / triggers; Mermaid state diagram",
+        "### `progression-rules` — When beats advance (intimacy gate / event / time)",
+        "### `branching-logic` — Choice points / decision trees / user-input vs LLM",
+        "### `persistence` — Storyline state store, cross-session continuity",
+        "### `authoring-workflow` — Creator workflow, edit-reload, testing",
+        "### `strengths` — 3-5 tight bullets",
+        "### `weaknesses` — 3-5 (DSL escape / state drift / authoring barrier)",
+        f"### `improvements` — 3-5 Imps: {improvement_shape}",
+        "### `dependencies` — wikilinks only",
+        "",
+        "Return strict JSON with all 11 keys.",
+        "",
+        "## Layer evidence",
+        evidence_json,
+        "",
+        "## Repomix-packed module context",
+        repomix_packed[:50000],
+    ])
+
+
+def compose_storyline_note(
+    *,
+    project: str,
+    repo_label: str,
+    commit: str,
+    signal_sources: list[str],
+    confidence: str,
+    output_lang: str,
+    generated_blocks: dict[str, str],
+    dsl_format: str | None,
+    branch_count: int | None,
+) -> str:
+    note = compose_note(
+        section="storyline", project=project, repo_label=repo_label,
+        commit=commit, signal_sources=signal_sources, confidence=confidence,
+        output_lang=output_lang, generated_blocks=generated_blocks,
+    )
+    dsl_value = dsl_format if dsl_format else "none"
+    branch_value = "null" if branch_count is None else str(branch_count)
+    extra_fm = (
+        f"layer: storyline\n"
+        f'depends-on: ["character-card", "world"]\n'
+        f'mutated-by: ["memory"]\n'
+        f"dsl-format: {dsl_value}\n"
+        f"branch-count: {branch_value}\n"
+    )
+    return note.replace("ai-first: true", extra_fm + "ai-first: true", 1)
+
+
+def build_companion_overview_prompt(
+    *,
+    project: str,
+    ai_companion_signals: dict,
+    layer_summaries: dict[str, str],
+    repomix_packed: str,
+    output_lang: str,
+) -> str:
+    if output_lang == "zh-TW":
+        lang_directive = "請以繁體中文撰寫。Mermaid node ID 保持英文。"
+        improvement_shape = "**為什麼:** / **證據:** / **Effort:** / **未做的風險:** / **Confidence:**"
+    else:
+        lang_directive = "Write all prose in English. Mermaid node IDs verbatim."
+        improvement_shape = "**Why:** / **Evidence:** / **Effort:** / **Risk if not done:** / **Confidence:**"
+
+    import json as _json
+    signals_json = _json.dumps(ai_companion_signals, indent=2, ensure_ascii=False, default=str)
+    summaries_lines = "\n".join(
+        f"- **{name}**: {summary[:300]}"
+        for name, summary in layer_summaries.items()
+    )
+
+    return "\n".join([
+        f"You are documenting the **AI companion 4-layer cross-cutting** report for `{project}`.",
+        f"Output language: {output_lang}. {lang_directive}",
+        "",
+        "## Critical rules",
+        "1. NO invention.",
+        "2. Wikilink-out per-layer detail. DO NOT rewrite single-layer content here.",
+        "3. ONE Mermaid graph in `four-layer-diagram`.",
+        "4. Cross-layer Imps only in `improvements` — single-layer Imps belong on per-layer files.",
+        "",
+        "## Output: 9 @generated blocks",
+        "",
+        "### `summary` — archetype detected; 4 layers one-line each",
+        "### `four-layer-diagram` — ONE Mermaid: Character ↔ World ↔ Storyline ↔ Memory + LLM provider",
+        "### `data-flow` — Per-turn: user → which layers consult, in what order → prompt → LLM → mutations",
+        "### `bind-points` — Cross-layer contracts; each binding lists owner",
+        "### `layer-maturity-table` — Table: Layer | Status (✅/⚠️/❌) | Wikilink | Primary risk",
+        "### `strengths` — 3-5 cross-layer bullets",
+        "### `weaknesses` — 3-5 cross-layer bullets",
+        f"### `improvements` — 3-5 cross-layer Imps: {improvement_shape}",
+        "### `dependencies` — wikilinks only",
+        "",
+        "Return strict JSON with all 9 keys.",
+        "",
+        "## Per-layer summaries (just-written, do NOT repeat verbatim)",
+        summaries_lines,
+        "",
+        "## AI companion signals",
+        signals_json,
+        "",
+        "## Repomix-packed context",
+        repomix_packed[:30000],
+    ])
+
+
+def compose_companion_overview_note(
+    *,
+    project: str,
+    repo_label: str,
+    commit: str,
+    signal_sources: list[str],
+    confidence: str,
+    output_lang: str,
+    generated_blocks: dict[str, str],
+    layers_stable: int,
+    layers_wip: int,
+    layers_missing: int,
+) -> str:
+    note = compose_note(
+        section="companion-overview", project=project, repo_label=repo_label,
+        commit=commit, signal_sources=signal_sources, confidence=confidence,
+        output_lang=output_lang, generated_blocks=generated_blocks,
+    )
+    extra_fm = (
+        f"layer: overview\n"
+        f"archetype: ai-companion\n"
+        f"layers-stable: {layers_stable}\n"
+        f"layers-wip: {layers_wip}\n"
+        f"layers-missing: {layers_missing}\n"
+    )
+    return note.replace("ai-first: true", extra_fm + "ai-first: true", 1)
+
+
 def _preamble_for(section: str, lang: str) -> str:
     """Short preamble describing the note's purpose to future-Claude."""
     if lang == "zh-TW":
@@ -499,6 +894,11 @@ def _preamble_for(section: str, lang: str) -> str:
             "ai-flow": "本檔是單一 AI 流程的深判斷 — 包含 graph 結構、state schema、prompts 全文、LLM 設定、評估與設計優缺點。",
             "ai-memory": "本檔是 AI 記憶層的跨流程深判斷 — lifecycle、TTL、compaction、context window 管理。Per-flow state shape 請見 [[Architecture/ai-flows/<slug>#State schema]]。",
             "ai-rag": "本檔是 RAG (retrieval-augmented generation) 跨流程管線深判斷 — ingest → vector store → retrieve、embedding 對齊、評估。Per-flow LLM 設定請見 [[Architecture/ai-flows/<slug>#LLM config]]。",
+            "brainstorm": "本檔是 `/obsidian-brainstorm` session 輸出 — Claude 採訪式 brainstorm,從 vault 全部 project 素材出發,丟出大膽推測 (provocations),引導使用者反應與深挖,蒸餾成 ImprovementItem 與待驗證假設。被 `/obsidian-roadmap` 自動撿走進 backlog。",
+            "character-card": "本檔是 AI 陪伴專案的 Character Card 層深判斷 — 角色定義、prompt template 綁定、versioning。跨層議題見 [[Architecture/ai-flows/companion-overview]]。",
+            "world": "本檔是 AI 陪伴專案的 World 層深判斷 — lore inventory、mutable state、loading strategy、mutation rules。跨層議題見 [[Architecture/ai-flows/companion-overview]]。",
+            "storyline": "本檔是 AI 陪伴專案的 Storyline 層深判斷 — DSL grammar、state machine、progression rules、branching、persistence、authoring workflow。",
+            "companion-overview": "本檔是 AI 陪伴 archetype 的跨 4 層 cross-cutting 報告 — 依賴圖、每輪資料流、層間綁定、各層成熟度。Per-layer 詳細請見 [[ai-flows/character-card]] / [[ai-flows/world]] / [[ai-flows/storyline]] / [[ai-flows/memory]]。",
         }[section]
     return {
         "api-surface": "This is the API surface reference. Look up commands or endpoints here.",
@@ -513,6 +913,11 @@ def _preamble_for(section: str, lang: str) -> str:
         "ai-flow": "Deep judgment for a single AI flow — graph topology, state schema, full prompts, LLM config, evaluation, and design pros/cons.",
         "ai-memory": "Cross-flow AI memory lens — lifecycle, TTL, compaction, context window management. For per-flow state shape see [[Architecture/ai-flows/<slug>#State schema]].",
         "ai-rag": "Cross-flow RAG (retrieval-augmented generation) lens — ingest → vector store → retrieve, embedding alignment, evaluation. For per-flow LLM config see [[Architecture/ai-flows/<slug>#LLM config]].",
+        "brainstorm": "Output of an `/obsidian-brainstorm` session — Claude interviews the user, starts from vault project materials, throws bold next-direction provocations, drills via follow-ups, and distills ImprovementItems plus hypotheses-to-validate. Picked up by `/obsidian-roadmap` automatically.",
+        "character-card": "Character Card layer deep dive for an AI companion project — character definitions, prompt template binding, versioning. Cross-layer concerns: [[Architecture/ai-flows/companion-overview]].",
+        "world": "World layer deep dive — lore inventory, mutable world state, loading strategy, mutation rules. Cross-layer concerns: [[Architecture/ai-flows/companion-overview]].",
+        "storyline": "Storyline layer deep dive — DSL grammar, state machine, progression rules, branching, persistence, authoring workflow.",
+        "companion-overview": "Cross-cutting report for the AI companion archetype — 4-layer dependency diagram, per-turn data flow, bind points, layer maturity. For per-layer detail see [[ai-flows/character-card]] / [[ai-flows/world]] / [[ai-flows/storyline]] / [[ai-flows/memory]].",
     }[section]
 
 
@@ -1598,6 +2003,56 @@ def compose_features_note(
     return note.replace("ai-first: true", extra_fm + "ai-first: true", 1)
 
 
+def compose_brainstorm_note(
+    *,
+    project: str,
+    repo_label: str,
+    commit: str,
+    signal_sources: list[str],
+    confidence: str,
+    output_lang: str,
+    generated_blocks: dict[str, str],
+    mode: str,
+    lens_mix: list[str],
+    depth: str,
+    status: str,
+    session_duration_min: int,
+    provocations_opened: int,
+    provocations_drilled: int,
+    imps_distilled: int,
+    hypotheses_raised: int,
+) -> str:
+    """Wrap compose_note(section='brainstorm', ...) and merge session-specific
+    extra frontmatter fields BEFORE `ai-first: true`.
+
+    Fields injected: mode, lens-mix, depth, status, session-duration-min,
+    provocations-opened, provocations-drilled, imps-distilled, hypotheses-raised.
+    """
+    note = compose_note(
+        section="brainstorm",
+        project=project,
+        repo_label=repo_label,
+        commit=commit,
+        signal_sources=signal_sources,
+        confidence=confidence,
+        output_lang=output_lang,
+        generated_blocks=generated_blocks,
+    )
+    lens_mix_yaml = json.dumps(lens_mix, ensure_ascii=False)
+    extra_fm = (
+        f"mode: {mode}\n"
+        f"lens-mix: {lens_mix_yaml}\n"
+        f"depth: {depth}\n"
+        f"status: {status}\n"
+        f"session-duration-min: {session_duration_min}\n"
+        f"provocations-opened: {provocations_opened}\n"
+        f"provocations-drilled: {provocations_drilled}\n"
+        f"imps-distilled: {imps_distilled}\n"
+        f"hypotheses-raised: {hypotheses_raised}\n"
+    )
+    return note.replace("ai-first: true", extra_fm + "ai-first: true", 1)
+
+
 def parse_doc_actions_block(body: str) -> list[dict]:
     """Parse the `doc-sync-actions` block into action dicts.
 
@@ -1894,6 +2349,53 @@ def parse_improvements_block(text: str) -> list[ImprovementItem]:
             confidence=fields["Confidence"],
         ))
     return items
+
+
+_HYPOTHESIS_TITLE_RE = re.compile(r"^###\s+(.+?)\s*$", re.MULTILINE)
+_HYPOTHESIS_FIELD_RE = re.compile(r"^-\s+\*\*(.+?):\*\*\s*(.+)$", re.MULTILINE)
+_HYPOTHESIS_FIELD_ALIASES = {
+    "assumption": "assumption",
+    "假設": "assumption",
+    "validation": "validation",
+    "驗證方式": "validation",
+    "kill criterion": "kill_criterion",
+    "kill_criterion": "kill_criterion",
+    "owner": "owner",
+    "status": "status",
+}
+
+
+def parse_hypothesis_block(body: str) -> list[dict]:
+    """Parse a brainstorm hypotheses block into dicts.
+
+    Each H3 entry becomes a dict with fields:
+    {title, assumption, validation, kill_criterion, owner, status}.
+    Entries missing any of {assumption, validation, kill_criterion} are dropped.
+    """
+    parts = _HYPOTHESIS_TITLE_RE.split(body)
+    if len(parts) < 3:
+        return []
+    out: list[dict] = []
+    for i in range(1, len(parts), 2):
+        title = parts[i].strip()
+        entry_body = parts[i + 1] if i + 1 < len(parts) else ""
+        fields: dict[str, str] = {}
+        for m in _HYPOTHESIS_FIELD_RE.finditer(entry_body):
+            key = _HYPOTHESIS_FIELD_ALIASES.get(m.group(1).strip().lower())
+            if key:
+                fields[key] = m.group(2).strip()
+        required = {"assumption", "validation", "kill_criterion"}
+        if not required.issubset(fields):
+            continue
+        out.append({
+            "title": title,
+            "assumption": fields["assumption"],
+            "validation": fields["validation"],
+            "kill_criterion": fields["kill_criterion"],
+            "owner": fields.get("owner", ""),
+            "status": fields.get("status", "unvalidated"),
+        })
+    return out
 
 
 _LABEL_ALIASES = {

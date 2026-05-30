@@ -527,6 +527,143 @@ embedding-aligned: false                  # true | false | null (null when only 
 - When `embedding-aligned: false`: `weaknesses` MUST include a bullet flagging the provider mismatch; `improvements` MUST include an Imp to align providers (`Confidence: stated`); `embedding-providers` block MUST include a ⚠️ row.
 - When `embedding-aligned: true` or `null`: no warning enforced.
 
+### `architecture-character-card` (v4.6 — Character Card layer)
+
+**File:** `Projects/<P>/Architecture/ai-flows/character-card.md`
+
+**Frontmatter:**
+```yaml
+type: architecture-character-card
+layer: character-card
+depends-on: ["world", "storyline"]
+mutated-by: []
+card-count: 6
+schema-version: v1
+...standard v4 fields...
+```
+
+**Body blocks** (9 @generated sentinels):
+1. `summary` — `## 摘要` / `## Summary`
+2. `card-schema` — `## Card schema`
+3. `definitions-inventory` — `## 角色定義清單` / `## Definitions inventory` (markdown table)
+4. `prompt-template-binding` — full prompt callout `> [!quote]-`
+5. `versioning-and-overrides` — schema evolution + user customization
+6. `strengths` / `weaknesses` / `improvements` / `dependencies`
+
+### `architecture-world` (v4.6 — World layer)
+
+**File:** `Projects/<P>/Architecture/ai-flows/world.md`
+
+**Frontmatter:**
+```yaml
+type: architecture-world
+layer: world
+depends-on: []
+mutated-by: ["storyline"]
+world-count: 1
+mutable: true
+...
+```
+
+**Body blocks** (10 @generated): summary / world-schema / lore-inventory / world-state / loading-strategy / mutation-rules / strengths / weaknesses / improvements / dependencies.
+
+### `architecture-storyline` (v4.6 — Storyline layer)
+
+**File:** `Projects/<P>/Architecture/ai-flows/storyline.md`
+
+**Frontmatter:**
+```yaml
+type: architecture-storyline
+layer: storyline
+depends-on: ["character-card", "world"]
+mutated-by: ["memory"]
+dsl-format: "<name or none>"
+branch-count: <N or null>
+...
+```
+
+**Body blocks** (11 @generated): summary / storyline-dsl / state-machine (Mermaid) / progression-rules / branching-logic / persistence / authoring-workflow / strengths / weaknesses / improvements / dependencies.
+
+### `architecture-companion-overview` (v4.6 — cross-cutting)
+
+**File:** `Projects/<P>/Architecture/ai-flows/companion-overview.md`
+
+**Frontmatter:**
+```yaml
+type: architecture-companion-overview
+layer: overview
+archetype: ai-companion
+layers-stable: 2
+layers-wip: 1
+layers-missing: 1
+...
+```
+
+**Body blocks** (9 @generated): summary / four-layer-diagram (ONE Mermaid) / data-flow / bind-points / layer-maturity-table / strengths / weaknesses / improvements / dependencies.
+
+**Voice constraints (all 4 v4.6 schemas):**
+- NO invention. Empty signal → acknowledge absence.
+- Wikilink-out cross-layer references; do not rehash per-layer content in overview.
+- Strengths / weaknesses follow tight bullet shape from v3.1.
+- ImprovementItem shape for improvements: `Why / Evidence / Effort / Risk if not done / Confidence`.
+
+**Detection (v4.6):**
+- Auto-detect: character + storyline signals BOTH present.
+- Frontmatter override: `archetype: ai-companion` in project hub forces all 4 layers present.
+- Memory layer reuses v4.3 `architecture-ai-memory` schema (not duplicated in v4.6).
+
+### `project-brainstorm` (v4.4: `/obsidian-brainstorm` session output)
+
+**File:** `Projects/<P>/Brainstorms/YYYY-MM-DD-<slug>.md`
+
+**Frontmatter:**
+```yaml
+type: project-brainstorm
+date: YYYY-MM-DD
+project: "[[<project-name>]]"
+mode: generate                       # generate (v1) | sharpen (future)
+lens-mix: ["gap", "persona", "trend", "premortem"]
+depth: medium                        # quick | medium | deep
+status: fresh                        # fresh | reviewed | actioned (owner-set)
+session-duration-min: 28
+provocations-opened: 5
+provocations-drilled: 2
+imps-distilled: 3
+hypotheses-raised: 2
+related: ["[[Architecture/overview]]", "[[Architecture/features]]"]
+sources: ["Architecture/*", "Research/*", "board.md", "recent Logs"]
+confidence: medium                   # high when drilled >= 2; medium otherwise
+lang: zh-TW
+tags: [brainstorm, project]
+ai-first: true
+```
+
+**Body blocks** (9 `@generated` sentinels):
+1. `context`: `## 對話脈絡` / `## Session context`
+2. `opening-provocations`: `## 開場 provocations` / `## Opening provocations` (ALL 4-6 preserved with `使用者反應: drilled|killed|parked` annotation)
+3. `drilled-explorations`: `## 深挖紀錄` / `## Drilled explorations` (Claude's follow-up Qs + user's verbatim quotes via `> ` blockquote)
+4. `distilled-imps`: `## 提煉的 Imps` / `## Distilled improvements` (ImprovementItem shape, fed into `/obsidian-roadmap`)
+5. `hypotheses`: `## 待驗證假設` / `## Hypotheses to validate` (`假設 / 驗證方式 / kill criterion / owner / status`)
+6. `parked`: `## 暫不討論` / `## Parked` (with `第 N 次出現` flag when repeated)
+7. `open-questions`: `## 仍不清楚` / `## Open questions`
+8. `meta-reflection`: `## 自我覆盤` / `## Meta reflection`
+9. `dependencies`: wikilinks only
+
+**Voice constraints:**
+- NO invention of vault evidence. Every Evidence wikilink must point to a real vault file or be marked `(speculation, no vault evidence)`.
+- Preserve user's verbatim quotes via `> ` blockquote; paraphrase other content.
+- ALL killed / parked provocations stay in `opening-provocations` (don't delete), preserving the history trail.
+
+**Status lifecycle (owner-driven):**
+- `fresh` (default after session): candidates fed into next `/obsidian-roadmap`
+- `reviewed`: owner has read but not yet decided
+- `actioned`: improvements graduated to T-NNN tasks; detector skips this file
+
+**Roadmap pickup:**
+- `distilled-imps`: `brainstorm-imp` candidates (priority `normal` for `stated`, `low` for `hypothesis`/`speculation`)
+- `hypotheses`: `brainstorm-hypothesis` candidates (always `low`)
+- Dedup: `Brainstorms/` source beats `features.md` beats architecture-inferred sources
+
 ### `type: architecture-personas`
 
 Generated by `/obsidian-architect` v3. Lives at `Projects/<P>/Architecture/personas.md`.

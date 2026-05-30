@@ -152,3 +152,91 @@ def test_local_evidence_wins_over_repo_dep(tmp_path: Path):
         f"expected custom-pipeline (local code imports openai, not langgraph); got {f.framework}"
     assert f.root_path == "modules/qa_to_kb"
     assert any("prompts.toml" in p for p in f.prompt_files)
+
+
+def test_custom_pipeline_detected_without_nodes_dir_when_llm_imports(tmp_path: Path):
+    """Repro: ai-eden-service has app/pipeline.py + LLM provider imports but
+    no nodes/ dir. Should still detect as custom-pipeline."""
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "m"\ndependencies = ["openai"]\n', encoding="utf-8"
+    )
+    app = tmp_path / "app"
+    (app / "providers").mkdir(parents=True)
+    (app / "providers" / "openai_provider.py").write_text(
+        "from openai import OpenAI\nclient = OpenAI()\n", encoding="utf-8"
+    )
+    (app / "pipeline.py").write_text(
+        "from app.providers.openai_provider import client\n"
+        "def run(): return client.chat.completions.create(messages=[])\n",
+        encoding="utf-8",
+    )
+    (app / "prompts.toml").write_text(
+        '[system]\nbody = "You are an assistant"\n', encoding="utf-8"
+    )
+    from scripts.architect.ai_flow import detect_ai_flows
+    flows = detect_ai_flows(tmp_path)
+    assert len(flows) == 1
+    assert flows[0].framework == "custom-pipeline"
+
+
+def test_custom_pipeline_still_requires_pipeline_file(tmp_path: Path):
+    """Sanity: openai imports + no pipeline.py → not a flow."""
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "m"\ndependencies = ["openai"]\n', encoding="utf-8"
+    )
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "main.py").write_text(
+        "from openai import OpenAI\ndef hello(): pass\n", encoding="utf-8"
+    )
+    from scripts.architect.ai_flow import detect_ai_flows
+    flows = detect_ai_flows(tmp_path)
+    assert flows == []
+
+
+def test_custom_pipeline_with_companion_archetype_waives_prompts_file(tmp_path: Path):
+    """v4.6 follow-up to Task 4: when companion_archetype=True is passed,
+    the custom-pipeline branch's prompts-file requirement is waived.
+
+    Mirrors ai-eden-service's real layout: app/pipeline.py + app/providers/*
+    with `openai` imports + NO prompts.toml/.yaml/.md. Without the companion
+    signal these stacks fall off the detector; with it they classify as
+    custom-pipeline.
+    """
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "m"\ndependencies = ["openai"]\n', encoding="utf-8"
+    )
+    app = tmp_path / "app"
+    (app / "providers").mkdir(parents=True)
+    (app / "providers" / "openai_provider.py").write_text(
+        'from openai import OpenAI\n'
+        'SYSTEM_PROMPT = "You are an AI companion."\n'
+        'client = OpenAI()\n',
+        encoding="utf-8",
+    )
+    (app / "pipeline.py").write_text(
+        "from app.providers.openai_provider import client\n"
+        "def run(): return client.chat.completions.create(messages=[])\n",
+        encoding="utf-8",
+    )
+    # No prompts.toml / prompts.yaml / prompts.md anywhere.
+    from scripts.architect.ai_flow import detect_ai_flows
+
+    # Without companion signal: detector misses (the pre-v4.6 behavior).
+    assert detect_ai_flows(tmp_path) == []
+
+    # With companion signal: detector picks it up.
+    flows = detect_ai_flows(tmp_path, companion_archetype=True)
+    assert len(flows) == 1, f"expected 1 flow, got {len(flows)}"
+    assert flows[0].framework == "custom-pipeline"
+
+
+def test_companion_archetype_does_not_force_unrelated_repos(tmp_path: Path):
+    """Sanity: passing companion_archetype=True doesn't magically create a
+    flow when pipeline.py / LLM signals are absent — the other clauses still
+    gate detection."""
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "m"\ndependencies = []\n', encoding="utf-8"
+    )
+    (tmp_path / "main.py").write_text("def hello(): pass\n", encoding="utf-8")
+    from scripts.architect.ai_flow import detect_ai_flows
+    assert detect_ai_flows(tmp_path, companion_archetype=True) == []

@@ -170,3 +170,52 @@ def test_heading_map_includes_v4_3_keys():
         assert en in HEADING_MAP, f"missing heading key {en!r}"
         assert HEADING_MAP[en]["zh-TW"] == zh, f"{en} should map to {zh!r}"
         assert HEADING_MAP[en]["en"] == en
+
+
+def test_heading_map_includes_brainstorm_keys():
+    """v1 brainstorm introduces 8 new H2 headings."""
+    from scripts.architect.lang import HEADING_MAP
+    required = {
+        "## Session context": "## 對話脈絡",
+        "## Opening provocations": "## 開場 provocations",
+        "## Drilled explorations": "## 深挖紀錄",
+        "## Distilled improvements": "## 提煉的 Imps",
+        "## Hypotheses to validate": "## 待驗證假設",
+        "## Parked": "## 暫不討論",
+        "## Open questions": "## 仍不清楚",
+        "## Meta reflection": "## 自我覆盤",
+    }
+    for en, zh in required.items():
+        assert en in HEADING_MAP, f"missing heading key {en!r}"
+        assert HEADING_MAP[en]["zh-TW"] == zh, f"{en} should map to {zh!r}"
+        assert HEADING_MAP[en]["en"] == en
+
+
+def test_heading_map_includes_v4_6_companion_keys():
+    """v4.6 introduces 14 new H2 headings across the 4 companion section types."""
+    from scripts.architect.lang import HEADING_MAP
+    required = {
+        "## Card schema": "## Card schema",
+        "## Definitions inventory": "## 角色定義清單",
+        "## Prompt template binding": "## Prompt template 綁定",
+        "## Versioning & overrides": "## 版本與覆寫",
+        "## World schema": "## World schema",
+        "## Lore inventory": "## Lore 清單",
+        "## Mutable world state": "## 動態 world state",
+        "## Loading strategy": "## 載入策略",
+        "## Mutation rules": "## 變動規則",
+        "## Storyline DSL": "## Storyline DSL",
+        "## State machine": "## 狀態機",
+        "## Progression rules": "## 推進規則",
+        "## Branching logic": "## 分支邏輯",
+        "## Persistence": "## 持久化",
+        "## Authoring workflow": "## 創作流程",
+        "## Four-layer dependency diagram": "## 4 層依賴圖",
+        "## Per-turn data flow": "## 每輪資料流",
+        "## Bind points": "## 層間綁定",
+        "## Layer maturity table": "## 各層成熟度",
+    }
+    for en, zh in required.items():
+        assert en in HEADING_MAP, f"missing heading key {en!r}"
+        assert HEADING_MAP[en]["zh-TW"] == zh, f"{en} should map to {zh!r}"
+        assert HEADING_MAP[en]["en"] == en

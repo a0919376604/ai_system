@@ -11,7 +11,7 @@ description: >
   tracking deals, or maintaining any vault structure. Also triggers when the user
   wants to bootstrap a new vault from scratch, run a vault health check, or drop
   a _CLAUDE.md into their vault so all Claude surfaces share the same operating rules.
-  Includes a research toolkit (7 commands: /research, /research-deep, /discourse-pulse,
+  Includes a research toolkit (7 commands: /obsidian-research, /obsidian-research-deep, /discourse-pulse,
   /thread-read, /youtube, /idea-discovery, /vault-deep-synthesis) that uses only free,
   key-less sources (arXiv, Semantic Scholar, DuckDuckGo, Wikipedia, HackerNews, Reddit,
   and others) with synthesis performed by Claude. Findings save to the vault automatically
@@ -340,6 +340,18 @@ These slash commands can be used in any Claude surface. Each one is smart — it
 
 **Name matching:** If a name argument has a typo or is approximate, search the vault for the closest match, show what was found, and confirm with the user before proceeding. Never silently create a note with a misspelled name.
 
+| Command | What it does |
+|---|---|
+| `/obsidian-architect <repo>` | Scan codebase + generate v4 architecture report + AI flows + features lens + memory/RAG cross-flow (v4.3 family) + v4.6 AI companion archetype (v4.5: also auto-refreshes Projects/<P>/board.md as Phase 7, opt-out via --no-board-refresh) |
+| `/obsidian-brainstorm <repo>` | Interview-style brainstorm — 4-6 provocations, drill via follow-ups, distill into Brainstorms/ session file |
+| `/obsidian-roadmap <repo>` | Synthesize Architecture + Research + Brainstorms signals into Roadmap.md + T-NNN tasks |
+| `/obsidian-research <repo> <topic>` | Free-source web + academic research (use `global` as `<repo>` for vault-wide) |
+| `/obsidian-research-deep <repo> <topic>` | Vault-first deep research with gap analysis + multi-sub-query fetch + propagation |
+
+**Deprecated (removed in next minor release):**
+- `/research` → use `/obsidian-research`
+- `/research-deep` → use `/obsidian-research-deep`
+
 ---
 
 ### `/obsidian-save`
@@ -523,11 +535,11 @@ Steps:
 
 ---
 
-### `/obsidian-architect [repo-path]`
+### `/obsidian-architect <repo>`
 
 **Codebase architecture documentation.**
 
-- `/obsidian-architect <repo-path>` — Generate a self-contained, top-down
+- `/obsidian-architect <repo>` — Generate a self-contained, top-down
   architecture report. 8 files: `overview.md` + 5 module judgment notes +
   `decisions.md` + `personas.md`. For projects with detected AI subsystems
   (LangGraph / LangChain / custom-pipeline), adds `ai-flows/<slug>.md` per
@@ -547,6 +559,12 @@ Steps:
   flagship cross-project DataView field — shows misaligned embedding providers
   between write side (qa_to_kb-style) and read side (engines-style). Flags
   `--no-ai-memory` / `--no-ai-rag` / `--ai-memory-only` / `--ai-rag-only`.
+- **v4.6 (2026-05-29):** Adds AI companion-bot **archetype detection** + 4-layer
+  schema (Character Card / World / Storyline + reuse v4.3 Memory) + cross-cutting
+  companion-overview. Auto-detect requires character + storyline both present;
+  `archetype: ai-companion` frontmatter override available. Phase 3.7.5 in
+  command body. Flags `--no-companion` / `--companion-only`. Detector bug
+  fixed: custom-pipeline no longer requires `nodes/` dir.
 
 ---
 
@@ -676,11 +694,12 @@ A single ingest should touch 5-15 files. Compile knowledge once, distribute ever
 
 These commands use the vault as a thinking partner — not just storage. They surface insights, challenge assumptions, and generate connections that the user cannot see on their own.
 
-- `/obsidian-roadmap <project>` — fuse Architecture signals plus accumulated
+- `/obsidian-roadmap <repo>` — fuse Architecture signals plus accumulated
   Research into a curated `Roadmap.md` plus `T-NNN-*.md` tasks plus board
   cards. Three layers: architecture (descriptive) → roadmap (prescriptive)
   → tasks (atomic). Idempotent via `_roadmap.lock.json`; supports vault-wide
   zh-TW via `_CLAUDE.md output-lang`.
+- `/obsidian-brainstorm <repo>` - 卡住、不知道下一步該做什麼時,interview-style brainstorm。Claude 讀整個 vault(Architecture/* + features + ai-flows + personas + decisions + Research + board + 最近 Logs + 過去 brainstorms)後,丟出 4-6 個大膽的下個方向(混 gap / persona / trend / premortem lens),使用者反應後深挖,蒸餾成 ImprovementItem + 待驗證假設,寫進 `Projects/<P>/Brainstorms/YYYY-MM-DD-<slug>.md`,自動被 `/obsidian-roadmap` 撿走。Flags: `--topic` / `--lens` / `--depth=quick|medium|deep` / `--research-window-days`。
 
 ---
 
@@ -866,22 +885,22 @@ Plain English: "what's hot on HN about AI", "discourse pulse on vibe coding", "w
 
 ---
 
-### `/research [topic] [--academic]`
+### `/obsidian-research <repo> <topic> [--academic]`
 
 **Multi-source web research with citations.** Hits arXiv, Semantic Scholar, OpenAlex, CrossRef, DuckDuckGo, Wikipedia, HN, Reddit, Lobsters, dev.to in parallel. Calling Claude synthesizes a deep dossier: summary, key facts (with recency markers), timeline, key players, contrarian views, further reading, open questions.
 
 Steps:
-1. Resolve the topic
+1. Resolve `<repo>` via `scripts.commands.repo_resolver.resolve_repo_arg`
 2. Run `uv run -m scripts.research.research "<topic>"` (add `--academic` to restrict to arXiv + Semantic Scholar + OpenAlex + CrossRef)
 3. Show the dossier verbatim, including citations
-4. **Default save: auto-saves** to `Research/Web/YYYY-MM-DD - <slug>.md`
+4. **Default save: auto-saves** to `Research/Web/YYYY-MM-DD - <slug>.md` for `global`, or `Projects/<P>/Research/<slug>-web.md` for project-scoped research
 5. All citations stored in frontmatter for later Dataview queries
 
-Plain English: "research X", "look up X", "find me info on X". Note: "do deep research" routes to `/research-deep` instead.
+Plain English: "research X", "look up X", "find me info on X". Note: "do deep research" routes to `/obsidian-research-deep` instead.
 
 ---
 
-### `/research-deep [topic]`
+### `/obsidian-research-deep <repo> <topic>`
 
 **Vault-first deep research with cross-vault propagation.** The chain-everything command.
 
@@ -892,7 +911,7 @@ Steps (4 phases):
 4. **Synthesis** - Claude produces a delta report (what's new, what's confirmed, contradictions, recommended vault updates, open questions)
 
 Then:
-- Writes synthesis to `Research/Deep/YYYY-MM-DD - <slug>.md`
+- Writes synthesis to `Research/Deep/YYYY-MM-DD - <slug>.md` for `global`, or `Projects/<P>/Research/<slug>-deep.md` for project-scoped research
 - Emits a JSON propagation payload between `<<<RESEARCH_DEEP_PROPAGATION_PAYLOAD>>>` markers
 - Calling Claude reads that payload and runs `/obsidian-save`-style propagation: spawns parallel subagents to update People/Projects/Ideas/Decisions per the synthesis's "Recommended Vault Updates" bullets
 - Links new research note from today's daily note
@@ -905,19 +924,25 @@ Graceful degradation: if any source fails partially (rate-limit, network blip), 
 
 ---
 
+**Deprecated (removed in next minor release):**
+- `/research` → use `/obsidian-research`
+- `/research-deep` → use `/obsidian-research-deep`
+
+---
+
 ### `/vault-deep-synthesis [topic]`
 
-**Cross-note vault synthesis.** The parallel to `/research-deep` - but grounded in your own vault notes instead of the open web. No network, no external LLM.
+**Cross-note vault synthesis.** The parallel to `/obsidian-research-deep` - but grounded in your own vault notes instead of the open web. No network, no external LLM.
 
 Steps:
-1. **Vault scan** - same logic as `/research-deep` Phase 1, finds top 12 most relevant notes
+1. **Vault scan** - same logic as `/obsidian-research-deep` Phase 1, finds top 12 most relevant notes
 2. **Read** - calling Claude reads the selected notes directly via the read-files tool
 3. **Synthesize** - produces a structured response with sections: Source summary / Confirmed claims / Contradictions / Gaps / Recommended next reads / Confidence
 4. **Save** - writes synthesis to `Research/Vault-Synthesis/YYYY-MM-DD - <slug>.md`
-5. **Propagation** - same `/obsidian-save` flow as `/research-deep`
+5. **Propagation** - same `/obsidian-save` flow as `/obsidian-research-deep`
 
-When to use `/vault-deep-synthesis` over `/research-deep`:
-- `/research-deep`: open-web + discourse coverage from free sources
+When to use `/vault-deep-synthesis` over `/obsidian-research-deep`:
+- `/obsidian-research-deep`: open-web + discourse coverage from free sources
 - `/vault-deep-synthesis`: grounded in your own vault notes only - no network
 - Run both for high-value topics - the open-web view and the grounded view rarely contradict, and the contradictions are where the insight is
 

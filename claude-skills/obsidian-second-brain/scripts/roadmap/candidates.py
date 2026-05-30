@@ -96,6 +96,9 @@ def detect_candidates(project_root: Path) -> list[Candidate]:
     # v4.3: AI memory + RAG cross-flow notes feed roadmap signal via generated blocks.
     out.extend(_extract_ai_cross_flow_candidates(arch))
 
+    # v4.4 — brainstorm session outputs feed roadmap signal.
+    out.extend(_extract_brainstorm_candidates(project_root))
+
     return _dedup(_dedup_candidates(out))
 
 
@@ -242,12 +245,18 @@ def _extract_features_candidates(path: Path, arch_root: Path) -> list[Candidate]
 
 
 def _extract_ai_cross_flow_candidates(arch_root: Path) -> list[Candidate]:
-    """Extract v4.3 candidates from generated blocks in ai-flows/memory.md and rag.md."""
     out: list[Candidate] = []
-    for fname, candidate_type, default_priority in (
+    file_mappings = (
+        # v4.3
         ("ai-flows/memory.md", "ai-memory-improvement", "normal"),
         ("ai-flows/rag.md", "ai-rag-improvement", "normal"),
-    ):
+        # v4.6 — 4 companion layers
+        ("ai-flows/character-card.md", "companion-character-improvement", "normal"),
+        ("ai-flows/world.md", "companion-world-improvement", "normal"),
+        ("ai-flows/storyline.md", "companion-storyline-improvement", "normal"),
+        ("ai-flows/companion-overview.md", "companion-improvement", "normal"),
+    )
+    for fname, candidate_type, default_priority in file_mappings:
         note_path = arch_root / fname
         if not note_path.exists():
             continue
@@ -261,20 +270,107 @@ def _extract_ai_cross_flow_candidates(arch_root: Path) -> list[Candidate]:
         rel = note_path.relative_to(arch_root.parent).as_posix().replace(".md", "")
         for entry in _parse_feature_imp_entries(imp_body):
             priority = default_priority
+            evidence_list = entry["evidence"]
+            # v4.3 rule: rag.md with embedding-aligned evidence → high
             if fname.endswith("rag.md") and any(
-                "embedding-aligned" in evidence.lower() for evidence in entry["evidence"]
+                "embedding-aligned" in evidence.lower() for evidence in evidence_list
             ):
                 priority = "high"
+            # v4.6 rule: companion-overview.md Imp citing ≥2 layer wikilinks → high
+            if fname.endswith("companion-overview.md"):
+                layer_wikilink_count = sum(
+                    1 for layer in ("character-card", "world", "storyline", "memory")
+                    if any(f"ai-flows/{layer}" in ev for ev in evidence_list)
+                )
+                if layer_wikilink_count >= 2:
+                    priority = "high"
             cand = _candidate_from_feature_imp(
-                entry,
-                rel=rel,
-                block="improvements",
-                kind=candidate_type,
-                priority=priority,
+                entry, rel=rel, block="improvements",
+                kind=candidate_type, priority=priority,
             )
             cand.source = f"{fname}#improvements"
             out.append(cand)
     return out
+
+
+def _extract_brainstorm_candidates(project_root: Path) -> list[Candidate]:
+    """Extract v4.4 candidates from Projects/<P>/Brainstorms/*.md.
+
+    - `distilled-imps` block → `brainstorm-imp` candidates
+      (priority `low` for Confidence speculation/hypothesis, `normal` for stated)
+    - `hypotheses` block → `brainstorm-hypothesis` candidates (always priority `low`)
+
+    Skips brainstorm files whose frontmatter `status: actioned`.
+    """
+    bs_dir = project_root / "Brainstorms"
+    if not bs_dir.is_dir():
+        return []
+    out: list[Candidate] = []
+    for bs_path in sorted(bs_dir.glob("*.md")):
+        try:
+            text = bs_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if _brainstorm_status_actioned(text):
+            continue
+        rel = bs_path.relative_to(project_root).as_posix().replace(".md", "")
+        imp_body = _extract_generated_block(text, "distilled-imps")
+        if imp_body:
+            for entry in _parse_feature_imp_entries(imp_body):
+                priority = (
+                    "low"
+                    if entry["confidence"].lower() in ("speculation", "hypothesis")
+                    else "normal"
+                )
+                cand = _candidate_from_feature_imp(
+                    entry,
+                    rel=rel,
+                    block="distilled-imps",
+                    kind="brainstorm-imp",
+                    priority=priority,
+                )
+                cand.source = f"Brainstorms/{bs_path.name}#distilled-imps"
+                out.append(cand)
+        # hypotheses block — separate candidate type
+        hyp_body = _extract_generated_block(text, "hypotheses")
+        if hyp_body:
+            from scripts.architect.sections import parse_hypothesis_block
+
+            for hyp in parse_hypothesis_block(hyp_body):
+                cand = Candidate(
+                    id=_make_id("brainstorm-hypothesis", _normalize_title(hyp["title"])),
+                    title=hyp["title"],
+                    source_wikilink=f"[[{rel}#hypotheses]]",
+                    source_line=0,
+                    kind="brainstorm-hypothesis",
+                    raw_text=hyp["assumption"],
+                    why=hyp["assumption"],
+                    evidence=[],
+                    effort="?",
+                    risk_if_not_done=hyp["kill_criterion"],
+                    confidence="hypothesis",
+                    candidate_type="brainstorm-hypothesis",
+                    priority="low",
+                    source=f"Brainstorms/{bs_path.name}#hypotheses",
+                )
+                out.append(cand)
+    return out
+
+
+_FRONTMATTER_STATUS_RE = re.compile(r"^status:\s*(\S+)\s*$", re.MULTILINE)
+
+
+def _brainstorm_status_actioned(text: str) -> bool:
+    """Return True iff frontmatter contains `status: actioned`.
+
+    Reads only the first frontmatter block (between two `---` lines).
+    """
+    m = re.match(r"^---\n(.*?)\n---", text, re.DOTALL)
+    if not m:
+        return False
+    fm = m.group(1)
+    sm = _FRONTMATTER_STATUS_RE.search(fm)
+    return bool(sm and sm.group(1).strip() == "actioned")
 
 
 def _extract_generated_block(text: str, name: str) -> str | None:
@@ -461,27 +557,40 @@ def _dedup(cands: list[Candidate]) -> list[Candidate]:
 
 
 def _dedup_candidates(candidates: list[Candidate]) -> list[Candidate]:
-    """Dedup module Imps against features.md Imps when they share Evidence wikilinks.
+    """Dedup Imps when candidates share Evidence wikilinks.
 
-    Features.md (PM lens) wins. Module Imps with overlapping Evidence are dropped.
+    Brainstorms/ (user-confirmed) wins over features.md (PM lens), which wins
+    over architecture/module/decision inferred sources.
     """
-    features_evidence_set: set[str] = set()
+    best_priority_by_wikilink: dict[str, int] = {}
     for c in candidates:
-        if _is_features_candidate(c):
-            for wl in _extract_wikilinks(" | ".join(c.evidence)):
-                features_evidence_set.add(wl)
+        priority = _source_priority(_candidate_source(c))
+        for wl in _extract_wikilinks(" | ".join(c.evidence)):
+            best_priority_by_wikilink[wl] = max(best_priority_by_wikilink.get(wl, 0), priority)
 
     deduped: list[Candidate] = []
     for c in candidates:
-        if _is_features_candidate(c):
-            deduped.append(c)
-            continue
-        # Module / overview / decisions candidates: drop if any evidence wikilink
-        # is in features_evidence_set.
-        if any(wl in features_evidence_set for wl in _extract_wikilinks(" | ".join(c.evidence))):
+        priority = _source_priority(_candidate_source(c))
+        evidence_links = _extract_wikilinks(" | ".join(c.evidence))
+        if any(best_priority_by_wikilink.get(wl, 0) > priority for wl in evidence_links):
             continue
         deduped.append(c)
     return deduped
+
+
+def _candidate_source(candidate: Candidate) -> str:
+    return " ".join(part for part in (candidate.source, candidate.source_wikilink) if part)
+
+
+def _source_priority(source: str) -> int:
+    """Higher = wins in dedup tiebreak."""
+    if not source:
+        return 0
+    if "Brainstorms/" in source:
+        return 30   # v4.4 — user-confirmed beats everything
+    if "features.md" in source or "Architecture/features" in source:
+        return 20   # v4.2 — PM lens beats architecture-inferred
+    return 10       # default: architecture / module / decisions / etc.
 
 
 def _is_features_candidate(candidate: Candidate) -> bool:

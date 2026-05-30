@@ -81,8 +81,39 @@ def run_phase_one(repo_root: Path, vault_project_dir: Path | None = None) -> Sca
     api_surface = detect_api_surface(repo_root)
     commit_decisions = [asdict(c) for c in extract_commit_decisions(repo_root, limit=200)]
 
+    # v4.6 — AI companion archetype detection (runs BEFORE detect_ai_flows
+    # so the loosened custom-pipeline branch can waive prompts-file requirement
+    # when the project is a companion stack like ai-eden-service that inlines
+    # prompts in provider modules).
+    from scripts.architect.companion_detect import detect_companion_archetype
+
+    hub_frontmatter = None
+    if vault_project_dir is not None:
+        # Try to read project hub frontmatter for archetype override.
+        slug = vault_project_dir.name
+        hub_path = vault_project_dir / f"{slug}.md"
+        if hub_path.is_file():
+            try:
+                text = hub_path.read_text(encoding="utf-8")
+                import re
+                fm_match = re.match(r"^---\n(.*?)\n---", text, re.DOTALL)
+                if fm_match:
+                    hub_frontmatter = {}
+                    for line in fm_match.group(1).splitlines():
+                        if ":" in line:
+                            k, _, v = line.partition(":")
+                            hub_frontmatter[k.strip()] = v.strip().strip('"').strip("'")
+            except (OSError, UnicodeDecodeError):
+                pass
+
+    companion = detect_companion_archetype(
+        repo_root=repo_root,
+        hub_frontmatter=hub_frontmatter,
+    )
+    is_companion = companion.archetype == "ai-companion"
+
     # AI flow detection + per-flow prompt extraction (v4.1).
-    ai_flow_records = list(detect_ai_flows(repo_root))
+    ai_flow_records = list(detect_ai_flows(repo_root, companion_archetype=is_companion))
     ai_flows_data: list[dict] = []
     for flow in ai_flow_records:
         flow_dict = {
@@ -128,6 +159,15 @@ def run_phase_one(repo_root: Path, vault_project_dir: Path | None = None) -> Sca
         # v4.3 — cross-flow lenses.
         "ai_memory": ai_memory_data,
         "ai_rag": ai_rag_data,
+        "ai_companion": {
+            "archetype": companion.archetype,
+            "confidence": companion.confidence,
+            "triggers": companion.triggers,
+            "layers": {
+                layer_name: asdict(layer_ev)
+                for layer_name, layer_ev in companion.layers.items()
+            },
+        },
     }
     _add_features_inputs(scan_report, repo_root, vault_project_dir)
 

@@ -3,6 +3,9 @@ description: Scan a codebase and generate architecture overview plus module note
 argument-hint: <repo>
 category: vault
 triggers_en: ["architect", "architecture doc", "scan repo", "document architecture", "codebase overview"]
+param-autocomplete:
+  - name: repo
+    source: vault-projects
 ---
 
 Use the obsidian-second-brain skill. Execute `/obsidian-architect $ARGUMENTS`:
@@ -47,24 +50,48 @@ The argument is `<repo-path>` (local path or github URL). Optional flags:
   the memory prompt.
 - `--ai-rag-only` - same shape for Phase 3.9.
 
+**Board-refresh flag (v4.5):**
+- `--no-board-refresh` - skip Phase 7 (board refresh). Default OFF (board.md
+  auto-refreshes when present).
+
+**v4.6-specific flags:**
+- `--no-companion` — even when archetype=ai-companion is detected, skip Phase 3.7.5 (companion synthesis). Default OFF.
+- `--companion-only` — diagnostic: run Phase 1 + Phase 3.7.5 only. Useful for iterating on companion prompts.
+
 If `<repo-path>` is omitted and `pwd` is inside a git repo, default to `.`.
 Otherwise ASK the user.
 
-## Project routing
+## Project routing (v4.5 — shared resolver)
 
-Resolve the target project hub in this order:
+Parse the first whitespace-delimited token from `$ARGUMENTS` as `<repo>`. Then:
 
-1. `--project=<P>` flag.
-2. Search the vault for a project hub whose `local-path` frontmatter (resolved
-   to an absolute path) equals the absolute path of `<repo-path>`. Exactly one
-   match: use it.
-3. Zero matches: create a new project hub. Follow the same conventions as
-   `/obsidian-project`: sub-folder layout, hub frontmatter schema with `date`,
-   `tags: [project]`, `status: active`, `local-path`, the
-   `Projects/<P>/{Ideas,Tasks,Decisions,Learnings,Research,Competitors,Recaps}/`
-   skeleton, and a `board.md`. Project name defaults to the repo folder basename.
-   ASK the user before creating so typos can be corrected.
-4. Multiple matches: abort, list candidates, ask user to pass `--project=<P>`.
+```python
+import shlex
+tokens = shlex.split(args, posix=True)
+if not tokens:
+    abort("missing <repo> argument. Usage: /obsidian-architect <repo> [--refresh] [--no-features] ...")
+repo_token = tokens[0]
+remaining_flags = tokens[1:]
+
+from scripts.commands.repo_resolver import resolve_repo_arg
+resolution = resolve_repo_arg(
+    repo_token,
+    vault_root=Path("~/Documents/SecondBrain").expanduser(),
+    allow_global=False,   # architect requires a real project
+)
+
+if resolution.state == "project":
+    project_dir = resolution.project_dir
+    project_slug = resolution.project_slug
+    local_path = resolution.local_path
+elif resolution.state == "ambiguous":
+    ask_user_to_pick(resolution.candidates)
+elif resolution.state == "unknown" or resolution.state == "global":
+    # 'global' rejected for architect. unknown -> may need /obsidian-project first.
+    abort(resolution.message)
+```
+
+`<repo>` accepts (a) a project name like `langlive-line-oa`, (b) an absolute path that the project hub's `local-path` frontmatter binds to. If the path doesn't bind any hub, the resolver's error message includes the available project list and suggests running `/obsidian-project <name>` first.
 
 ## Phase 1: Deterministic scan
 
@@ -378,6 +405,103 @@ For each AI flow in `scan_report["ai_flows"]` (skip if `--no-ai-flows`):
    - For flows that don't match any module's `paths`, skip the link (the
      `ai-flows/` note still exists, just no module-side back-pointer).
 
+## Phase 3.7.5: AI companion archetype synthesis (v4.6)
+
+Skip if `--no-companion` is passed.
+
+Skip if `scan_report["ai_companion"]["archetype"] == "none"`.
+
+For each layer in `["character-card", "world", "storyline"]`:
+
+1. Skip if lockfile `ai_companion.layers[<layer>].signal-hash` matches current signal AND `Architecture/ai-flows/<layer>.md` exists (refresh logic).
+
+2. Run repomix on the layer's `root_paths`:
+   ```bash
+   repomix --include "<root_paths>" --style xml --compress -o /tmp/repomix-companion-<layer>.xml
+   ```
+
+3. Build prompt:
+   ```python
+   from scripts.architect.sections import build_character_card_prompt, build_world_prompt, build_storyline_prompt
+   builder = {"character-card": build_character_card_prompt,
+              "world": build_world_prompt,
+              "storyline": build_storyline_prompt}[layer]
+   prompt = builder(
+       project=project_name,
+       layer_evidence=scan_report["ai_companion"]["layers"][layer],
+       repomix_packed=open(f"/tmp/repomix-companion-{layer}.xml").read(),
+       output_lang=output_lang,
+   )
+   ```
+
+4. Invoke LLM. Expect strict JSON: 9 / 10 / 11 block keys per layer.
+
+5. Compose + write:
+   ```python
+   from scripts.architect.sections import compose_character_card_note, compose_world_note, compose_storyline_note
+
+   if layer == "character-card":
+       note = compose_character_card_note(
+           project=project_name, repo_label=repo_label, commit=commit,
+           signal_sources=signal_sources, confidence=layer_confidence,
+           output_lang=output_lang, generated_blocks=llm_output,
+           card_count=<count from evidence.artifact_files>,
+           schema_version="v1",  # extract from frontmatter or default
+       )
+   # similar for world and storyline (different extra-fm kwargs)
+   ```
+
+6. Write to `Projects/<P>/Architecture/ai-flows/<layer>.md`.
+
+After 3 per-layer files complete, build companion-overview:
+
+1. Collect per-layer summaries (just-written `summary` block bodies).
+
+2. Build prompt:
+   ```python
+   from scripts.architect.sections import build_companion_overview_prompt
+   prompt = build_companion_overview_prompt(
+       project=project_name,
+       ai_companion_signals=scan_report["ai_companion"],
+       layer_summaries=collected_summaries,
+       repomix_packed=high_level_repomix,
+       output_lang=output_lang,
+   )
+   ```
+
+3. Invoke LLM. Expect 9 keys.
+
+4. Compose + write to `Projects/<P>/Architecture/ai-flows/companion-overview.md`:
+   ```python
+   from scripts.architect.sections import compose_companion_overview_note
+   layers_stable = sum(1 for ev in layers.values() if ev["confidence"] == "high")
+   layers_wip = sum(1 for ev in layers.values() if ev["confidence"] == "medium")
+   layers_missing = sum(1 for ev in layers.values() if ev["confidence"] == "speculation" or not ev["present"])
+   note = compose_companion_overview_note(
+       ..., layers_stable=layers_stable, layers_wip=layers_wip,
+       layers_missing=layers_missing,
+   )
+   ```
+
+5. Update lockfile `ai_companion` slot:
+   ```python
+   lockfile.ai_companion = {
+       "archetype": scan_report["ai_companion"]["archetype"],
+       "confidence": scan_report["ai_companion"]["confidence"],
+       "layers": {
+           layer: {"signal-hash": sig_hash, "lang": output_lang,
+                   "last-generated": today_iso, "commit": commit, ...layer-specific...}
+           for layer in ("character-card", "world", "storyline", "companion-overview")
+       },
+   }
+   ```
+
+6. Hub block + overview drill-down (idempotent, sentinel-aware):
+   - Hub `Projects/<P>/<P>.md` `## 架構` block: add line `- AI 陪伴 4 層深判斷 (v4.6): [[Architecture/ai-flows/companion-overview]] | [[Architecture/ai-flows/character-card]] | [[Architecture/ai-flows/world]] | [[Architecture/ai-flows/storyline]]`
+   - `overview.md ## 想深讀的入口`: add line `- **AI 陪伴 4 層深判斷:** [[ai-flows/companion-overview]] (4-layer dep + data flow) | per-layer: [[ai-flows/character-card]] | [[ai-flows/world]] | [[ai-flows/storyline]]`
+
+If `--companion-only`: skip all other Phases (3, 3.5, 3.5.5, 3.7, 3.8, 3.9, 4, 7); only Phase 1 + 3.7.5 + lockfile + hub-update run.
+
 ## Phase 3.8: AI memory synthesis (v4.3)
 
 Skip if `--no-ai-memory` is passed.
@@ -602,9 +726,115 @@ The legacy v3 wikilinks to `future.md` / `roadmap.md` / `jobs.md` /
 `api-surface.md` / `features.md` / `flows.md` MUST be removed from the
 hub block — those vault files no longer exist post-migration.
 
+## Phase 7: Board refresh (auto, v4.5)
+
+Skip if `--no-board-refresh` was passed.
+
+Skip if `Projects/<project_slug>/board.md` doesn't exist (log line:
+"no board.md - skipping board refresh, run /obsidian-project <P> to bootstrap").
+
+1. Assemble signals from already-collected Phase 1 data:
+
+```python
+import re
+import subprocess
+from datetime import datetime
+from pathlib import Path
+
+# last-refresh from board.md frontmatter (may be None on first run)
+board_path = project_dir / "board.md"
+board_text = board_path.read_text(encoding="utf-8")
+m = re.search(r'^last-refresh:\s*"?([^"\n]+)"?\s*$', board_text, re.MULTILINE)
+last_refresh_iso = m.group(1).strip() if m else None
+
+# Walk git log since last refresh (or full if missing).
+cmd = [
+    "git",
+    "log",
+    "--all",
+    "--pretty=format:%H%x09%ad%x09%s%x09%D",
+    "--date=iso-strict",
+]
+if last_refresh_iso:
+    cmd.append(f"--since={last_refresh_iso}")
+proc = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True)
+git_commits = []
+for line in proc.stdout.splitlines():
+    parts = line.split("\t")
+    if len(parts) >= 3:
+        sha, when, subject = parts[0], parts[1], parts[2]
+        refs = parts[3] if len(parts) > 3 else ""
+        git_commits.append(
+            {
+                "title": subject,
+                "kind": "commit",
+                "when": when,
+                "source": f"commit {sha[:8]}",
+                "refs": refs,
+            }
+        )
+
+# Walk spec/plan files mtime-filtered.
+docs = repo_root / "docs" / "superpowers"
+spec_files = []
+plan_files = []
+cutoff = None
+if last_refresh_iso:
+    try:
+        cutoff = datetime.fromisoformat(last_refresh_iso.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        cutoff = None
+for sub, dest in (("specs", spec_files), ("plans", plan_files)):
+    d = docs / sub
+    if d.is_dir():
+        for f in sorted(d.glob("*.md")):
+            if cutoff is None or f.stat().st_mtime >= cutoff:
+                dest.append(f)
+
+signals = {
+    "git_commits": git_commits,
+    "spec_files": spec_files,
+    "plan_files": plan_files,
+}
+```
+
+2. Call helper with failure isolation:
+
+```python
+from scripts.board.refresh import refresh_board
+
+try:
+    refresh_result = refresh_board(
+        project_dir=project_dir,
+        signals=signals,
+        full=False,
+    )
+except Exception as e:
+    refresh_result = None
+    print(f"board refresh failed: {e}; architect itself succeeded")
+```
+
+3. Use `refresh_result` in the next phase (Daily and operation log) to merge
+   into a single combined activity log line:
+
+   - If `refresh_result` is not None and `refresh_result.status == "ok"`:
+     ```
+     **HH:MM** - architect+board | <P> @ commit <sha> - <module-summary> + board (<done> done, <in-flight> in-flight, <backlog> backlog across <N> buckets)
+     ```
+   - If `refresh_result` is None or `status` != `"ok"`:
+     ```
+     **HH:MM** - architect | <P> @ commit <sha> - <module-summary> | board: <skipped/error message>
+     ```
+
+4. The architect's overall exit status is unaffected - architecture/* is the
+   primary deliverable; Phase 7 failure is logged but non-blocking.
+
 ## Daily and operation log
 
-- If `Logs/` exists: append `**HH:MM** - architect | <P> - N modules (M new, K updated, L deprecated)` to `Logs/YYYY-MM-DD.md`.
+- If `Logs/` exists: append a single combined activity line to
+  `Logs/YYYY-MM-DD.md ## Activity`. Format depends on Phase 7 outcome:
+  - When Phase 7 succeeded: `**HH:MM** - architect+board | <P> @ commit <sha> - N modules (M new, K updated, L deprecated) + board (<done> done, <in-flight> in-flight, <backlog> backlog across <N> buckets)`
+  - When Phase 7 was skipped or failed: `**HH:MM** - architect | <P> @ commit <sha> - N modules (M new, K updated, L deprecated) | board: <skipped/error message>`
 - Otherwise append `## [YYYY-MM-DD] architect | <P> - N modules ...` to `log.md`.
 - Append to today's daily note `## Activity` section: `- /obsidian-architect: scanned [[<P>]] @ commit <commit>`.
 

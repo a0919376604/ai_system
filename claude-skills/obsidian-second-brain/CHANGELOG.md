@@ -6,8 +6,109 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed (architect + board merge)
+
+- `/obsidian-architect <repo>` now auto-refreshes `Projects/<P>/board.md`
+  as Phase 7 (after Architecture/* notes + hub block + activity log).
+  Opt-out via `--no-board-refresh`. Activity log line is combined:
+  `architect+board | <P> ... + board (<done> done, ...)`.
+- `/obsidian-board <repo> --refresh` body now imports the shared helper
+  `scripts.board.refresh.refresh_board()` instead of inline logic.
+  External behavior unchanged; cron path unaffected.
+
 ### Added
 
+- `/obsidian-architect` v4.6 — AI companion archetype detection + 4-layer
+  schema. Per spec
+  `docs/superpowers/specs/2026-05-29-obsidian-architect-v4.6-companion-archetype-design.md`.
+
+  New module: `scripts/architect/companion_detect.py` with
+  `detect_companion_archetype()` + `CompanionDetection` + `LayerEvidence`
+  dataclasses. Auto-detect rule: character + storyline both present.
+  Frontmatter `archetype: ai-companion` override.
+
+  4 new section types: `character-card` (9 blocks) / `world` (10) /
+  `storyline` (11) / `companion-overview` (9). 19 new heading mappings
+  in `lang.py` with zh-TW translations.
+
+  Detector loosened (`scripts/architect/ai_flow.py`): custom-pipeline
+  no longer requires `nodes/` dir when LLM provider imports + prompts
+  file present. Additionally, `detect_ai_flows(repo_root,
+  companion_archetype=True)` waives the prompts-file requirement entirely
+  when the companion archetype was detected — covers stacks like
+  ai-eden-service that inline system prompts in provider modules instead
+  of using a top-level `prompts.toml`. `scripts/architect/scan.py` runs
+  companion detection BEFORE `detect_ai_flows` and threads the signal
+  through. Fixes "0 AI flows detected" miss on ai-eden-service-style stacks.
+
+  Phase 3.7.5 in command body. Flags `--no-companion` / `--companion-only`.
+  Lockfile gains `ai_companion: dict` slot. Roadmap candidate detector
+  walks 3 new files; companion-overview Imp citing ≥2 layer wikilinks
+  → priority `high`.
+
+- `scripts/board/refresh.py` — shared `refresh_board(project_dir,
+  signals=None, full=False)` helper. Walks git log + spec/plan files
+  when signals=None (cron path), reuses caller-provided signals dict
+  when called from architect. Returns `RefreshResult` dataclass with
+  counts + buckets + new items + last-refresh timestamps + message.
+- 8 unit tests in `tests/board/test_refresh.py` covering skipped-when-
+  no-board / signals-None walks / classification heuristic / bucket
+  clustering / signals-provided reuse / frontmatter last-refresh update
+  / full mode.
+
+### Changed (CLI family alignment)
+
+- 5 commands now share `<repo>` first-positional grammar via the new
+  `scripts/commands/repo_resolver.py` helper. Per spec
+  `docs/superpowers/specs/2026-05-29-obsidian-cli-family-repo-alignment-design.md`.
+- `/obsidian-architect <repo>` — unchanged user-facing; internal Phase 0
+  now routes through shared resolver.
+- `/obsidian-brainstorm <repo>` — argument-hint renamed from
+  `<project-name>` (now also accepts absolute path via hub
+  local-path match).
+- `/obsidian-roadmap <repo>` — same shape change.
+- `/obsidian-research <repo> <topic> [--academic]` — NEW (renamed from
+  `/research`). `<repo>` accepts `global` sentinel for vault-wide.
+- `/obsidian-research-deep <repo> <topic>` — NEW (renamed from
+  `/research-deep`).
+
+### Deprecated
+
+- `/research` — use `/obsidian-research`. Stub remains for one minor
+  release with deprecation warning; will be removed.
+- `/research-deep` — use `/obsidian-research-deep`. Same treatment.
+
+### Added
+
+- `scripts/commands/repo_resolver.py` — shared `<repo>` argument resolver
+  with `RepoResolution` dataclass (4 states: project / global /
+  ambiguous / unknown). 11 unit tests in
+  `tests/commands/test_repo_resolver.py`.
+- Frontmatter field `param-autocomplete` for slash commands — reserved
+  for future Discord adapter to generate slash-command schemas.
+  Sources: `vault-projects` / `vault-projects-plus-global` / `freetext`.
+
+### Added
+
+- `/obsidian-brainstorm` - new slash command for "stuck on next step"
+  sessions. Per spec
+  `docs/superpowers/specs/2026-05-29-obsidian-brainstorm-design.md`.
+  Claude reads vault (Architecture/* + features + ai-flows + personas +
+  decisions + Research + board + recent Logs + past brainstorms) and
+  opens with 4-6 bold provocations (gap / persona / trend / premortem
+  lens). User reacts (drill / kill / park / rewrite); Claude drills via
+  follow-ups. Output: `Projects/<P>/Brainstorms/YYYY-MM-DD-<slug>.md`
+  with 9 @generated blocks (context, opening-provocations,
+  drilled-explorations, distilled-imps, hypotheses, parked,
+  open-questions, meta-reflection, dependencies). `/obsidian-roadmap`
+  picks up `distilled-imps` + `hypotheses` blocks automatically; new
+  dedup rule prefers Brainstorms/ source over features.md and
+  architecture-inferred sources.
+
+  New helpers: `parse_hypothesis_block` and `compose_brainstorm_note`
+  in `scripts/architect/sections.py`. 8 new heading mappings in
+  `scripts/architect/lang.py`. Roadmap candidate detector extension
+  in `scripts/roadmap/candidates.py:_extract_brainstorm_candidates`.
 - `/obsidian-architect` v4.3 — `ai-flows/memory.md` + `ai-flows/rag.md` cross-flow
   notes. Per spec
   `docs/superpowers/specs/2026-05-28-obsidian-architect-v4.3-ai-memory-rag-design.md`.

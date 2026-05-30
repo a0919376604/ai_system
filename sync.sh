@@ -16,6 +16,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_DIR="$SCRIPT_DIR/claude-skills"
 CLAUDE_DIR="$HOME/.claude/skills"
 
+# Single-file syncs: source -> repo path
+declare -a SYNC_FILES=(
+  "$HOME/.claude/CLAUDE.md::$SCRIPT_DIR/CLAUDE.md"
+)
+
 EXCLUDES=(
   --exclude='node_modules'
   --exclude='.git'
@@ -72,6 +77,23 @@ post_restore_hook() {
 }
 
 # ---------- Commands ----------
+sync_files() {
+  # direction: "backup" (src->dst) or "restore" (dst->src)
+  local direction="$1"; shift
+  local extra_flags=("${@:-}")
+  for entry in "${SYNC_FILES[@]}"; do
+    local src="${entry%%::*}"
+    local dst="${entry##*::}"
+    if [[ "$direction" == "backup" ]]; then
+      [[ -f "$src" ]] || { warn "Skip: $src (not found)"; continue; }
+      rsync -av ${extra_flags[*]:-} "$src" "$dst"
+    else
+      [[ -f "$dst" ]] || { warn "Skip: $dst (not found)"; continue; }
+      rsync -av ${extra_flags[*]:-} "$dst" "$src"
+    fi
+  done
+}
+
 cmd_backup() {
   ensure_dir "$CLAUDE_DIR"
   mkdir -p "$LOCAL_DIR"
@@ -80,6 +102,8 @@ cmd_backup() {
   #     portable across machines — local symlinks point to absolute paths
   #     like ~/.claude/plugins/... that don't exist on other machines).
   rsync -avL --delete "${EXCLUDES[@]}" "$@" "$CLAUDE_DIR/" "$LOCAL_DIR/"
+  info "Backup config files"
+  sync_files backup "$@"
   ok "Backup complete ($(du -sh "$LOCAL_DIR" | awk '{print $1}'))"
 }
 
@@ -87,12 +111,14 @@ cmd_restore() {
   ensure_dir "$LOCAL_DIR"
   mkdir -p "$CLAUDE_DIR"
   info "Restore: $LOCAL_DIR  ->  $CLAUDE_DIR"
-  warn "This will OVERWRITE files in $CLAUDE_DIR (preserves node_modules, bin/, etc.)"
+  warn "This will OVERWRITE files in $CLAUDE_DIR and ~/.claude/CLAUDE.md (preserves node_modules, bin/, etc.)"
   if [[ ! " $* " =~ " --dry-run " ]] && [[ ! " $* " =~ " --yes " ]]; then
     confirm "Continue?" || { log "Aborted."; exit 0; }
   fi
   # Note: no --delete here so we don't nuke node_modules/bin/ on the target
   rsync -av "${EXCLUDES[@]}" "$@" "$LOCAL_DIR/" "$CLAUDE_DIR/"
+  info "Restore config files"
+  sync_files restore "$@"
   ok "Restore complete"
   if [[ ! " $* " =~ " --dry-run " ]]; then
     post_restore_hook

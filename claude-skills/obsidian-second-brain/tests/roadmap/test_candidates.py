@@ -458,3 +458,225 @@ def test_detect_candidates_rag_md_embedding_aligned_evidence_raises_priority(tmp
     assert align.priority == "high", (
         f"expected priority=high due to embedding-aligned evidence; got {align.priority}"
     )
+
+
+def test_detect_candidates_walks_brainstorms_distilled_imps(tmp_path):
+    """detect_candidates picks up `distilled-imps` block from
+    Projects/<P>/Brainstorms/*.md."""
+    from scripts.roadmap.candidates import detect_candidates
+
+    (tmp_path / "Architecture").mkdir()
+    bs = tmp_path / "Brainstorms"
+    bs.mkdir()
+    (bs / "2026-05-29-vision-q3.md").write_text(
+        "---\ntype: project-brainstorm\nstatus: fresh\n---\n\n"
+        "## 提煉的 Imps\n"
+        "<!-- @generated:start distilled-imps -->\n"
+        "### Imp 1: Multi-channel inbox 試做\n"
+        "- **為什麼:** 客戶要求 WhatsApp 開始多\n"
+        "- **證據:** [[Architecture/features#missing-features]]\n"
+        "- **Effort:** L\n"
+        "- **未做的風險:** 客戶轉投競品\n"
+        "- **Confidence:** stated\n"
+        "<!-- @generated:end distilled-imps -->\n",
+        encoding="utf-8",
+    )
+    cands = detect_candidates(tmp_path)
+    multichannel = next((c for c in cands if "Multi-channel" in c.title), None)
+    assert multichannel is not None, (
+        f"brainstorm distilled-imp not picked up; cands={[c.title for c in cands]}"
+    )
+    # Confidence stated → priority normal.
+    assert multichannel.priority == "normal"
+
+
+def test_detect_candidates_brainstorm_hypothesis_confidence_lowers_priority(tmp_path):
+    """When a distilled-imp has Confidence: hypothesis or speculation,
+    priority drops to low."""
+    from scripts.roadmap.candidates import detect_candidates
+
+    (tmp_path / "Architecture").mkdir()
+    bs = tmp_path / "Brainstorms"
+    bs.mkdir()
+    (bs / "2026-05-29-speculative.md").write_text(
+        "---\ntype: project-brainstorm\nstatus: fresh\n---\n\n"
+        "## 提煉的 Imps\n"
+        "<!-- @generated:start distilled-imps -->\n"
+        "### Imp 1: 客戶端 LINE Rich Menu\n"
+        "- **為什麼:** 自助查詢可分流客服 load\n"
+        "- **證據:** [[Architecture/personas#LINE 終端使用者]]\n"
+        "- **Effort:** L\n"
+        "- **未做的風險:** 客服 load 線性成長\n"
+        "- **Confidence:** speculation\n"
+        "<!-- @generated:end distilled-imps -->\n",
+        encoding="utf-8",
+    )
+    cands = detect_candidates(tmp_path)
+    rich = next((c for c in cands if "Rich Menu" in c.title), None)
+    assert rich is not None
+    assert rich.priority == "low", (
+        f"speculation confidence should lower priority to low; got {rich.priority}"
+    )
+
+
+def test_detect_candidates_brainstorm_actioned_status_skipped(tmp_path):
+    """A brainstorm file with frontmatter `status: actioned` is NOT walked."""
+    from scripts.roadmap.candidates import detect_candidates
+
+    (tmp_path / "Architecture").mkdir()
+    bs = tmp_path / "Brainstorms"
+    bs.mkdir()
+    (bs / "2026-04-01-already-done.md").write_text(
+        "---\ntype: project-brainstorm\nstatus: actioned\n---\n\n"
+        "## 提煉的 Imps\n"
+        "<!-- @generated:start distilled-imps -->\n"
+        "### Imp 1: Already graduated\n"
+        "- **為什麼:** done\n"
+        "- **證據:** [[x]]\n"
+        "- **Effort:** S\n"
+        "- **未做的風險:** none\n"
+        "- **Confidence:** stated\n"
+        "<!-- @generated:end distilled-imps -->\n",
+        encoding="utf-8",
+    )
+    # Also add a fresh one to confirm the WALK still works for non-actioned files.
+    (bs / "2026-05-29-fresh.md").write_text(
+        "---\ntype: project-brainstorm\nstatus: fresh\n---\n\n"
+        "## 提煉的 Imps\n"
+        "<!-- @generated:start distilled-imps -->\n"
+        "### Imp 1: Still in flight\n"
+        "- **為什麼:** not done\n"
+        "- **證據:** [[y]]\n"
+        "- **Effort:** M\n"
+        "- **未做的風險:** drift\n"
+        "- **Confidence:** stated\n"
+        "<!-- @generated:end distilled-imps -->\n",
+        encoding="utf-8",
+    )
+
+    cands = detect_candidates(tmp_path)
+    titles = [c.title for c in cands]
+    assert "Imp 1: Still in flight" in titles or "Still in flight" in titles
+    assert not any("Already graduated" in t for t in titles), (
+        f"actioned brainstorm should not be picked up; got {titles}"
+    )
+
+
+def test_detect_candidates_dedup_brainstorm_beats_architecture(tmp_path):
+    """When a brainstorm-imp and an architecture-imp share an Evidence wikilink,
+    the brainstorm-imp wins (user-confirmed > Claude-inferred)."""
+    from scripts.roadmap.candidates import detect_candidates
+
+    arch = tmp_path / "Architecture"
+    arch.mkdir()
+    bs = tmp_path / "Brainstorms"
+    bs.mkdir()
+
+    # Architecture-side Imp citing the same Evidence wikilink.
+    (arch / "overview.md").write_text(
+        "---\ntype: architecture-overview\n---\n\n"
+        "## 跨模組改進機會\n"
+        "<!-- @generated:start cross-cutting-improvements -->\n"
+        "### Imp 1: Streaming reply (architecture inferred)\n"
+        "- **為什麼:** llm.invoke 改 stream\n"
+        "- **證據:** [[Architecture/modules/backend]] | [[Architecture/modules/frontend]]\n"
+        "- **Effort:** M\n"
+        "- **未做的風險:** UX 落後\n"
+        "- **Confidence:** medium\n"
+        "<!-- @generated:end cross-cutting-improvements -->\n",
+        encoding="utf-8",
+    )
+    # Brainstorm-side Imp sharing the same Evidence wikilink — should win.
+    (bs / "2026-05-29-streaming.md").write_text(
+        "---\ntype: project-brainstorm\nstatus: fresh\n---\n\n"
+        "## 提煉的 Imps\n"
+        "<!-- @generated:start distilled-imps -->\n"
+        "### Imp 1: Streaming reply (user-confirmed P0)\n"
+        "- **為什麼:** owner Q3 confirm to ship\n"
+        "- **證據:** [[Architecture/modules/backend]] | [[Architecture/modules/frontend]]\n"
+        "- **Effort:** M\n"
+        "- **未做的風險:** 競品先上\n"
+        "- **Confidence:** stated\n"
+        "<!-- @generated:end distilled-imps -->\n",
+        encoding="utf-8",
+    )
+    cands = detect_candidates(tmp_path)
+    titles = [c.title for c in cands]
+    # Brainstorm-imp must be present.
+    assert any("user-confirmed P0" in t for t in titles), f"got {titles}"
+    # Architecture-imp citing same evidence must be deduped out.
+    assert not any("architecture inferred" in t for t in titles), (
+        f"architecture imp with overlapping evidence should be deduped; got {titles}"
+    )
+
+
+def test_detect_candidates_walks_character_card_md(tmp_path):
+    from scripts.roadmap.candidates import detect_candidates
+    arch = tmp_path / "Architecture"
+    (arch / "ai-flows").mkdir(parents=True)
+    (arch / "ai-flows" / "character-card.md").write_text(
+        "---\ntype: architecture-character-card\n---\n\n"
+        "## 改進機會\n"
+        "<!-- @generated:start improvements -->\n"
+        "### Imp 1: 加入 attachment-style segmentation\n"
+        "- **為什麼:** persona research 顯示分層 retention 提升\n"
+        "- **證據:** [[Research/Web/2026-05-29-companion-chat-vs-story-rpg-retention]]\n"
+        "- **Effort:** M\n"
+        "- **未做的風險:** 留存上不去\n"
+        "- **Confidence:** stated\n"
+        "<!-- @generated:end improvements -->\n",
+        encoding="utf-8",
+    )
+    cands = detect_candidates(tmp_path)
+    titles = [c.title for c in cands]
+    assert any("attachment-style" in t for t in titles), (
+        f"character-card Imp not picked up; got {titles}"
+    )
+
+
+def test_detect_candidates_companion_overview_cross_layer_priority_high(tmp_path):
+    """Imp citing ≥2 layer wikilinks gets priority=high (cross-layer signal)."""
+    from scripts.roadmap.candidates import detect_candidates
+    arch = tmp_path / "Architecture"
+    (arch / "ai-flows").mkdir(parents=True)
+    (arch / "ai-flows" / "companion-overview.md").write_text(
+        "---\ntype: architecture-companion-overview\n---\n\n"
+        "## Companion 改進方向\n"
+        "<!-- @generated:start improvements -->\n"
+        "### Imp 1: Storyline 與 Memory 共用 progression state\n"
+        "- **為什麼:** 跨層 state 同步減少 drift\n"
+        "- **證據:** [[Architecture/ai-flows/storyline]] | [[Architecture/ai-flows/memory]]\n"
+        "- **Effort:** L\n"
+        "- **未做的風險:** state 不一致\n"
+        "- **Confidence:** stated\n"
+        "<!-- @generated:end improvements -->\n",
+        encoding="utf-8",
+    )
+    cands = detect_candidates(tmp_path)
+    imp = next((c for c in cands if "progression state" in c.title), None)
+    assert imp is not None
+    assert imp.priority == "high"
+
+
+def test_detect_candidates_companion_overview_single_layer_priority_normal(tmp_path):
+    """Imp citing only 1 layer → priority=normal."""
+    from scripts.roadmap.candidates import detect_candidates
+    arch = tmp_path / "Architecture"
+    (arch / "ai-flows").mkdir(parents=True)
+    (arch / "ai-flows" / "companion-overview.md").write_text(
+        "---\ntype: architecture-companion-overview\n---\n\n"
+        "## Companion 改進方向\n"
+        "<!-- @generated:start improvements -->\n"
+        "### Imp 1: Single-layer Imp\n"
+        "- **為什麼:** x\n"
+        "- **證據:** [[Architecture/ai-flows/storyline]]\n"
+        "- **Effort:** S\n"
+        "- **未做的風險:** y\n"
+        "- **Confidence:** stated\n"
+        "<!-- @generated:end improvements -->\n",
+        encoding="utf-8",
+    )
+    cands = detect_candidates(tmp_path)
+    imp = next((c for c in cands if "Single-layer" in c.title), None)
+    assert imp is not None
+    assert imp.priority == "normal"

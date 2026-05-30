@@ -38,6 +38,8 @@ class Lockfile:
     # v4.3 — cross-flow AI memory + RAG lenses (additive; no schema bump)
     ai_memory: dict = field(default_factory=dict)
     ai_rag: dict = field(default_factory=dict)
+    # v4.6 — AI companion archetype (Character / World / Storyline / Memory)
+    ai_companion: dict = field(default_factory=dict)
 
     def save(self, path: Path) -> None:
         write_lockfile(self, path)
@@ -78,6 +80,7 @@ def load_lockfile(path: Path) -> Lockfile | None:
         ai_flows=data.get("ai_flows", {}),
         ai_memory=data.get("ai_memory", {}),
         ai_rag=data.get("ai_rag", {}),
+        ai_companion=data.get("ai_companion", {}),
     )
 
 

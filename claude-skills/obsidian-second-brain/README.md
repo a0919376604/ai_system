@@ -265,7 +265,7 @@ Free transcript via youtube-transcript-api. Metadata scraped from the page (no Y
 | `/obsidian-daily` | Creates or updates today's daily note |
 | `/obsidian-log` | Logs a work session, links it everywhere |
 | `/obsidian-task` | Adds task to the right board with priority and due date |
-| `/obsidian-roadmap` | Synthesize Architecture signals + Research into Roadmap.md + Tasks + board cards. 5-phase pipeline with batch review. |
+| `/obsidian-roadmap <repo>` | Synthesize Architecture + Research + Brainstorms signals into Roadmap.md + Tasks + board cards. 5-phase pipeline with batch review. |
 | `/obsidian-person` | Creates or updates a person note |
 | `/obsidian-decide` | Logs decisions to the right project note |
 | `/obsidian-capture` | Zero-friction idea capture |
@@ -274,7 +274,7 @@ Free transcript via youtube-transcript-api. Metadata scraped from the page (no Y
 | `/obsidian-review` | Structured weekly or monthly review |
 | `/obsidian-board` | Kanban board view and updates |
 | `/obsidian-project` | Project note with board and daily links |
-| `/obsidian-architect` | Scan codebase + generate v4 architecture report (8 files) + v4.1 AI flows layer + v4.2 product features lens + v4.3 AI memory + RAG cross-flow notes (lifecycle, embedding alignment) |
+| `/obsidian-architect <repo>` | Scan codebase + generate v4 architecture report + v4.1 AI flows + v4.2 features lens + v4.3 memory/RAG cross-flow + v4.5 board refresh + v4.6 AI companion archetype (4-layer schema for Character Card / World / Storyline projects) |
 | `/obsidian-health` | Vault audit -- contradictions, gaps, stale claims, orphans |
 | `/obsidian-adr` | Decision records -- the vault knows why it's structured this way |
 | `/obsidian-visualize` | Generates a visual canvas map — see the shape of your second brain |
@@ -287,6 +287,7 @@ Free transcript via youtube-transcript-api. Metadata scraped from the page (no Y
 | Command | What it does |
 |---|---|
 | `/obsidian-challenge` | Your vault argues against your idea using your own history |
+| `/obsidian-brainstorm <repo>` | 卡住、不知道下一步該做什麼時,Claude 訪談式 brainstorm,丟 4-6 個大膽方向,使用者反應後深挖,蒸餾成 roadmap 候選 |
 | `/obsidian-emerge` | Surfaces patterns from 30 days of notes you never named |
 | `/obsidian-connect [A] [B]` | Bridges two unrelated domains to spark new ideas |
 | `/obsidian-graduate` | Turns an idea fragment into a full project with tasks |
@@ -303,13 +304,17 @@ Seven commands hit only free, key-less sources (arXiv, Semantic Scholar, OpenAle
 
 | Command | What it does |
 |---|---|
-| `/research [topic] [--academic]` | Multi-source dossier with citations. `--academic` restricts to arXiv + Semantic Scholar + OpenAlex + CrossRef. |
-| `/research-deep [topic]` | Vault baseline -> gap fetch -> delta synthesis -> propagation across people/projects/ideas. |
+| `/obsidian-research <repo> <topic>` | Free-source web + academic research. Use `global` as `<repo>` for vault-wide research. |
+| `/obsidian-research-deep <repo> <topic>` | Vault baseline -> gap fetch -> delta synthesis -> propagation across people/projects/ideas. |
 | `/discourse-pulse [topic]` | Scan HN, Reddit, Lobsters, dev.to for what's trending - themes, voices, hooks, post ideas |
 | `/thread-read [url]` | Read one HN or Reddit thread - verbatim post + comment tree + sentiment + voices |
 | `/youtube [url]` | Transcript + scraped metadata. No YouTube API key required. |
 | `/idea-discovery [seed]` | Surface 3-5 next directions by scanning Ideas/, Projects/ open questions, orphan Research/ notes |
-| `/vault-deep-synthesis [topic]` | Cross-note vault synthesis. No network, no external LLM. Pairs with `/research-deep` for dual-track research. |
+| `/vault-deep-synthesis [topic]` | Cross-note vault synthesis. No network, no external LLM. Pairs with `/obsidian-research-deep` for dual-track research. |
+
+**Deprecated (removed in next minor release):**
+- `/research` -> use `/obsidian-research`
+- `/research-deep` -> use `/obsidian-research-deep`
 
 **Setup:** zero keys required. Optional: drop a `contact_email` into `~/.config/obsidian-second-brain/research.toml` to enter polite-pool HTTP headers (arXiv / CrossRef / OpenAlex give better rate limits). Run `uv sync` once to install Python deps.
 

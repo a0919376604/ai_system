@@ -1,25 +1,52 @@
 ---
 description: Synthesize Architecture signals + Research into a project Roadmap.md plus T-NNN tasks plus board cards
-argument-hint: <project-name>
+argument-hint: <repo>
 category: thinking
 triggers_en: ["roadmap", "synth roadmap", "plan backlog", "generate backlog", "what to build next"]
+param-autocomplete:
+  - name: repo
+    source: vault-projects
 ---
 
 Use the obsidian-second-brain skill. Execute `/obsidian-roadmap $ARGUMENTS`:
 
-The argument is `<project-name>` (the folder name under `Projects/`). Optional flags:
+The first argument is `<repo>` (project name or absolute path bound by hub `local-path`). Optional flags:
 `--dry-run` (Phase 1+2a only, write to /tmp), `--force` (treat all themes as new),
 `--only-themes=<N>` (cap synthesis output, default 12), `--skip-research` (Phase 2 skipped,
 signals only), `--lang=<en|zh-TW>` (override vault `_CLAUDE.md output-lang`),
 `--scope-research-days=<N>` (vault-wide Research window, default 30).
 
-If `<project-name>` is omitted and `pwd` is inside `Projects/<P>/`, default to `<P>`.
-Otherwise ASK the user which project.
-
-## Pre-flight
+## Pre-flight + resolve <repo>
 
 - Vault root has `_CLAUDE.md`? If no, abort with "Run /obsidian-init first."
-- `Projects/<P>/Architecture/` exists with at least `future.md`? If no, abort with
+- Parse the first whitespace-delimited token from `$ARGUMENTS` as the `<repo>` argument. Anything after is treated as flags.
+- Resolve via shared helper:
+
+```python
+import shlex
+tokens = shlex.split(args, posix=True)
+if not tokens:
+    abort("missing <repo> argument. Usage: /obsidian-roadmap <repo> [--dry-run] [--force] [--only-themes=N] ...")
+repo_token = tokens[0]
+remaining_flags = tokens[1:]
+
+from scripts.commands.repo_resolver import resolve_repo_arg
+resolution = resolve_repo_arg(
+    repo_token,
+    vault_root=Path("~/Documents/SecondBrain").expanduser(),
+    allow_global=False,
+)
+
+if resolution.state == "project":
+    project_dir = resolution.project_dir
+    project_slug = resolution.project_slug
+elif resolution.state == "ambiguous":
+    ask_user_to_pick(resolution.candidates)
+elif resolution.state == "unknown" or resolution.state == "global":
+    abort(resolution.message)
+```
+
+- `Projects/<project_slug>/Architecture/` exists with at least `future.md`? If no, abort with
   "Run /obsidian-architect <repo> first."
 - Resolve `output_lang`:
 

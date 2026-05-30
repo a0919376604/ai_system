@@ -146,6 +146,63 @@ HEADING_MAP: dict[str, dict[str, str]] = {
     "## Ingest pipeline": {"en": "## Ingest pipeline", "zh-TW": "## Ingest 管線"},
     "## Vector store config": {"en": "## Vector store config", "zh-TW": "## Vector store 設定"},
     "## Retrieve strategy": {"en": "## Retrieve strategy", "zh-TW": "## Retrieve 策略"},
+    # v4.4 brainstorm (project interview output)
+    "## Session context": {"en": "## Session context", "zh-TW": "## 對話脈絡"},
+    "## Opening provocations": {
+        "en": "## Opening provocations",
+        "zh-TW": "## 開場 provocations",
+    },
+    "## Drilled explorations": {
+        "en": "## Drilled explorations",
+        "zh-TW": "## 深挖紀錄",
+    },
+    "## Distilled improvements": {
+        "en": "## Distilled improvements",
+        "zh-TW": "## 提煉的 Imps",
+    },
+    "## Hypotheses to validate": {
+        "en": "## Hypotheses to validate",
+        "zh-TW": "## 待驗證假設",
+    },
+    "## Parked": {"en": "## Parked", "zh-TW": "## 暫不討論"},
+    "## Open questions": {"en": "## Open questions", "zh-TW": "## 仍不清楚"},
+    "## Meta reflection": {"en": "## Meta reflection", "zh-TW": "## 自我覆盤"},
+    # v4.6 companion archetype (Character Card / World / Storyline / cross-cutting)
+    "## Card schema": {"en": "## Card schema", "zh-TW": "## Card schema"},
+    "## Definitions inventory": {
+        "en": "## Definitions inventory", "zh-TW": "## 角色定義清單",
+    },
+    "## Prompt template binding": {
+        "en": "## Prompt template binding", "zh-TW": "## Prompt template 綁定",
+    },
+    "## Versioning & overrides": {
+        "en": "## Versioning & overrides", "zh-TW": "## 版本與覆寫",
+    },
+    "## World schema": {"en": "## World schema", "zh-TW": "## World schema"},
+    "## Lore inventory": {"en": "## Lore inventory", "zh-TW": "## Lore 清單"},
+    "## Mutable world state": {
+        "en": "## Mutable world state", "zh-TW": "## 動態 world state",
+    },
+    "## Loading strategy": {"en": "## Loading strategy", "zh-TW": "## 載入策略"},
+    "## Mutation rules": {"en": "## Mutation rules", "zh-TW": "## 變動規則"},
+    "## Storyline DSL": {"en": "## Storyline DSL", "zh-TW": "## Storyline DSL"},
+    "## State machine": {"en": "## State machine", "zh-TW": "## 狀態機"},
+    "## Progression rules": {"en": "## Progression rules", "zh-TW": "## 推進規則"},
+    "## Branching logic": {"en": "## Branching logic", "zh-TW": "## 分支邏輯"},
+    "## Persistence": {"en": "## Persistence", "zh-TW": "## 持久化"},
+    "## Authoring workflow": {
+        "en": "## Authoring workflow", "zh-TW": "## 創作流程",
+    },
+    "## Four-layer dependency diagram": {
+        "en": "## Four-layer dependency diagram", "zh-TW": "## 4 層依賴圖",
+    },
+    "## Per-turn data flow": {
+        "en": "## Per-turn data flow", "zh-TW": "## 每輪資料流",
+    },
+    "## Bind points": {"en": "## Bind points", "zh-TW": "## 層間綁定"},
+    "## Layer maturity table": {
+        "en": "## Layer maturity table", "zh-TW": "## 各層成熟度",
+    },
 }
 
 

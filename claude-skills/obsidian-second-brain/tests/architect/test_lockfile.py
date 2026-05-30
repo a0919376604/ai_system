@@ -349,3 +349,31 @@ def test_lockfile_ai_rag_slot_round_trip(tmp_path):
     loaded = Lockfile.load(p)
     assert loaded.ai_rag["embedding_aligned"] is False
     assert loaded.ai_rag["vector_store"] == "weaviate"
+
+
+def test_lockfile_ai_companion_slot_round_trip(tmp_path):
+    """sections.ai_companion round-trips through Lockfile.save → load (v4.6)."""
+    from scripts.architect.lockfile import Lockfile
+
+    lock = Lockfile(version=4, scanner_version="0.2.0", frame="report-v4")
+    lock.ai_companion = {
+        "archetype": "ai-companion",
+        "confidence": "high",
+        "layers": {
+            "character-card": {
+                "signal-hash": "sha256:abc", "lang": "zh-TW",
+                "last-generated": "2026-05-29", "commit": "deadbeef",
+                "card-count": 6, "schema-version": "v1",
+            },
+            "companion-overview": {
+                "signal-hash": "sha256:def", "layers-stable": 2,
+                "layers-wip": 1, "layers-missing": 1,
+            },
+        },
+    }
+    p = tmp_path / "_manifest.lock.json"
+    lock.save(p)
+    loaded = Lockfile.load(p)
+    assert loaded.ai_companion["archetype"] == "ai-companion"
+    assert loaded.ai_companion["layers"]["character-card"]["card-count"] == 6
+    assert loaded.ai_companion["layers"]["companion-overview"]["layers-stable"] == 2
