@@ -10,7 +10,6 @@ from devsync.config import (
 def _global_cfg() -> GlobalConfig:
     return GlobalConfig(
         defaults=Defaults(
-            code_root="/Users/leric/Desktop/code",
             remote_base="/home/leric/code",
             ignore=["*.pyc"],
         ),

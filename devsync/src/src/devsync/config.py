@@ -40,7 +40,6 @@ class _Strict(BaseModel):
 
 
 class Defaults(_Strict):
-    code_root: str
     remote_base: str
     sync_mode: Literal["one-way-replica", "one-way-safe", "two-way-resolved", "two-way-safe"] = (
         "one-way-replica"

@@ -6,10 +6,7 @@ from devsync.errors import DevsyncError
 
 
 def test_defaults_has_sensible_values():
-    d = Defaults(
-        code_root="/Users/leric/Desktop/code",
-        remote_base="/home/leric/code",
-    )
+    d = Defaults(remote_base="/home/leric/code")
     assert d.sync_mode == "one-way-replica"
     assert d.ignore_vcs is True
     assert ".DS_Store" in d.ignore
@@ -24,10 +21,7 @@ def test_server_config_minimal():
 
 def test_global_config_loads_servers_dict():
     cfg = GlobalConfig(
-        defaults=Defaults(
-            code_root="/tmp/code",
-            remote_base="/srv/code",
-        ),
+        defaults=Defaults(remote_base="/srv/code"),
         servers={"dl01": ServerConfig(host="dl01"), "dl02": ServerConfig(host="dl02")},
     )
     assert set(cfg.servers.keys()) == {"dl01", "dl02"}
@@ -43,7 +37,7 @@ def test_repo_config_all_optional():
 def test_global_config_rejects_unknown_field():
     with pytest.raises(ValidationError):
         GlobalConfig(
-            defaults=Defaults(code_root="/x", remote_base="/y"),
+            defaults=Defaults(remote_base="/y"),
             servers={},
             unknown_field="boom",
         )
@@ -54,3 +48,9 @@ def test_load_global_config_wraps_toml_parse_error(tmp_path):
     bad.write_text("this = is = invalid toml\n")
     with pytest.raises(DevsyncError, match="Invalid TOML"):
         load_global_config(path=bad)
+
+
+def test_defaults_rejects_code_root():
+    """v0.2 dropped code_root; old configs must be flagged."""
+    with pytest.raises(ValidationError):
+        Defaults(code_root="/legacy/path", remote_base="/home/leric/code")
