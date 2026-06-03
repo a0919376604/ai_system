@@ -1,6 +1,6 @@
 [project]
 name = "devsync"
-version = "0.1.0"
+version = "0.2.0"
 description = "Sync-and-SSH wrapper around Mutagen for internal dev servers"
 readme = "README.md"
 requires-python = ">=3.11"
