@@ -12,7 +12,6 @@ import typer
 from devsync import __version__
 from devsync.config import load_global_config, load_repo_config, resolve_effective_config
 from devsync.errors import (
-    AmbiguousRepo,
     DevsyncError,
     NoSuchRepo,
     ServerUnreachable,
@@ -138,7 +137,7 @@ def start(
 
     try:
         repo_spec = resolve_repo(repo, code_root=Path(cfg.defaults.code_root))
-    except (NoSuchRepo, AmbiguousRepo) as e:
+    except NoSuchRepo as e:
         typer.echo(f"✗ {e}", err=True)
         raise typer.Exit(2) from e
 

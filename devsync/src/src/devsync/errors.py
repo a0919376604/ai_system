@@ -16,16 +16,6 @@ class NoSuchRepo(DevsyncError):
         self.candidates = candidates
 
 
-class AmbiguousRepo(DevsyncError):
-    def __init__(self, name: str, matches: list[str]) -> None:
-        super().__init__(
-            f"Repo '{name}' is ambiguous. Matches: {', '.join(sorted(matches))}. "
-            f"Be more specific or cd into the repo and omit the repo argument."
-        )
-        self.name = name
-        self.matches = matches
-
-
 class NoSuchServer(DevsyncError):
     def __init__(self, name: str, candidates: list[str]) -> None:
         super().__init__(f"No server matching '{name}'. Available: {', '.join(sorted(candidates))}")

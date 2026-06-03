@@ -1,5 +1,4 @@
 from devsync.errors import (
-    AmbiguousRepo,
     DevsyncError,
     MutagenDaemonError,
     NoSuchRepo,
@@ -11,7 +10,6 @@ from devsync.errors import (
 
 def test_all_exceptions_inherit_from_devsync_error():
     for cls in [
-        AmbiguousRepo,
         NoSuchRepo,
         NoSuchServer,
         ServerUnreachable,
@@ -19,13 +17,6 @@ def test_all_exceptions_inherit_from_devsync_error():
         SessionAlreadyExists,
     ]:
         assert issubclass(cls, DevsyncError)
-
-
-def test_ambiguous_repo_lists_candidates():
-    err = AmbiguousRepo("ai-eden", ["ai-eden-service", "ai-eden-service-wt-1"])
-    assert "ai-eden" in str(err)
-    assert "ai-eden-service" in str(err)
-    assert "ai-eden-service-wt-1" in str(err)
 
 
 def test_no_such_repo_lists_candidates():
