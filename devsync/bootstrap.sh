@@ -175,8 +175,53 @@ step_3_devsync_cli() {
     warn "Skipped."
   fi
 }
-step_4_ssh_key()     { info "Step 4/7: SSH key"; ok "(stub)"; }
-step_5_ssh_config()  { info "Step 5/7: ssh config"; ok "(stub)"; }
+step_4_ssh_key() {
+  info "Step 4/7: SSH key"
+  if [[ -f "$HOME/.ssh/id_ed25519" && -f "$HOME/.ssh/id_ed25519.pub" ]]; then
+    ok "~/.ssh/id_ed25519 already exists"
+    return 0
+  fi
+  warn "no ed25519 key at ~/.ssh/id_ed25519"
+  if confirm "Generate one now (no passphrase, comment=\"$(whoami)@$(hostname -s) devsync\")?"; then
+    mkdir -p "$HOME/.ssh"
+    chmod 700 "$HOME/.ssh"
+    if ssh-keygen -t ed25519 -f "$HOME/.ssh/id_ed25519" -N "" -C "$(whoami)@$(hostname -s) devsync"; then
+      ok "ed25519 key generated"
+    else
+      err "ssh-keygen failed"
+      continue_on_failure
+    fi
+  else
+    warn "Skipped — Step 6 (key trust) will fail."
+  fi
+}
+step_5_ssh_config() {
+  info "Step 5/7: ssh config"
+  if [[ ! -f "$SNIPPET" ]]; then
+    err "ssh-config-snippet.txt missing at $SNIPPET — Cannot proceed."
+    continue_on_failure
+    return 0
+  fi
+  # Ensure config file exists so grep+append work uniformly.
+  if [[ ! -f "$HOME/.ssh/config" ]]; then
+    mkdir -p "$HOME/.ssh"
+    chmod 700 "$HOME/.ssh"
+    touch "$HOME/.ssh/config"
+    chmod 600 "$HOME/.ssh/config"
+  fi
+  if grep -q "^Host dl01$" "$HOME/.ssh/config" 2>/dev/null; then
+    ok "~/.ssh/config already has dl01..dl04 hosts"
+    return 0
+  fi
+  warn "~/.ssh/config has no dl01 host block"
+  if confirm "Append the dl01..dl04 host blocks from $SNIPPET?"; then
+    cat "$SNIPPET" >> "$HOME/.ssh/config"
+    chmod 600 "$HOME/.ssh/config"
+    ok "appended; chmod 600"
+  else
+    warn "Skipped — ssh dl0N hostnames won't resolve without /etc/hosts or config."
+  fi
+}
 step_6_key_trust()   { info "Step 6/7: key trust"; ok "(stub)"; }
 step_7_verify()      { info "Step 7/7: verify"; ok "(stub)"; }
 
