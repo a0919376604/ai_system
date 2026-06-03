@@ -1,6 +1,8 @@
+from pathlib import Path
+
 import pytest
 
-from devsync.errors import AmbiguousRepo, NoSuchRepo
+from devsync.errors import NoSuchRepo
 from devsync.repo import RepoSpec, resolve_repo
 
 
@@ -9,51 +11,59 @@ def test_repospec_from_simple_path(tmp_path):
     d.mkdir()
     spec = RepoSpec.from_path(d)
     assert spec.name == "my-project"
-    assert spec.local_path == d
+    assert spec.local_path == d.resolve()
     assert spec.is_worktree is False
 
 
 def test_repospec_from_worktree_path(tmp_path):
-    # Worktree convention: <repo>-wt-N
     d = tmp_path / "my-project-wt-3"
     d.mkdir()
     spec = RepoSpec.from_path(d)
-    assert spec.name == "my-project-wt-3"  # name as-is
+    assert spec.name == "my-project-wt-3"
     assert spec.is_worktree is True
     assert spec.parent_repo == "my-project"
 
 
-def test_resolve_repo_exact_match(tmp_path):
-    (tmp_path / "alpha").mkdir()
-    (tmp_path / "beta").mkdir()
-    spec = resolve_repo("alpha", code_root=tmp_path)
-    assert spec.name == "alpha"
-
-
-def test_resolve_repo_from_cwd_when_arg_none(tmp_path):
+def test_resolve_repo_none_uses_cwd(tmp_path):
     repo = tmp_path / "my-project"
     repo.mkdir()
-    spec = resolve_repo(None, code_root=tmp_path, cwd=repo)
+    spec = resolve_repo(None, cwd=repo)
     assert spec.name == "my-project"
+    assert spec.local_path == repo.resolve()
 
 
-def test_resolve_repo_fuzzy_single_match(tmp_path):
-    (tmp_path / "ai-eden-service").mkdir()
-    (tmp_path / "langlive-line-oa").mkdir()
-    spec = resolve_repo("eden", code_root=tmp_path)
-    assert spec.name == "ai-eden-service"
+def test_resolve_repo_absolute_path(tmp_path):
+    repo = tmp_path / "alpha"
+    repo.mkdir()
+    spec = resolve_repo(str(repo))
+    assert spec.name == "alpha"
+    assert spec.local_path == repo.resolve()
 
 
-def test_resolve_repo_ambiguous_raises(tmp_path):
-    (tmp_path / "ai-eden-service").mkdir()
-    (tmp_path / "ai-eden-service-wt-1").mkdir()
-    with pytest.raises(AmbiguousRepo) as exc:
-        resolve_repo("ai-eden", code_root=tmp_path)
-    assert "ai-eden-service" in exc.value.matches
-    assert "ai-eden-service-wt-1" in exc.value.matches
+def test_resolve_repo_relative_path(tmp_path, monkeypatch):
+    (tmp_path / "beta").mkdir()
+    monkeypatch.chdir(tmp_path)
+    spec = resolve_repo("./beta")
+    assert spec.name == "beta"
+    assert spec.local_path == (tmp_path / "beta").resolve()
 
 
-def test_resolve_repo_no_match_raises(tmp_path):
-    (tmp_path / "alpha").mkdir()
+def test_resolve_repo_tilde_expansion(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / "gamma").mkdir()
+    spec = resolve_repo("~/gamma")
+    assert spec.name == "gamma"
+    assert spec.local_path == (tmp_path / "gamma").resolve()
+
+
+def test_resolve_repo_nonexistent_raises(tmp_path):
+    with pytest.raises(NoSuchRepo) as exc:
+        resolve_repo(str(tmp_path / "does-not-exist"))
+    assert "does-not-exist" in str(exc.value)
+
+
+def test_resolve_repo_file_not_dir_raises(tmp_path):
+    f = tmp_path / "afile.txt"
+    f.write_text("not a dir")
     with pytest.raises(NoSuchRepo):
-        resolve_repo("zzz", code_root=tmp_path)
+        resolve_repo(str(f))
