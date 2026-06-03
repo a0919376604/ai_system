@@ -1,5 +1,4 @@
 [defaults]
-code_root = "/Users/leric/Desktop/code"
 remote_base = "/nas02/home/leric/code"
 sync_mode = "one-way-replica"
 ignore_vcs = true

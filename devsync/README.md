@@ -48,6 +48,22 @@ all ✓ with no prompts.
 
 Every step first checks state and skips if already done. Re-running is safe.
 
+## Migration to v0.2 (from v0.1)
+
+v0.2 dropped `[defaults].code_root` from `config.toml` and changed `devsync start`
+argument order. On any machine that ran v0.1, run once:
+
+```bash
+sed -i '' '/^code_root = /d' ~/.config/devsync/config.toml
+```
+
+CLI changes:
+
+- v0.1: `devsync start <repo-name> <server>` (looked up under `code_root`)
+- v0.2: `devsync start [<server>] [<path>]`
+  - `<path>` may be absolute, relative, or `~`-prefixed; omitted → cwd
+  - `<server>` may be omitted if `.devsync.toml::default_server` is set
+
 ## What's not in this repo (security)
 
 - `~/.ssh/id_ed25519` — the private key. Never bake into a backup; generate fresh per machine.
