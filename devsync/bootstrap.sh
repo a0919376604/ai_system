@@ -222,7 +222,65 @@ step_5_ssh_config() {
     warn "Skipped — ssh dl0N hostnames won't resolve without /etc/hosts or config."
   fi
 }
-step_6_key_trust()   { info "Step 6/7: key trust"; ok "(stub)"; }
+step_6_key_trust() {
+  info "Step 6/7: server key trust"
+  if [[ ! -f "$HOME/.ssh/id_ed25519" ]]; then
+    err "no ed25519 key found — Step 4 should have generated one. Skipping."
+    continue_on_failure
+    return 0
+  fi
+
+  local reachable=()
+  local need_copy=()
+  local unreachable=()
+
+  for h in "${SERVERS[@]}"; do
+    # Probe: BatchMode rejects password prompts. ConnectTimeout caps the wait.
+    if ssh -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new \
+           "$h" true 2>/dev/null; then
+      reachable+=("$h")
+      continue
+    fi
+    # Distinguish "host unreachable" (no TCP) vs "key not trusted" (auth required).
+    # ssh -v output is verbose; use a simple TCP check first.
+    if ssh -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=accept-new \
+           -o PreferredAuthentications=none "$h" true 2>&1 | \
+           grep -q "Permission denied"; then
+      need_copy+=("$h")
+    else
+      unreachable+=("$h")
+    fi
+  done
+
+  if [[ ${#reachable[@]} -gt 0 ]]; then
+    for h in "${reachable[@]}"; do ok "$h: key already trusted"; done
+  fi
+
+  if [[ ${#unreachable[@]} -gt 0 ]]; then
+    for h in "${unreachable[@]}"; do
+      warn "$h: unreachable (VPN down? wrong network?). Skipping."
+    done
+  fi
+
+  if [[ ${#need_copy[@]} -gt 0 ]]; then
+    log ""
+    info "Need to push key to: ${need_copy[*]}"
+    log "  Each prompt asks for that server's password (one-time per machine)."
+    log ""
+    for h in "${need_copy[@]}"; do
+      if confirm "Run 'ssh-copy-id $h'?"; then
+        if ssh-copy-id "$h"; then
+          ok "$h: key pushed"
+        else
+          err "$h: ssh-copy-id failed"
+          continue_on_failure
+        fi
+      else
+        warn "$h: skipped"
+      fi
+    done
+  fi
+}
 step_7_verify()      { info "Step 7/7: verify"; ok "(stub)"; }
 
 main() {
