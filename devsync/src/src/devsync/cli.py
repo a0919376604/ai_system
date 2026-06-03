@@ -124,8 +124,14 @@ def main(
 
 @app.command()
 def start(
-    repo: str = typer.Argument(None, help="Repo name (fuzzy match) or omit to use cwd."),
-    server: str = typer.Argument(..., help="Target server name (e.g., dl02)."),
+    server: str = typer.Argument(
+        None,
+        help="Target server (e.g., dl02). Optional if .devsync.toml has default_server.",
+    ),
+    path: str = typer.Argument(
+        None,
+        help="Path to the repo (abs, rel, or ~). Omit to use cwd.",
+    ),
     no_ssh: bool = typer.Option(False, "--no-ssh", help="Don't auto-SSH after starting sync."),
 ) -> None:
     """Create a sync session and (optionally) SSH into the server."""
@@ -136,31 +142,39 @@ def start(
         raise typer.Exit(2) from e
 
     try:
-        repo_spec = resolve_repo(repo, code_root=Path(cfg.defaults.code_root))
+        repo_spec = resolve_repo(path)
     except NoSuchRepo as e:
         typer.echo(f"✗ {e}", err=True)
         raise typer.Exit(2) from e
 
-    if server not in cfg.servers:
+    repo_cfg = load_repo_config(repo_spec.local_path)
+
+    resolved_server = server or repo_cfg.default_server
+    if not resolved_server:
         typer.echo(
-            f"✗ Unknown server '{server}'. Known: {', '.join(sorted(cfg.servers))}",
+            "✗ No server specified and no default_server in .devsync.toml",
             err=True,
         )
         raise typer.Exit(2)
 
-    repo_cfg = load_repo_config(repo_spec.local_path)
+    if resolved_server not in cfg.servers:
+        typer.echo(
+            f"✗ Unknown server '{resolved_server}'. Known: {', '.join(sorted(cfg.servers))}",
+            err=True,
+        )
+        raise typer.Exit(2)
+
     eff = resolve_effective_config(
         global_cfg=cfg,
         repo_cfg=repo_cfg,
         repo_name=repo_spec.name,
-        server_name=server,
+        server_name=resolved_server,
     )
 
     ensure_daemon_running()
 
-    # Pre-flight: server reachable + remote dir exists
     try:
-        probe_ssh(server, eff.host)
+        probe_ssh(resolved_server, eff.host)
     except ServerUnreachable as e:
         typer.echo(f"✗ {e}", err=True)
         typer.echo("  ▸ Check VPN: /vpn status", err=True)
@@ -172,10 +186,10 @@ def start(
 
     _maybe_warn_large(repo_spec.local_path, eff.ignore)
 
-    spec = SessionSpec(repo=repo_spec, server_name=server)
+    spec = SessionSpec(repo=repo_spec, server_name=resolved_server)
     name = spec.name
 
-    existing = list_managed_sessions(f"repo={repo_spec.name},server={server}")
+    existing = list_managed_sessions(f"repo={repo_spec.name},server={resolved_server}")
     if existing:
         existing_name = existing[0].get("name", name)
         typer.echo(f"ⓘ Session {existing_name} already exists.")
@@ -206,16 +220,11 @@ def start(
         typer.echo(f"  (use `devsync stop {repo_spec.name}` when done)")
         return
 
+    import os
     typer.echo(f"  SSHing to {eff.host}:{eff.remote_path} ...")
-    # `exec` replaces this process; mutagen daemon keeps the sync alive.
     os.execvp(
         "ssh",
-        [
-            "ssh",
-            eff.host,
-            "-t",
-            f"cd {eff.remote_path} && exec $SHELL -l",
-        ],
+        ["ssh", eff.host, "-t", f"cd {eff.remote_path} && exec $SHELL -l"],
     )
 
 
