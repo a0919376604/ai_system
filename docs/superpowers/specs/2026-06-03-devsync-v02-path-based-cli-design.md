@@ -62,13 +62,16 @@ session，不碰 filesystem。
 - **REQ-010** — `pyproject.toml` 從 `dependencies` 移除 `rapidfuzz`。
 - **REQ-011** — 升級到 `version = "0.2.0"`（`pyproject.toml` + `src/devsync/__init__.py`）。
 - **REQ-012** — `~/.config/devsync/config.toml` 與 `ai_system/devsync/config.toml` 都移除 `code_root` 那行。
+- **REQ-013** — `claudecode-discord` 的 `/devsync start` 改用 v0.2 CLI argv 順序：`["start", server, path, "--no-ssh"]`（path 從 Discord interaction 的 `<repo>` 輸入推算 `~/Desktop/code/<repo>`）。
+- **REQ-014** — `claudecode-discord` 的 `/devsync start <repo>` 欄位加上 autocomplete，候選來源為 `~/Desktop/code/` 底下的子目錄（過濾 dotfiles）。Autocomplete 應 cap 25 個（Discord API 上限）。
+- **REQ-015** — `claudecode-discord` 既有的 `/devsync stop|status|flush|ssh <repo>` 已有 autocomplete（從 active sessions），不變。
 
 ### Non-Functional
 
 - **REQ-020** — Stop / status / flush / ssh / ls / doctor 行為與輸出 100% 不變。
 - **REQ-021** — 與 v0.1 的 CLI 形狀 BREAKING change；無向後相容 shim。
-- **REQ-022** — 不修改 `claudecode-discord` 的 `/devsync` slash command；該整合等 v0.2 land 後另開 issue 修。
-- **REQ-023** — 既有 tests 全套保持綠（既有的、非 code_root 相關的）。
+- **REQ-022** — `claudecode-discord` 的 `vitest` 全套保持綠。新加的 autocomplete 與 argv 調整都附對應測試。
+- **REQ-023** — devsync 既有 tests 全套保持綠（既有的、非 code_root 相關的）。
 
 ---
 
@@ -79,6 +82,8 @@ session，不碰 filesystem。
 - **CON-003** — `.devsync.toml::default_server` 必須是 `cfg.servers` 中存在的 key，否則 fallback 後仍會 fail unknown-server 檢查。
 - **CON-004** — `RepoSpec.from_path` 不變，仍是 worktree-aware（`<name>-wt-N`）。
 - **CON-005** — Session naming `<repo>--<server>` 不變，repo 部分仍是 `RepoSpec.name`（path basename）。
+- **CON-006** — claudecode-discord bot 跑在 devsync CLI 同一台 Mac（`uv tool install` 的 `~/.local/bin/devsync` 必須在 bot 的 `$PATH` 上）。
+- **CON-007** — claudecode-discord 的 `/devsync start <repo>` 仍維持「`<repo>` 是名稱」的 Discord UX；bot 內部轉成 `~/Desktop/code/<repo>` 後傳給 v0.2 CLI。Discord 端不暴露完整 path。
 
 ---
 
@@ -430,30 +435,44 @@ def start(
 - **When** `grep rapidfuzz pyproject.toml` 與 `grep -r "import rapidfuzz" src/`
 - **Then** 0 hit each.
 
+### AC-013 — Discord `/devsync start` works against v0.2 CLI
+
+- **Given** v0.2 CLI 已安裝、4 台 server reachable、Discord channel registered to claudecode-discord bot
+- **When** Discord 使用者跑 `/devsync start ai_system dl02`
+- **Then** bot 內部呼叫 `devsync start dl02 ~/Desktop/code/ai_system --no-ssh`，session `ai_system--dl02` 建立，Discord 回 success code block。
+
+### AC-014 — Discord `/devsync start <repo>` 有 autocomplete
+
+- **Given** `~/Desktop/code/` 底下有 `ai_system`、`langlive-line-oa` 等子目錄
+- **When** Discord 使用者在 `/devsync start ` 輸入框打 `ai` 觸發 autocomplete
+- **Then** Discord 顯示 `ai_system` (+ 其他 `ai*` 開頭的目錄名) 作為候選，cap 25 筆。Dotfiles 與 file（非 directory）被過濾掉。
+
 ---
 
 ## Implementation Roadmap
 
-5 個 milestone。
+6 個 milestone。M1-M5 在 `ai_system/devsync/src/`，M6 在 `claudecode-discord/`。
 
-| # | Milestone | 驗收 |
-|---|---|---|
-| M1 | `repo.py` 重寫 + `tests/test_repo.py` 改寫 | AC-002~005, pytest `test_repo.py` 全綠 |
-| M2 | `config.py` 拔 `code_root` + `errors.py` 拔 `AmbiguousRepo` + `pyproject.toml` 拔 `rapidfuzz` + 改 `test_config_*.py` | AC-009, AC-012, pytest `test_config_*.py` 全綠 |
-| M3 | `cli.py::start` 改寫 + `test_cli_start.py` 改寫 + bump `__version__` | AC-001, 006, 007, 008, AC-011, pytest `test_cli_start.py` 全綠 |
-| M4 | 改 `ai_system/devsync/config.toml` + `~/.config/devsync/config.toml` 拔 `code_root` 行 + README migration note | AC-009 (real-world) |
-| M5 | `uv tool install -e ... --force` + live smoke + commit + push | Smoke checklist 全綠 |
+| # | Milestone | Repo | 驗收 |
+|---|---|---|---|
+| M1 | `repo.py` 重寫 + `tests/test_repo.py` 改寫 | ai_system | AC-002~005, pytest `test_repo.py` 全綠 |
+| M2 | `config.py` 拔 `code_root` + `errors.py` 拔 `AmbiguousRepo` + `pyproject.toml` 拔 `rapidfuzz` + 改 `test_config_*.py` | ai_system | AC-009, AC-012, pytest `test_config_*.py` 全綠 |
+| M3 | `cli.py::start` 改寫 + `test_cli_start.py` 改寫 + bump `__version__` | ai_system | AC-001, 006, 007, 008, AC-011 |
+| M4 | 改 `ai_system/devsync/config.toml` + `~/.config/devsync/config.toml` 拔 `code_root` 行 + README migration note | ai_system | AC-009 (real-world) |
+| M5 | `uv tool install -e ... --force` + live smoke + commit + push | ai_system | Smoke checklist 全綠 |
+| M6 | claudecode-discord `/devsync start` adapt：argv 順序改成 `[start, server, path, --no-ssh]` + `<repo>` 加 autocomplete from `~/Desktop/code/` + vitest 補測 | claudecode-discord | AC-013, AC-014 |
 
 ---
 
 ## Out of Scope (v0.2)
 
-- ❌ `claudecode-discord` 的 `/devsync` slash command 適配（另開 issue 修）
 - ❌ v0.1 → v0.2 自動 migration tool（手動刪一行夠了）
 - ❌ Path 帶 fuzzy match（不再有 code_root 可以掃）
 - ❌ 多 `code_root` 支援
 - ❌ `server` 進一步的 fuzzy（精準比對足夠）
 - ❌ Re-export `AmbiguousRepo` for backward compat（已知無外部 consumer）
+- ❌ 將 Discord `/devsync start <repo>` 改成 path picker（保持 repo-name UX）
+- ❌ Discord `<repo>` autocomplete 從多個 code roots 來源（只用 `~/Desktop/code/`）
 
 ---
 
@@ -461,7 +480,8 @@ def start(
 
 | Risk | Mitigation |
 |---|---|
-| `claudecode-discord` bot 立刻壞掉 | 另開 issue。Discord `/devsync` 暫時無法用、但 CLI 直接用 OK |
+| Two-repo plan：M1-M5 在 ai_system、M6 在 claudecode-discord、commit history 散落 | Plan 明示 cwd 切換；每個 milestone 各自獨立 commit、各自 verify、各自 push |
+| M6 真正測試需要 Discord 真實互動 | M6 unit tests mock interaction 物件；live smoke 步驟另列 manual checklist |
 | 多台 Mac 的 `~/.config/devsync/config.toml` 還帶 `code_root`，v0.2 一律 reject | M4 提供 `sed` 命令 + README migration note；reject 訊息明示「Remove the `code_root = ...` line」 |
 | 其他人腳本 import `AmbiguousRepo` | Internal-only。grep 確認 0 hit、刪即可 |
 | `~/.local/bin/devsync` 沒重指向 v0.2 | M5 跑 `uv tool install -e ... --force` 強制重指向 |
