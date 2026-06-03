@@ -123,7 +123,58 @@ step_2_uv() {
     warn "Skipped — devsync CLI install will fail without uv."
   fi
 }
-step_3_devsync_cli() { info "Step 3/7: devsync CLI"; ok "(stub)"; }
+step_3_devsync_cli() {
+  info "Step 3/7: devsync CLI"
+
+  # Resolve the expected source dir to an absolute, symlink-free path.
+  local expected
+  expected=$(cd "$SRC_DIR" && pwd -P 2>/dev/null) || expected="$SRC_DIR"
+
+  local installed_at=""
+  if command -v uv >/dev/null 2>&1; then
+    # `uv tool list` shows "Edit: <path>" for editable installs. Find devsync's.
+    installed_at=$(uv tool list 2>/dev/null | awk '
+      /^devsync / { in_devsync = 1; next }
+      in_devsync && /^Edit:/ { print $2; exit }
+      /^[A-Za-z]/ && in_devsync { in_devsync = 0 }
+    ')
+    if [[ -z "$installed_at" && -f "$HOME/.local/share/uv/tools/devsync/uv-receipt.toml" ]]; then
+      installed_at=$(awk -F'editable = "' '/editable =/ { split($2, a, "\""); print a[1]; exit }' "$HOME/.local/share/uv/tools/devsync/uv-receipt.toml")
+    fi
+  fi
+
+  if [[ -n "$installed_at" ]]; then
+    # Compare resolved paths (handles symlink differences)
+    local installed_real
+    installed_real=$(cd "$installed_at" && pwd -P 2>/dev/null) || installed_real="$installed_at"
+    if [[ "$installed_real" == "$expected" ]]; then
+      ok "devsync CLI installed and points at vendored src: $(devsync --version 2>/dev/null)"
+      return 0
+    else
+      warn "devsync installed but points at: $installed_at"
+      warn "  (we want: $expected)"
+    fi
+  else
+    warn "devsync CLI not installed."
+  fi
+
+  if ! command -v uv >/dev/null 2>&1; then
+    err "uv missing — cannot install devsync. Re-run Step 2 first."
+    continue_on_failure
+    return 0
+  fi
+
+  if confirm "Run 'uv tool install -e $SRC_DIR --force'?"; then
+    if uv tool install -e "$SRC_DIR" --force; then
+      ok "devsync installed: $(devsync --version 2>/dev/null)"
+    else
+      err "uv tool install failed"
+      continue_on_failure
+    fi
+  else
+    warn "Skipped."
+  fi
+}
 step_4_ssh_key()     { info "Step 4/7: SSH key"; ok "(stub)"; }
 step_5_ssh_config()  { info "Step 5/7: ssh config"; ok "(stub)"; }
 step_6_key_trust()   { info "Step 6/7: key trust"; ok "(stub)"; }
