@@ -281,7 +281,21 @@ step_6_key_trust() {
     done
   fi
 }
-step_7_verify()      { info "Step 7/7: verify"; ok "(stub)"; }
+step_7_verify() {
+  info "Step 7/7: verify"
+  if ! command -v devsync >/dev/null 2>&1; then
+    err "devsync not on PATH — earlier steps failed. Skipping verify."
+    return 0
+  fi
+  log ""
+  if devsync doctor; then
+    log ""
+    ok "devsync doctor passed — bootstrap complete!"
+  else
+    warn "devsync doctor returned non-zero (some servers may be unreachable)."
+    log "  Try 'devsync doctor' manually after fixing VPN / SSH issues."
+  fi
+}
 
 main() {
   info "devsync bootstrap"
