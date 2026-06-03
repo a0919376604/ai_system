@@ -71,8 +71,58 @@ continue_on_failure() {
 }
 
 # Step stubs — actions wired in later tasks.
-step_1_mutagen()     { info "Step 1/7: mutagen"; ok "(stub)"; }
-step_2_uv()          { info "Step 2/7: uv"; ok "(stub)"; }
+step_1_mutagen() {
+  info "Step 1/7: mutagen"
+  if command -v mutagen >/dev/null 2>&1; then
+    ok "mutagen present: $(mutagen --version 2>/dev/null | head -1)"
+    # Daemon is benign to start repeatedly; ignore errors (e.g., already running)
+    mutagen daemon start >/dev/null 2>&1 || true
+    return 0
+  fi
+  warn "mutagen not installed."
+  if ! command -v brew >/dev/null 2>&1; then
+    err "Homebrew is required to install mutagen. See https://brew.sh"
+    continue_on_failure
+    return 0
+  fi
+  if confirm "Install mutagen via 'brew install mutagen-io/mutagen/mutagen'?"; then
+    if brew install mutagen-io/mutagen/mutagen; then
+      ok "mutagen installed"
+      if confirm "Register mutagen daemon to auto-start on login?"; then
+        mutagen daemon register >/dev/null 2>&1 && ok "daemon registered" || warn "daemon register returned non-zero (may already be registered)"
+      fi
+      mutagen daemon start >/dev/null 2>&1 || true
+    else
+      err "brew install failed"
+      continue_on_failure
+    fi
+  else
+    warn "Skipped — devsync needs mutagen to work."
+  fi
+}
+step_2_uv() {
+  info "Step 2/7: uv"
+  if command -v uv >/dev/null 2>&1; then
+    ok "uv present: $(uv --version 2>/dev/null)"
+    return 0
+  fi
+  warn "uv not installed."
+  if ! command -v brew >/dev/null 2>&1; then
+    err "Install uv manually: curl -LsSf https://astral.sh/uv/install.sh | sh"
+    continue_on_failure
+    return 0
+  fi
+  if confirm "Install uv via 'brew install uv'?"; then
+    if brew install uv; then
+      ok "uv installed: $(uv --version 2>/dev/null)"
+    else
+      err "brew install uv failed"
+      continue_on_failure
+    fi
+  else
+    warn "Skipped — devsync CLI install will fail without uv."
+  fi
+}
 step_3_devsync_cli() { info "Step 3/7: devsync CLI"; ok "(stub)"; }
 step_4_ssh_key()     { info "Step 4/7: SSH key"; ok "(stub)"; }
 step_5_ssh_config()  { info "Step 5/7: ssh config"; ok "(stub)"; }
