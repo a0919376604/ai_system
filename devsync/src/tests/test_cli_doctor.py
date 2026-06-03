@@ -8,7 +8,7 @@ def test_doctor_happy_path(mocker, tmp_path):
     from devsync.config import Defaults, GlobalConfig, ServerConfig
 
     cfg = GlobalConfig(
-        defaults=Defaults(code_root=str(tmp_path), remote_base="/srv"),
+        defaults=Defaults(remote_base="/srv"),
         servers={"dl01": ServerConfig(host="dl01"), "dl02": ServerConfig(host="dl02")},
     )
     mocker.patch("devsync.cli.load_global_config", return_value=cfg)
@@ -27,7 +27,7 @@ def test_doctor_reports_unreachable(mocker, tmp_path):
     from devsync.errors import ServerUnreachable
 
     cfg = GlobalConfig(
-        defaults=Defaults(code_root=str(tmp_path), remote_base="/srv"),
+        defaults=Defaults(remote_base="/srv"),
         servers={"dl01": ServerConfig(host="dl01")},
     )
     mocker.patch("devsync.cli.load_global_config", return_value=cfg)
