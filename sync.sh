@@ -76,89 +76,21 @@ post_restore_hook() {
     fi
   fi
 
-  devsync_post_restore
+  devsync_post_restore "$@"
 }
 
 devsync_post_restore() {
-  # Verify devsync is bootstrappable on this machine.
-  # config.toml is already in place (sync_files restore put it at
-  # ~/.config/devsync/config.toml). Walk the rest of the chain and report
-  # exactly what's missing. Each step is independent — the user can do them
-  # in any order. Intentionally non-interactive: ssh-copy-id needs a password
-  # prompt and "uv tool install" wants the user to pick a clone location;
-  # we just instruct.
-
-  info "devsync bootstrap check"
-
-  local snippet="$SCRIPT_DIR/devsync/ssh-config-snippet.txt"
-  local missing=0
-
-  # 1. mutagen
-  if command -v mutagen >/dev/null 2>&1; then
-    ok "mutagen: $(mutagen version 2>/dev/null | head -1)"
-    mutagen daemon start >/dev/null 2>&1 || true
-  else
-    warn "mutagen not installed — brew install mutagen-io/mutagen/mutagen"
-    missing=$((missing+1))
+  local bootstrap="$SCRIPT_DIR/devsync/bootstrap.sh"
+  if [[ ! -x "$bootstrap" ]]; then
+    warn "devsync/bootstrap.sh missing or not executable — skip"
+    return
   fi
-
-  # 2. SSH key
-  if [[ -f "$HOME/.ssh/id_ed25519" ]]; then
-    ok "ssh key: ~/.ssh/id_ed25519"
+  info "Running devsync bootstrap..."
+  log ""
+  if [[ " $* " =~ " --yes " ]]; then
+    "$bootstrap" --yes
   else
-    warn "no SSH key — ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N \"\" -C \"$(whoami)@$(hostname -s) devsync\""
-    missing=$((missing+1))
-  fi
-
-  # 3. ~/.ssh/config has dl01..dl04?
-  if grep -q "^Host dl01$" "$HOME/.ssh/config" 2>/dev/null; then
-    ok "ssh config: dl01..dl04 hosts present"
-  else
-    warn "~/.ssh/config has no dl01 host. Append the snippet:"
-    log "    cat $snippet >> ~/.ssh/config && chmod 600 ~/.ssh/config"
-    missing=$((missing+1))
-  fi
-
-  # 4. Passwordless SSH to each server (probe)
-  local unreachable=()
-  for h in dl01 dl02 dl03 dl04; do
-    if ssh -o BatchMode=yes -o ConnectTimeout=3 "$h" true 2>/dev/null; then
-      :  # ok
-    else
-      unreachable+=("$h")
-    fi
-  done
-  if [[ ${#unreachable[@]} -eq 0 ]]; then
-    ok "ssh: 4/4 servers reachable without password"
-  else
-    warn "ssh probe failed for: ${unreachable[*]}"
-    warn "  → If VPN is down: connect first, retry"
-    warn "  → If first time on this machine: ssh-copy-id <host> per server"
-    # Don't count as missing — VPN may simply be down right now
-  fi
-
-  # 5. devsync CLI
-  if command -v devsync >/dev/null 2>&1; then
-    ok "devsync CLI: $(devsync --version 2>/dev/null)"
-  else
-    warn "devsync CLI not installed. Clone and install:"
-    log "    git clone git@github.com:a0919376604/devsync.git ~/Desktop/code/devsync"
-    log "    cd ~/Desktop/code/devsync && uv tool install -e ."
-    missing=$((missing+1))
-  fi
-
-  # 6. config.toml — should already be there because sync_files restore ran
-  if [[ -f "$HOME/.config/devsync/config.toml" ]]; then
-    ok "config: ~/.config/devsync/config.toml"
-  else
-    err "config: ~/.config/devsync/config.toml MISSING — sync may have failed"
-    missing=$((missing+1))
-  fi
-
-  if [[ $missing -eq 0 ]] && [[ ${#unreachable[@]} -eq 0 ]]; then
-    ok "devsync bootstrap complete — try: devsync doctor"
-  else
-    info "devsync bootstrap: $missing item(s) need manual install; see README.md in devsync/"
+    "$bootstrap"
   fi
 }
 
@@ -201,13 +133,27 @@ cmd_restore() {
   if [[ ! " $* " =~ " --dry-run " ]] && [[ ! " $* " =~ " --yes " ]]; then
     confirm "Continue?" || { log "Aborted."; exit 0; }
   fi
+  local restore_flags=()
+  local arg
+  for arg in "$@"; do
+    [[ "$arg" == "--yes" ]] && continue
+    restore_flags+=("$arg")
+  done
   # Note: no --delete here so we don't nuke node_modules/bin/ on the target
-  rsync -av "${EXCLUDES[@]}" "$@" "$LOCAL_DIR/" "$CLAUDE_DIR/"
+  if [[ ${#restore_flags[@]} -gt 0 ]]; then
+    rsync -av "${EXCLUDES[@]}" "${restore_flags[@]}" "$LOCAL_DIR/" "$CLAUDE_DIR/"
+  else
+    rsync -av "${EXCLUDES[@]}" "$LOCAL_DIR/" "$CLAUDE_DIR/"
+  fi
   info "Restore config files"
-  sync_files restore "$@"
+  if [[ ${#restore_flags[@]} -gt 0 ]]; then
+    sync_files restore "${restore_flags[@]}"
+  else
+    sync_files restore
+  fi
   ok "Restore complete"
   if [[ ! " $* " =~ " --dry-run " ]]; then
-    post_restore_hook
+    post_restore_hook "$@"
   fi
 }
 
