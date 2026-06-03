@@ -1,0 +1,32 @@
+[defaults]
+code_root = "/Users/leric/Desktop/code"
+remote_base = "/nas02/home/leric/code"
+sync_mode = "one-way-replica"
+ignore_vcs = true
+ssh_after_start = true
+ignore = [
+  ".DS_Store",
+  "*.pyc",
+  "__pycache__/",
+  ".venv/",
+  "node_modules/",
+  ".pytest_cache/",
+  ".ruff_cache/",
+  "*.ckpt",
+  "*.pt",
+  "*.bin",
+  "*.safetensors",
+  "*.parquet",
+]
+
+[servers.dl01]
+host = "dl01"
+
+[servers.dl02]
+host = "dl02"
+
+[servers.dl03]
+host = "dl03"
+
+[servers.dl04]
+host = "dl04"
