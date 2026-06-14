@@ -24,6 +24,8 @@ cd /path/to/your/repo
 
 ## Commands
 
+**Core lifecycle (7):**
+
 | Command | Purpose |
 |---|---|
 | `/ship-init` | Scaffold workflow in current repo |
@@ -33,6 +35,13 @@ cd /path/to/your/repo
 | `/ship-next` | Pick next item → brainstorm + spec |
 | `/ship-build` | Plan + execute |
 | `/ship-compound` | Learnings + promote patterns + close |
+
+**Knowledge-input bridges (2):**
+
+| Command | Purpose |
+|---|---|
+| `/ship-arch` | Refresh AIR-OS Architecture/ via `/obsidian-architect` |
+| `/ship-research <topic>` | Vault-first deep research via `/obsidian-research-deep` |
 
 ## Development
 

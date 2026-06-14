@@ -27,7 +27,7 @@ You are bootstrapping the Ship Workflow in the user's current repo.
    - Done. Skip the rest.
 
 3. **Scaffold repo side.** Create:
-   - `.claude/commands/` and copy all 7 `ship-*.md` from `~/.claude/skills/ship-workflow/commands/`
+   - `.claude/commands/` and copy all 9 `ship-*.md` from `~/.claude/skills/ship-workflow/commands/` (7 core + 2 bridges: ship-arch, ship-research)
    - `docs/ideas/`, `docs/decisions/`, `docs/brainstorms/`, `docs/specs/`, `docs/plans/`, `docs/learnings/`, `docs/product/`
    - `docs/learnings/_log.md` with header:
      ```markdown
@@ -57,7 +57,7 @@ You are bootstrapping the Ship Workflow in the user's current repo.
 
 7. **Verify.** Run:
    ```bash
-   ls .claude/commands/   # should have 7 ship-*.md files
+   ls .claude/commands/   # should have 9 ship-*.md files
    ls docs/               # should have 7 subdirs
    ls "<project_path>"    # should have 4 strategy .md files
    ```
@@ -65,7 +65,7 @@ You are bootstrapping the Ship Workflow in the user's current repo.
 8. **Commit.** Run:
    ```bash
    git add .claude/commands .claude/.gitignore docs/
-   git commit -m "chore: initialize ship-workflow (7 commands + 7 folders)"
+   git commit -m "chore: initialize ship-workflow (9 commands + 7 folders)"
    ```
    If the user is in a worktree on a feature branch, mention it. Don't push.
 

@@ -5,8 +5,9 @@ description: Per-repo product development workflow integrating Superpowers (brai
 
 # Ship Workflow
 
-Per-repo product development workflow. Installs 7 slash commands into a target repo's `.claude/commands/`:
+Per-repo product development workflow. Installs 9 slash commands into a target repo's `.claude/commands/`:
 
+**Core lifecycle (7):**
 - **`/ship-init`** — Bootstrap workflow (folders, commands, AIR-OS Product Brain stub)
 - **`/ship-idea <description>`** — Capture an idea (IDEA-NNN)
 - **`/ship-decision <topic>`** — Record an architectural decision (D-NNN)
@@ -14,6 +15,10 @@ Per-repo product development workflow. Installs 7 slash commands into a target r
 - **`/ship-next [--adhoc <desc>]`** — Pick next Roadmap item, brainstorm + spec
 - **`/ship-build [--from-spec <path>]`** — Plan + execute via superpowers + executor
 - **`/ship-compound`** — Write learning + promote patterns + close Roadmap item
+
+**Knowledge-input bridges (2):**
+- **`/ship-arch`** — Refresh AIR-OS Architecture/ docs (thin wrapper over `/obsidian-architect`)
+- **`/ship-research <topic>`** — Vault-first deep research (thin wrapper over `/obsidian-research-deep`)
 
 ## Dual-Brain Architecture
 

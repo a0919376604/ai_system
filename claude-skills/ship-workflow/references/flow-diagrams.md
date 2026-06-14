@@ -8,6 +8,11 @@
                             └────────┬────────┘
                                      │
                                      ▼
+                            ┌─────────────────┐
+                            │ /ship-arch      │ ← optional: snapshot initial architecture
+                            └────────┬────────┘
+                                     │
+                                     ▼
         ┌─────────────────┐    ┌─────────────────┐
         │ /ship-idea      │───▶│ docs/ideas/     │
         └─────────────────┘    │ IDEA-NNN-*.md   │
@@ -26,21 +31,43 @@
                                      │
                                      ▼
                             ┌─────────────────┐
-                            │ /ship-next      │ (pick + brainstorm + spec)
-                            └────────┬────────┘
-                                     │ also accepts --adhoc
-                                     ▼
-                            ┌─────────────────┐
-                            │ /ship-build     │ (plan + execute)
-                            └────────┬────────┘
+                            │ /ship-next      │ ◀── /ship-research <topic>
+                            └────────┬────────┘     (fill gap before brainstorm)
                                      │
                                      ▼
                             ┌─────────────────┐
-                            │ /ship-compound  │ (learn + promote + close)
+                            │ /ship-build     │ ◀── /ship-research <topic>
+                            └────────┬────────┘     (mid-build knowledge need)
+                                     │
+                                     ▼
+                            ┌─────────────────┐
+                            │ /ship-compound  │ → optional: /ship-arch (refresh if architecture shifted)
                             └────────┬────────┘
                                      │
                                      └─▶ back to /ship-next
 ```
+
+## Knowledge-input bridge commands
+
+`/ship-arch` and `/ship-research` are **optional inputs** that write to AIR-OS:
+
+```
+                     ┌────────────────────────────────┐
+   /ship-arch  ────▶ │ AIR-OS 10 Projects/<P>/        │
+                     │   Architecture/  ◀── codebase  │
+                     │     scan output                │
+                     │                                │
+/ship-research  ───▶ │ AIR-OS Projects/<P>/Research/  │ ◀── 3-5 external sub-queries
+   <topic>           │   or Research/Deep/ (global)   │     synthesized vs vault baseline
+                     └────────────────────────────────┘
+                              │
+                              ▼
+                     next ship-* command's sync.sh
+                     auto-pulls into repo's docs/product/
+                     so brainstorm / writing-plans see it
+```
+
+These commands DELEGATE to the underlying obsidian-second-brain skill commands (`/obsidian-architect` and `/obsidian-research-deep`) but add ship housekeeping (sync, _log.md, commit).
 
 ## Dual-brain sync
 

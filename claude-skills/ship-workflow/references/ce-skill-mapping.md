@@ -9,6 +9,8 @@
 | `ship-next` | `superpowers:brainstorming` | Required — no fallback |
 | `ship-build` | `superpowers:writing-plans` + user-chosen executor | Required for plan generation |
 | `ship-compound` | `compound-engineering:ce-compound` + `ce-promote` | Hand-write learning sections |
+| `ship-arch` | `obsidian-second-brain:/obsidian-architect` | Tell user to keep obsidian-second-brain skill (kept by design for architect + research-deep only) |
+| `ship-research` | `obsidian-second-brain:/obsidian-research-deep` | Same — tell user to keep that skill |
 
 ## Detection
 
