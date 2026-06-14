@@ -49,6 +49,7 @@ You are bootstrapping the Ship Workflow in the user's current repo.
      - If absent, copy from `~/.claude/skills/ship-workflow/templates/obsidian/<name>`
      - Substitute `{{project}}` with `<project_name>` and `{{date}}` with today's date (YYYY-MM-DD)
    - **NEVER overwrite an existing file in AIR-OS.**
+   - **Language rule:** AIR-OS templates are already written in zh-TW prose (per the vault's `output-lang: zh-TW` rule from `_CLAUDE.md`). Any further user-facing content the command writes into Obsidian (e.g. the seeded VISION one-liner) must also be in zh-TW unless the user explicitly wrote it in English.
 
 6. **Interactive seed prompts.** Ask the user (each skippable):
    - "What's the one-line vision for `<project_name>`?" → write into VISION.md
