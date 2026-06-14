@@ -1,6 +1,8 @@
 ---
 name: ship-idea
-description: Capture a new product idea as IDEA-NNN with AIR-OS-conformant frontmatter. Optionally delegates depth-of-thought to compound-engineering:ce-ideate. Use when an idea worth recording arises during conversation, slack scroll, user feedback, or competitor scan.
+description: Capture a product idea as IDEA-NNN with AIR-OS frontmatter (fast mobile-friendly capture)
+argument-hint: <description>
+discord-visible: true
 ---
 
 # /ship-idea

@@ -1,6 +1,8 @@
 ---
 name: ship-arch
-description: Refresh architecture documentation for the current repo by scanning the codebase and writing structured architecture notes into AIR-OS Projects/<name>/Architecture/. Thin wrapper over obsidian-architect with ship-context logging. Recommended after ship-init (initial architecture snapshot) and after large refactors land via ship-compound (refresh).
+description: Refresh AIR-OS Architecture/ docs for current repo (wraps /obsidian-architect)
+argument-hint: "[<repo>]"
+discord-visible: true
 ---
 
 # /ship-arch

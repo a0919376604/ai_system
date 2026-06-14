@@ -1,6 +1,8 @@
 ---
 name: ship-decision
-description: Record an architectural or product decision as D-NNN with options/chosen/reasoning. Optionally invokes compound-engineering:ce-doc-review for an independent read. Use when a meaningful trade-off has been made — switching libraries, refactoring boundaries, deciding scope, etc.
+description: Record an architectural or product decision as D-NNN (ADR) with options + reasoning
+argument-hint: <topic>
+discord-visible: true
 ---
 
 # /ship-decision

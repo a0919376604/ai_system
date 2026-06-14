@@ -1,6 +1,7 @@
 ---
 name: ship-roadmap
-description: Refresh the AIR-OS ROADMAP.md by reviewing ideas, decisions, learnings, and strategy via compound-engineering:ce-strategy. Reorders Now/Next/Later/Done sections per PRD rules (Now: 3-5 items; sorted by Impact × Dependency). Use when starting a sprint, after several ideas/decisions accumulate, or after a major learning shifts priorities.
+description: Refresh ROADMAP.md via ce-strategy — re-rank Now/Next/Later/Done by Impact × Dependency
+discord-visible: true
 ---
 
 # /ship-roadmap

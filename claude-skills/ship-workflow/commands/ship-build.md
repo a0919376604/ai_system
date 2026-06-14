@@ -1,6 +1,8 @@
 ---
 name: ship-build
-description: Take the most recent spec (or --from-spec <path>), generate a plan via superpowers:writing-plans, then offer the user three executors (subagent-driven / inline executing-plans / codex run-plan). Mid-build, /ship-idea --during-build and /ship-decision --during-build can be used to capture without leaving the flow.
+description: Spec → plan via superpowers:writing-plans → user picks executor (subagent / inline / codex)
+argument-hint: "[--from-spec <path>]"
+discord-visible: false
 ---
 
 # /ship-build

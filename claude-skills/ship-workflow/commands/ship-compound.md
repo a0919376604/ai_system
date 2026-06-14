@@ -1,6 +1,7 @@
 ---
 name: ship-compound
-description: Wrap up a shipped Roadmap item — generate learning via compound-engineering:ce-compound, promote reusable patterns to AIR-OS 40 Knowledge or 30 Engineering via ce-promote, and move the R-NNN from ROADMAP "Now" to "Done". Strips adhoc-inserted=true markers.
+description: Wrap up R-NNN — write learning, promote patterns to AIR-OS, move ROADMAP item to Done
+discord-visible: true
 ---
 
 # /ship-compound

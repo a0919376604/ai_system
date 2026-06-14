@@ -1,6 +1,8 @@
 ---
 name: ship-research
-description: Run vault-first deep research on a topic, then synthesize into AIR-OS. Thin wrapper over obsidian-research-deep with ship-context logging. Use mid-brainstorm when you need to fill a knowledge gap, mid-build when you hit "I need to learn X", or before promoting an idea with low confidence.
+description: Vault-first deep research on a topic; synthesized to AIR-OS (wraps /obsidian-research-deep)
+argument-hint: <topic>
+discord-visible: true
 ---
 
 # /ship-research

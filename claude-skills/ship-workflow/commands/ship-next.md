@@ -1,6 +1,8 @@
 ---
 name: ship-next
-description: Pick the next Roadmap item and enter superpowers:brainstorming to produce brainstorm + spec. With --adhoc <description>, allocates a new R-NNN immediately and inserts into ROADMAP "Now" with adhoc-inserted=true. Use to start the brainstorm → spec → build → compound loop.
+description: Pick next Roadmap item, enter superpowers:brainstorming to produce brainstorm + spec
+argument-hint: "[--adhoc <description>]"
+discord-visible: false
 ---
 
 # /ship-next

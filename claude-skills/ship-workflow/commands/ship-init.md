@@ -1,6 +1,8 @@
 ---
 name: ship-init
-description: Bootstrap Ship Workflow in the current repo. Creates .claude/commands/ ship-* slash commands, docs/ subfolders for ideas/decisions/brainstorms/specs/plans/learnings/product, and AIR-OS Product Brain folder with VISION/STRATEGY/ROADMAP/QUARTERLY_GOALS templates. Idempotent. Use --custom to write a per-repo override config. Use --upgrade to refresh just the .claude/commands/ files from the latest skill version.
+description: Bootstrap Ship Workflow in current repo (folders + commands + AIR-OS Product Brain stub)
+argument-hint: "[--custom] [--upgrade]"
+discord-visible: false
 ---
 
 # /ship-init
