@@ -1,0 +1,6 @@
+# Test artifacts
+tests/.tmp/
+tests/*.log
+
+# Local install symlinks
+.installed
