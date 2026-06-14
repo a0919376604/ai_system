@@ -2579,3 +2579,21 @@ After all 15 tasks complete, the following spec ACs should all be green:
 ---
 
 *End of plan.*
+
+## Execution log
+
+- 2026-06-14: All 15 tasks executed inline via superpowers:executing-plans.
+- 2026-06-14: Smoke test on claudecode-discord caught 2 real bugs:
+  1. YAML parser in airos-binding.sh / sync.sh / id-gen.sh didn't strip trailing
+     `# comment` from config values — example config had inline comments,
+     production tests used comment-free fixture.
+  2. id-gen.sh scanned only on-disk R-* files, missing R-NNN markers in
+     ROADMAP.md that were inserted via /ship-init seed or /ship-next --adhoc.
+- 2026-06-14: Both bugs fixed with regression tests. Final bats count: 31/31.
+- 2026-06-14: Smoke test artifacts committed:
+  - claudecode-discord: docs/ideas, docs/learnings, docs/product (.claude/ gitignored locally).
+  - AIR-OS 10 Projects/claudecode-discord/: 4 strategy files seeded.
+- 2026-06-14: ship-workflow skill operational. ROADMAP carries R-001 (planned)
+  and R-002 (adhoc-inserted=true) in claudecode-discord's Now section.
+- Task 15 manual Obsidian verification (rendering, Dataview) still pending —
+  Obsidian app behavior is owner's responsibility.
