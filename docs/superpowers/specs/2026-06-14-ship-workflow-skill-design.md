@@ -72,7 +72,7 @@ following AIR-OS frontmatter rules.
 - ❌ Multi-vault support — single AIR-OS path
 - ❌ Web UI / Dashboard
 - ❌ Cross-repo R-XXX numbering coordination — each repo has its own namespace
-- ❌ Auto retroactive ADHOC → R promotion — `/ship-promote` is manual
+- ❌ Separate ADHOC namespace — `--adhoc` allocates a real R-NNN immediately (Roadmap = source of truth, including emergency work)
 - ❌ AIR-OS Dashboard MOC for Ship workflow — defer to v2
 - ❌ Slack / Discord notifications
 - ❌ Reimplementation of any logic that already lives in superpowers or ce-* plugins
@@ -94,8 +94,7 @@ ai_system/claude-skills/ship-workflow/
 │   ├── ship-roadmap.md
 │   ├── ship-next.md
 │   ├── ship-build.md
-│   ├── ship-compound.md
-│   └── ship-promote.md               # v1 INCLUDED (per design decision Section 4)
+│   └── ship-compound.md
 ├── templates/
 │   ├── obsidian/                     # AIR-OS Project Brain templates
 │   │   ├── VISION.md
@@ -111,9 +110,9 @@ ai_system/claude-skills/ship-workflow/
 │       └── LEARNING.md
 ├── lib/
 │   ├── sync.sh                       # Obsidian → repo sync
-│   ├── id-gen.sh                     # next IDEA-NNN / D-NNN / R-NNN / ADHOC-NNN
+│   ├── id-gen.sh                     # next IDEA-NNN / D-NNN / R-NNN
 │   ├── airos-binding.sh              # resolve AIR-OS project folder
-│   └── promote.sh                    # ADHOC → R rename + wikilink updates
+│   └── roadmap-insert.sh             # insert new R-NNN into ROADMAP "Now"
 └── references/
     ├── flow-diagrams.md
     ├── escape-hatches.md
@@ -157,8 +156,7 @@ ai_system/claude-skills/ship-workflow/
 │   ├── specs/R-NNN-<slug>.md          (superpowers spec format)        │
 │   ├── plans/R-NNN-<slug>.md          (superpowers plan format)        │
 │   ├── learnings/R-NNN-<slug>.md      (type: learning)                 │
-│   ├── learnings/_log.md              (meta log: every ship-* call)    │
-│   └── learnings/_adhoc-log.md        (meta log: every --adhoc)        │
+│   └── learnings/_log.md              (meta log: every ship-* call)    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -198,7 +196,7 @@ roadmap_mode: strict                  # override default
 
 ---
 
-## 4. The 7 (+1) Ship Commands
+## 4. The 7 Ship Commands
 
 ### Common Skeleton
 
@@ -223,12 +221,11 @@ Every `ship-*` command follows:
 - `--upgrade` flag → re-copy `commands/*.md` only (preserve user-edited config)
 
 **Writes (repo side):**
-- `.claude/commands/ship-*.md` (8 slash commands)
+- `.claude/commands/ship-*.md` (7 slash commands)
 - `docs/{ideas,decisions,brainstorms,specs,plans,learnings,product}/` (7 folders)
 - `docs/product/.gitignore` (empty — strategy mirrors DO commit)
 - `.claude/.gitignore` (adds `.ship-last-pull`)
 - `docs/learnings/_log.md` (header line only)
-- `docs/learnings/_adhoc-log.md` (header line only)
 
 **Writes (AIR-OS side):**
 - Create `10 Projects/<project_name>/` if missing
@@ -239,7 +236,7 @@ Every `ship-*` command follows:
 - Prompt user for VISION one-liner + first R-001 Roadmap Item description
 - Each prompt is skippable (defaults to empty placeholder)
 
-**Output git commit (in repo):** `chore: initialize ship-workflow (8 commands + 7 folders)`
+**Output git commit (in repo):** `chore: initialize ship-workflow (7 commands + 7 folders)`
 
 ### `/ship-idea <description>`
 
@@ -295,30 +292,38 @@ Every `ship-*` command follows:
 
 ### `/ship-next [--adhoc <description>]`
 
-**Purpose:** Pick the next most-valuable item, run brainstorm → produce spec.
+**Purpose:** Pick the next item, run brainstorm → produce spec. Two flows differ only at the "where does the R-NNN come from" step.
 
-**Strict mode (default):**
+**Default (pick from Roadmap):**
 1. Read `docs/product/ROADMAP.md` "Now" section
 2. Rank items by priority × dependency satisfaction
-3. Present top 1-2 to user, get confirmation
-4. Invoke `superpowers:brainstorming` (which naturally cascades to `writing-plans`)
+3. Present top 1-2 to user, get confirmation → pick R-NNN
+4. Invoke `superpowers:brainstorming` (which cascades to `writing-plans`)
 5. Brainstorm output → `docs/brainstorms/R-NNN-<slug>.md`
 6. Spec output → `docs/specs/R-NNN-<slug>.md`
 
-**Adhoc mode:**
-1. Skip Roadmap lookup
-2. Take `<description>` directly, invoke `superpowers:brainstorming`
-3. Brainstorm output → `docs/brainstorms/ADHOC-NNN-<slug>.md`
-4. Spec output → `docs/specs/ADHOC-NNN-<slug>.md`
-5. Spec has `promoted-to-roadmap: null` (used later by `/ship-promote`)
+**Adhoc mode (`--adhoc <description>`):**
+1. Allocate next R-NNN via id-gen.sh (same namespace as planned items — no separate ADHOC namespace)
+2. Insert a new line into AIR-OS `ROADMAP.md` "🔥 Now" section:
+   ```
+   - [ ] **R-NNN** <description> · adhoc-inserted=true · status=in-progress
+   ```
+3. Sync ROADMAP back to repo `docs/product/`
+4. Continue exactly like default flow from step 4 onward (brainstorm + spec)
 
-**Output git commit:** `brainstorm: <ID> <slug>` and `spec: <ID> <slug>`
+**Why no separate ADHOC namespace:** Roadmap is the canonical record of work
+that gets done, including emergency firefighting. Splitting "planned" vs
+"adhoc" into different ID spaces creates reconciliation debt later. Better
+to inject the item into the Roadmap at the moment of decision and treat
+the rest of the lifecycle uniformly.
+
+**Output git commit:** `brainstorm: R-NNN <slug>` and `spec: R-NNN <slug>`
 
 ### `/ship-build [--from-spec <path>]`
 
 **Purpose:** Execute spec → plan → build → test.
 
-**Reads:** `docs/specs/<latest-or-flagged>-*.md`
+**Reads:** `docs/specs/R-NNN-*.md` (latest or `--from-spec`-flagged)
 
 **Execution (wraps Superpowers):**
 1. Invoke `superpowers:writing-plans` → produces `docs/plans/<ID>-<slug>.md`
@@ -358,29 +363,14 @@ Every `ship-*` command follows:
    - Concept abstractions → AIR-OS `40 Knowledge/Concepts/`
    - User confirms each promotion (no silent writes to AIR-OS knowledge layer)
 4. Auto-invoke `/ship-roadmap`:
-   - Move completed item to ✅ Done section
+   - Move completed R-NNN from "Now" to ✅ Done section
+   - Strip `adhoc-inserted=true` marker (item has shipped — no longer relevant)
    - Resort remaining items
-5. (Optional) Suggest retroactive promote: if ADHOC-NNN was completed, prompt for `/ship-promote ADHOC-NNN`
 
 **Output:**
-- `docs/learnings/<ID>-<slug>.md`
+- `docs/learnings/R-NNN-<slug>.md`
 - Updated `ROADMAP.md` (in AIR-OS + repo mirror)
 - 0+ new `40 Knowledge/Concepts/` and/or `30 Engineering/` files
-
-### `/ship-promote <ADHOC-NNN>` (8th command, included in v1)
-
-**Purpose:** Retroactively promote an ADHOC item to an R-NNN Roadmap Item.
-
-**Execution:**
-1. Read all `ADHOC-NNN-*` files across `docs/{brainstorms,specs,plans,learnings}/`
-2. Compute next R-NNN
-3. Rename all matching files to `R-NNN-<same-slug>.md`
-4. Update each file's frontmatter (`id:`, `roadmap-item:`)
-5. Grep-replace wikilinks across docs/ (`[[ADHOC-NNN-slug]]` → `[[R-NNN-slug]]`)
-6. Insert new R-NNN entry into ROADMAP.md "Done" section (with completed-date from learning)
-7. Append note to `_adhoc-log.md` marking the promotion
-
-**Output git commit:** `promote: ADHOC-NNN → R-NNN`
 
 ### Command-to-Delegation Mapping (`references/ce-skill-mapping.md`)
 
@@ -393,7 +383,6 @@ Every `ship-*` command follows:
 | `ship-next` | `superpowers:brainstorming` | Cascades to writing-plans |
 | `ship-build` | `superpowers:writing-plans` + user-chosen executor | Don't reinvent |
 | `ship-compound` | `ce-compound` + `ce-promote` | Existing knowledge-promote logic |
-| `ship-promote` | (none) | Pure file ops |
 
 ---
 
@@ -561,7 +550,6 @@ maintained-via: hand           # ROADMAP: both (hand + ship-roadmap auto-sort)
 | Spec | `R-NNN-<same-slug>.md` | (same filename as brainstorm) |
 | Plan | `R-NNN-<same-slug>.md` | (same) |
 | Learning | `R-NNN-<same-slug>.md` | (same) |
-| Adhoc | `ADHOC-NNN-<kebab-slug>.md` | `ADHOC-003-fix-langfuse-token-leak.md` |
 | Strategy | Fixed name | `VISION.md`, `STRATEGY.md`, etc. |
 
 ID padding default 3 (IDEA-001) — configurable via global config.
@@ -613,26 +601,26 @@ sync_product_brain() {
 
 ## 7. Escape Hatches
 
-### `--adhoc` Flow
+### `--adhoc` Flow (uniform with planned work)
 
-| Scenario | Default | `--adhoc` |
+| Scenario | Default | `--adhoc <description>` |
 |---|---|---|
-| `/ship-next` | Pick R-NNN from "Now" → R-NNN | Take `<description>`, skip Roadmap → ADHOC-NNN |
-| `/ship-build` | Needs R-NNN or ADHOC-NNN spec | (no special flag needed; spec already tagged) |
-| `/ship-compound` | Write learning bound to R-NNN | Write learning bound to ADHOC-NNN |
+| `/ship-next` | Pick R-NNN from "Now" | Allocate next R-NNN + insert into "Now" with `adhoc-inserted=true` marker, then continue normally |
+| `/ship-build` | Reads `docs/specs/R-NNN-*.md` | Same — no separate flag needed |
+| `/ship-compound` | Move R-NNN from "Now" → "Done" | Same — also strips `adhoc-inserted=true` marker |
 
-### Promotion: ADHOC → R
+**Design principle:** ADHOC is not a separate namespace; it's a flag on
+how an R-NNN got created. The flag survives in the ROADMAP entry's
+metadata so future-Claude can answer "which items were planned vs
+firefighting" via Dataview.
 
-Triggered by `/ship-promote <ADHOC-NNN>`. See Section 4 for full flow.
-
-### Meta Logs
+### Meta Log
 
 | File | Purpose |
 |---|---|
-| `docs/learnings/_log.md` | Single-line entry per ship-* command call: date · command · ID · note |
-| `docs/learnings/_adhoc-log.md` | Single-line entry per `--adhoc` invocation; supports retroactive promote auditing |
+| `docs/learnings/_log.md` | Single-line entry per ship-* command call: date · command · R-NNN · note · adhoc?(y/n) |
 
-Both can be queried via Dataview if mirrored to AIR-OS, but v1 keeps them per-repo only (cross-repo querying deferred to v2).
+Cross-repo Dataview querying deferred to v2 (would need to mirror `_log.md` into AIR-OS).
 
 ---
 
@@ -644,16 +632,16 @@ Both can be queried via Dataview if mirrored to AIR-OS, but v1 keeps them per-re
 |---|---|
 | AC-001 | `~/.claude/skills/ship-workflow/` exists after devsync |
 | AC-002 | `SKILL.md` describes the skill's purpose and command list |
-| AC-003 | `commands/` contains 8 files (ship-init/idea/decision/roadmap/next/build/compound/promote) |
+| AC-003 | `commands/` contains 7 files (ship-init/idea/decision/roadmap/next/build/compound) |
 | AC-004 | `templates/obsidian/` contains 4 strategy templates |
 | AC-005 | `templates/repo/` contains 6 templates (IDEA / DECISION / BRAINSTORM / SPEC / PLAN / LEARNING) |
-| AC-006 | `lib/` contains sync.sh / id-gen.sh / airos-binding.sh / promote.sh |
+| AC-006 | `lib/` contains sync.sh / id-gen.sh / airos-binding.sh / roadmap-insert.sh |
 
 ### Tier 2: ship-init Behavior
 
 | AC | Verification |
 |---|---|
-| AC-007 | Running `/ship-init` in a test repo creates `.claude/commands/ship-*.md` × 8 |
+| AC-007 | Running `/ship-init` in a test repo creates `.claude/commands/ship-*.md` × 7 |
 | AC-008 | 7 doc folders created (ideas/decisions/brainstorms/specs/plans/learnings/product) |
 | AC-009 | AIR-OS `10 Projects/<repo>/` created with 4 strategy files |
 | AC-010 | Existing AIR-OS Project folder content NOT overwritten |
@@ -668,30 +656,29 @@ Both can be queried via Dataview if mirrored to AIR-OS, but v1 keeps them per-re
 | AC-014 | `/ship-decision "Y"` produces `D-001-y.md` with `affected-roadmap-items` populated |
 | AC-015 | `/ship-roadmap` reorders ROADMAP.md (Now: 3-5 items; Done preserved) |
 | AC-016 | `/ship-next` enters brainstorming → produces brainstorm + spec |
-| AC-017 | `/ship-next --adhoc "Z"` skips Roadmap, produces ADHOC-NNN files |
+| AC-017 | `/ship-next --adhoc "Z"` allocates next R-NNN, inserts into ROADMAP "Now" with `adhoc-inserted=true`, then enters brainstorm |
 | AC-018 | `/ship-build --from-spec` enters writing-plans, produces plan, runs executor |
-| AC-019 | `/ship-compound` produces learning + triggers ROADMAP update |
-| AC-020 | `/ship-promote ADHOC-NNN` renames files, updates wikilinks, adds to Done |
+| AC-019 | `/ship-compound` produces learning + moves R-NNN from "Now" → "Done" + strips adhoc marker |
 
 ### Tier 4: Sync + Frontmatter Compliance
 
 | AC | Verification |
 |---|---|
-| AC-021 | First ship-* mirrors 4 strategy files to `docs/product/` |
-| AC-022 | Second ship-* within 60s skips sync (freshness window) |
-| AC-023 | All ship-* outputs have `ai-first: true` + `## For future Claude` |
-| AC-024 | All ship-* outputs use `<ID>-<kebab-slug>.md` naming |
-| AC-025 | AIR-OS `_CLAUDE.md` updated to include 7 new note types (idea, brainstorm, learning, vision, strategy, roadmap, quarterly-goal) |
-| AC-026 | `docs/product/ROADMAP.md` stale-snapshot warning fires after 7-day drift |
+| AC-020 | First ship-* mirrors 4 strategy files to `docs/product/` |
+| AC-021 | Second ship-* within 60s skips sync (freshness window) |
+| AC-022 | All ship-* outputs have `ai-first: true` + `## For future Claude` |
+| AC-023 | All ship-* outputs use `R-NNN-<kebab-slug>.md` naming (no ADHOC namespace) |
+| AC-024 | AIR-OS `_CLAUDE.md` updated to include 7 new note types (idea, brainstorm, learning, vision, strategy, roadmap, quarterly-goal) |
+| AC-025 | `docs/product/ROADMAP.md` stale-snapshot warning fires after 7-day drift |
 
 ### Tier 5: Delegation
 
 | AC | Verification |
 |---|---|
-| AC-027 | `ship-roadmap` actually invokes `ce-strategy` or `ce-plan` (visible in transcript) |
-| AC-028 | `ship-next` actually invokes `superpowers:brainstorming` |
-| AC-029 | `ship-build` actually invokes `superpowers:writing-plans` and lets user pick executor |
-| AC-030 | `ship-compound` actually invokes `ce-compound` and `ce-promote` |
+| AC-026 | `ship-roadmap` actually invokes `ce-strategy` or `ce-plan` (visible in transcript) |
+| AC-027 | `ship-next` actually invokes `superpowers:brainstorming` |
+| AC-028 | `ship-build` actually invokes `superpowers:writing-plans` and lets user pick executor |
+| AC-029 | `ship-compound` actually invokes `ce-compound` and `ce-promote` |
 
 ---
 
@@ -702,8 +689,9 @@ Both can be queried via Dataview if mirrored to AIR-OS, but v1 keeps them per-re
 | AIR-OS legacy ADRs (`adr-NNN-*.md`) coexisting with Ship decisions (`D-NNN-*.md`) | Two ADR systems in same Project folder | Spec explicitly defines: `D-NNN` is ship-context (frontmatter `ship-context: true`), `adr-NNN` is ad-hoc; Dataview differentiates via `ship-context` |
 | Worktree mapping | `langlive-line-oa-wt-3` and `langlive-line-oa-wt-4` should map to one AIR-OS Project | Each worktree needs `.claude/ship-config.yml` with `airos_project: langlive-line-oa` |
 | ce-* skill interface drift | `ce-strategy` or `ce-compound` upgrade may change inputs/outputs | Each `ship-*` wrapping a `ce-*` includes a try/catch fallback message: "ce-X not available, run manually" |
-| Concurrent number allocation | Two worktrees running `/ship-idea` simultaneously may both pick IDEA-008 | id-gen.sh uses `flock` on a small temp lockfile; collisions detected → second worktree retries with NNN+1 |
+| Concurrent number allocation | Two worktrees running `/ship-idea` or `/ship-next --adhoc` simultaneously may both pick the same NNN | id-gen.sh uses `flock` on a small temp lockfile; collisions detected → second worktree retries with NNN+1 |
 | Sync race | User edits ROADMAP.md in Obsidian while sync is running | Atomic write in sync.sh (`cp` to `.tmp` + `mv`) |
+| ROADMAP insertion race | `/ship-next --adhoc` modifies AIR-OS ROADMAP.md while user has it open in Obsidian | `roadmap-insert.sh` reads, modifies in-memory, writes via temp + mv; Obsidian re-reads on file change |
 | Spec ↔ brainstorm filename divergence | If user renames the brainstorm, the spec/plan/learning fall out of sync | id-gen.sh enforces same slug across the 4 R-NNN files; `/ship-build` reads only by ID prefix, not exact filename |
 
 ---
