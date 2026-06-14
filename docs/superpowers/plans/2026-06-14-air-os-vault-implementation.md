@@ -1946,3 +1946,10 @@ mv /Users/leric/Documents/SecondBrain.archive-2026-06-14 \
 Once the owner starts writing new notes into AIR-OS, rollback cost rises — new content lives only in AIR-OS. Backup at `~/Dropbox/_archive/SecondBrain-pre-AIR-2026-06-14/` remains as a recovery option for the original 132 notes.
 
 **Spec reference:** `docs/superpowers/specs/2026-06-14-obsidian-air-os-vault-design.md`
+
+## Execution log
+
+- 2026-06-14: Task 1 Step 3 was skipped per special notes; Obsidian close confirmation awaits the human.
+- 2026-06-14: Task 8 key section checks passed. `_CLAUDE.md` line count was 213 rather than the plan's rough `~165-180`; the provided manual text was kept verbatim per workflow instruction 1.
+- 2026-06-14: Task 13 Steps 7-10 were skipped per special notes; opening the vault in Obsidian, installing/verifying Dataview, installing/verifying Templates, and optional GitHub push await the human.
+- 2026-06-14: Task 13 Step 11 completed; `/tmp/air-os-migrate-frontmatter.py` was removed.
