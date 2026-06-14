@@ -44,3 +44,19 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"ship-workflow.yml not found"* ]]
 }
+
+@test "airos-binding: strips inline comments from config values" {
+  # Write a config with inline `# comment` after values
+  cat > "$HOME_OVERRIDE/.claude/ship-workflow.yml" <<EOF
+airos_vault: $AIROS              # this is the vault
+airos_projects_dir: "10 Projects"  # subdir
+default_roadmap_mode: soft         # soft or strict
+default_id_pad: 3                  # IDEA-001 vs IDEA-1
+auto_pull_freshness_window: 60     # seconds
+EOF
+  cd "$REPO" || exit 1
+  result="$(HOME="$HOME_OVERRIDE" "$SHIP_LIB/airos-binding.sh" vault)"
+  [ "$result" = "$AIROS" ]
+  result="$(HOME="$HOME_OVERRIDE" "$SHIP_LIB/airos-binding.sh" roadmap_mode)"
+  [ "$result" = "soft" ]
+}

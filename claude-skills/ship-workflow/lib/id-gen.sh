@@ -35,7 +35,9 @@ acquire_lock() {
 
 # Pad width (read from global config, default 3)
 GLOBAL_CFG="${HOME}/.claude/ship-workflow.yml"
-PAD=$(awk -F': *' '$1=="default_id_pad" { print $2; exit }' "$GLOBAL_CFG" 2>/dev/null || true)
+PAD=$(awk -F': *' '$1=="default_id_pad" {
+  sub(/[ \t]*#.*$/, "", $2); sub(/[ \t]+$/, "", $2); print $2; exit
+}' "$GLOBAL_CFG" 2>/dev/null || true)
 PAD="${PAD:-3}"
 
 case "$TYPE" in
@@ -72,6 +74,19 @@ next_id() {
       [ "$n" -gt "$max" ] && max=$n
     done < <(find "$d" -maxdepth 1 -type f -name "${prefix}*.md" 2>/dev/null)
   done
+
+  # For R-* (roadmap) also scan the mirrored ROADMAP.md for **R-NNN** markers.
+  # /ship-next --adhoc inserts items into ROADMAP without yet creating files,
+  # so the disk-only scan can miss those.
+  if [ "$prefix" = "R-" ] && [ -f "$REPO_ROOT/docs/product/ROADMAP.md" ]; then
+    while IFS= read -r line; do
+      local n
+      n=$(echo "$line" | sed -E 's/.*\*\*R-([0-9]+)\*\*.*/\1/')
+      [[ "$n" =~ ^[0-9]+$ ]] || continue
+      n=$((10#$n))
+      [ "$n" -gt "$max" ] && max=$n
+    done < <(grep -oE '\*\*R-[0-9]+\*\*' "$REPO_ROOT/docs/product/ROADMAP.md")
+  fi
 
   # Also account for reservations
   if [ -f "$REPO_ROOT/.claude/.id-reservations" ]; then

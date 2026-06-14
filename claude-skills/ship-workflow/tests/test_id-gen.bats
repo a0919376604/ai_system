@@ -52,6 +52,17 @@ teardown() {
   [ "$result" = "R-010" ]
 }
 
+@test "id-gen: R also scans ROADMAP.md mirror for **R-NNN** markers" {
+  cd "$REPO"
+  cat > docs/product/ROADMAP.md <<EOF
+## 🔥 Now
+- [ ] **R-014** Foo
+- [ ] **R-003** Bar
+EOF
+  result="$("$SHIP_LIB/id-gen.sh" roadmap)"
+  [ "$result" = "R-015" ]
+}
+
 @test "id-gen: errors on unknown type" {
   cd "$REPO"
   run "$SHIP_LIB/id-gen.sh" bogus

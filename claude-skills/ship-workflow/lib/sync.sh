@@ -16,7 +16,9 @@ REPO_ROOT="$(pwd)"
 LAST_PULL="$REPO_ROOT/.claude/.ship-last-pull"
 
 GLOBAL_CFG="${HOME}/.claude/ship-workflow.yml"
-FRESHNESS=$(awk -F': *' '$1=="auto_pull_freshness_window" { print $2; exit }' "$GLOBAL_CFG" 2>/dev/null || true)
+FRESHNESS=$(awk -F': *' '$1=="auto_pull_freshness_window" {
+  sub(/[ \t]*#.*$/, "", $2); sub(/[ \t]+$/, "", $2); print $2; exit
+}' "$GLOBAL_CFG" 2>/dev/null || true)
 FRESHNESS="${FRESHNESS:-60}"
 
 FORCE=0

@@ -19,10 +19,18 @@ if [ ! -f "$GLOBAL_CFG" ]; then
 fi
 
 # Minimal YAML key reader (assumes simple key: value lines; no nesting).
+# Strips trailing `# comment` and trailing whitespace.
 read_yaml_key() {
   local file="$1"
   local key="$2"
-  awk -v k="$key" -F': *' '$1==k { sub(/[\r\n]+$/, "", $2); gsub(/^"|"$/, "", $2); print $2; exit }' "$file"
+  awk -v k="$key" -F': *' '$1==k {
+    sub(/[\r\n]+$/, "", $2)
+    sub(/[ \t]*#.*$/, "", $2)
+    sub(/[ \t]+$/, "", $2)
+    gsub(/^"|"$/, "", $2)
+    print $2
+    exit
+  }' "$file"
 }
 
 VAULT="$(read_yaml_key "$GLOBAL_CFG" airos_vault)"
