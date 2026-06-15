@@ -1,6 +1,6 @@
 ---
 type: roadmap-proposal
-roadmap-id: {{id}}
+roadmap-id: "{{id}}"
 date: {{date}}
 updated: {{date}}
 project: "[[{{project}}]]"
@@ -11,7 +11,7 @@ related-architecture: []
 related-roadmap: []
 confidence: medium
 lang: zh-TW
-tags: [proposal, {{id}}, {{slug}}]
+tags: [proposal, "{{id}}", "{{slug}}"]
 ai-first: true
 ---
 
