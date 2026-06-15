@@ -17,6 +17,7 @@ You are bootstrapping the Ship Workflow in the user's current repo.
   - **Omitted** — use current working directory; project name = basename(pwd) or `.claude/ship-config.yml` override.
 - `--custom` — interactively prompt for per-repo config overrides and write `.claude/ship-config.yml`
 - `--upgrade` — only re-copy `.claude/commands/ship-*.md` from the skill (preserves docs/ and Obsidian content)
+- `--with-arch` — after scaffolding completes, automatically invoke `/ship-arch` so AIR-OS Architecture/ is populated before the first `/ship-roadmap`. Recommended when initializing on a mature repo (≥ 10 source files). For a brand new / empty repo, leave it off — running ship-arch on a near-empty codebase produces no value.
 
 ## Steps
 
@@ -102,12 +103,23 @@ You are bootstrapping the Ship Workflow in the user's current repo.
    ```
    If the user is in a worktree on a feature branch, mention it. Don't push.
 
-9. **Report.** Tell the user:
-   - Project name resolved
-   - AIR-OS project path
-   - Number of commands installed
-   - Whether VISION / R-001 were seeded
-   - Next suggested command: `/ship-roadmap` to plan further items
+9. **`--with-arch` follow-on.** If the flag was passed, invoke `/ship-arch` now (with the resolved project name) before the report. Stream its output through to the user.
+
+10. **Report.** Tell the user:
+    - Project name resolved
+    - AIR-OS project path
+    - Number of commands installed
+    - Whether VISION / R-001 were seeded
+    - **Repo-state hint** — count source files quickly:
+      ```bash
+      find . -type f \( -name "*.py" -o -name "*.ts" -o -name "*.js" -o -name "*.go" -o -name "*.rb" -o -name "*.rs" \) \
+        -not -path "./node_modules/*" -not -path "./.git/*" | wc -l
+      ```
+    - Next suggested commands (in priority order):
+      - **If source count ≥ 10 AND `--with-arch` was NOT used**: `/ship-arch` to capture initial architecture — this materially improves the next `/ship-roadmap` ranking by giving ce-strategy a module dependency graph
+      - **If source count < 10** (new / empty repo): skip ship-arch suggestion — code first, then `/ship-arch` after you've shipped enough to have architecture worth capturing
+      - `/ship-roadmap` to plan items
+      - `/ship-next` to start work
 
 ## Idempotency
 

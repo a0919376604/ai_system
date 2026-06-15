@@ -54,10 +54,22 @@ You are refreshing the architecture documentation for the current repo.
    git commit -m "chore: ship-arch refresh for $PROJECT"
    ```
 
-6. **Report:** Tell the user
+6. **Report + propose next:**
    - Architecture file count in `AIR-OS/10 Projects/$PROJECT/Architecture/`
    - Whether AI flows / features.md / memory.md / rag.md were produced
-   - Next suggested actions: `/ship-roadmap` (use fresh architecture for prioritization) or `/ship-next` (start work with current architecture in mind)
+   - **Surface top Improvement candidates.** Grep all `## Improvements` sections across the new Architecture/*.md files. Pick the top 3 by stated impact / risk. Tell the user:
+     ```
+     Architecture surfaced 3 noteworthy improvement candidates:
+       1. <module> — <one-line summary>
+       2. <module> — ...
+       3. <module> — ...
+     Capture any of these as IDEA-NNN now? (y/N + numbers, e.g. "y 1,3")
+     ```
+     If user picks any, invoke `/ship-idea <description>` for each, pre-seeded with the Improvement's text + `confidence: high` + `related-module: <module>`.
+   - **Next suggested commands** (in order of likely usefulness):
+     - `/ship-roadmap` — will read `Architecture/overview.md` and factor module graph into Impact × Dependency ranking. **Strong recommendation if Roadmap is older than 7 days.**
+     - `/ship-next` — start work with current architecture in mind
+     - `/ship-idea` more times if you want to capture more from Architecture's `## Improvements` sections
 
 ## Failure modes
 

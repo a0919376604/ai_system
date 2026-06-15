@@ -27,6 +27,7 @@ You are running the Roadmap refresh ritual.
    - `docs/ideas/IDEA-*.md` where `status != shelved`
    - `docs/decisions/D-*.md` where `decision-status: accepted`
    - `docs/learnings/R-*.md` modified within last 30 days
+   - **`<airos_project_path>/Architecture/overview.md`** if exists — produced by `/ship-arch`. Gives ce-strategy a module dependency graph + per-module improvement candidates so Impact × Dependency ranking is grounded in real code structure, not guesswork. Pass alongside STRATEGY/ROADMAP in the prompt.
 
 4. **Delegate to `compound-engineering:ce-strategy`** with all inputs concatenated. Ask it to:
    - Identify Roadmap items that should change status
