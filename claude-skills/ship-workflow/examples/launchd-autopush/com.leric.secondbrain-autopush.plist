@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.leric.secondbrain-autopush</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/leric/.local/bin/secondbrain-autopush.sh</string>
+  </array>
+
+  <!-- Run every 6 hours (21600 seconds). launchd will fire on schedule
+       while the user is logged in. If Mac is asleep, fires on wake. -->
+  <key>StartInterval</key>
+  <integer>21600</integer>
+
+  <!-- Don't fire immediately on load — wait one full interval first.
+       Avoids surprise push during setup. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <!-- Routine stdout / stderr capture. Script also writes its own log
+       to ~/Library/Logs/secondbrain-autopush.log. -->
+  <key>StandardOutPath</key>
+  <string>/Users/leric/Library/Logs/secondbrain-autopush.stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/leric/Library/Logs/secondbrain-autopush.stderr.log</string>
+
+  <!-- Ensure the agent's environment has a sane HOME + PATH. The script
+       itself sets PATH explicitly, but this is belt + suspenders. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/leric</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>
