@@ -70,9 +70,39 @@ You are picking the next item and entering the brainstorm flow.
 
 5. **Continue below with $ID and slug derived from `<description>`.**
 
+### Common pre-step: Proposal check
+
+After picking the R-NNN (Branch A step 5 or Branch B), but **before** entering brainstorming:
+
+```bash
+PROJECT_PATH=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)
+PROPOSALS_DIR="$PROJECT_PATH/Proposals"
+PROPOSAL_FILE=$(find "$PROPOSALS_DIR" -name "*-${ID}-*-proposal.md" 2>/dev/null | head -1)
+```
+
+Three branches:
+
+1. **Proposal exists AND `status: accepted`**:
+   - Read the proposal
+   - Load §1-§7 as **brainstorm starting context** (problem is already framed; brainstorm focuses on design choices within the proposal's bounds)
+   - Tell user: "Loaded accepted proposal $(basename $PROPOSAL_FILE) as brainstorm context."
+
+2. **Proposal exists but `status` ∈ {draft, in-review}**:
+   - Tell user: "Proposal exists at $PROPOSAL_FILE but status=$STATUS. Accept it first or proceed without."
+   - Ask: `[A] accept now + use it / [P] proceed without / [N] cancel`
+   - If `A`: edit frontmatter `status: accepted`, sync, log, then load as brainstorm context
+   - If `P`: proceed to brainstorming as if no proposal
+
+3. **No proposal AND R-NNN appears big** (EFFORT extracted from row contains `L`, OR description mentions ≥2 module names):
+   - Ask: `No proposal for $ID. Run /ship-propose first? [Y/n]`
+   - If `Y`: tell user to run `/ship-propose $ID`, exit. Do not continue to brainstorm.
+   - If `n`: proceed to brainstorming with cold start
+
+4. **No proposal AND R-NNN appears small**: proceed straight to brainstorming (skip prompt — the smallness is the design signal that no proposal is needed).
+
 ### Common: Enter brainstorming
 
-6. **Invoke `superpowers:brainstorming`** with context: spec target = `docs/specs/${ID}-${slug}.md`, project = `<project_name>`.
+6. **Invoke `superpowers:brainstorming`** with context: spec target = `docs/specs/${ID}-${slug}.md`, project = `<project_name>`. If a proposal was loaded above, include its §1-§7 in the initial context.
 
 7. **brainstorming will produce** a spec file. Confirm it landed at `docs/specs/${ID}-${slug}.md`.
 
