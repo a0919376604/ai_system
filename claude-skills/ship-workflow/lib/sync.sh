@@ -50,6 +50,20 @@ for f in VISION.md STRATEGY.md ROADMAP.md QUARTERLY_GOALS.md; do
   fi
 done
 
+# Mirror vault Proposals/ → repo docs/proposals/ (read-only one-way mirror).
+# Skips _archive/ subdir if present (shelved/superseded proposals stay vault-only).
+VAULT_PROPOSALS="$PROJECT_PATH/Proposals"
+REPO_PROPOSALS="$REPO_ROOT/docs/proposals"
+if [ -d "$VAULT_PROPOSALS" ]; then
+  mkdir -p "$REPO_PROPOSALS"
+  for f in "$VAULT_PROPOSALS"/*.md; do
+    [ -f "$f" ] || continue
+    bn=$(basename "$f")
+    cp "$f" "$REPO_PROPOSALS/$bn.tmp"
+    mv "$REPO_PROPOSALS/$bn.tmp" "$REPO_PROPOSALS/$bn"
+  done
+fi
+
 # Update freshness marker
 mkdir -p "$REPO_ROOT/.claude"
 date +%s > "$LAST_PULL"

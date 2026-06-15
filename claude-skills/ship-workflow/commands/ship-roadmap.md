@@ -85,7 +85,20 @@ You are running the Roadmap refresh ritual.
    git commit -m "chore: refresh ROADMAP.md"
    ```
 
-11. **Report:** Count of items moved between sections, top 3 "Now" priorities, **count of newly-decomposed epics + child counts**, next suggested action (`/ship-next`).
+11. **Report:**
+    - Count of items moved between sections
+    - Top 3 "Now" priorities
+    - **Count of newly-decomposed epics + child counts**
+    - **Proposal suggestions** — scan items that changed this run (newly added, Later→Next, Next→Now). For each that has `effort=L` OR `confidence=low|medium` OR description hints at cross-module impact (≥2 modules in `[[Architecture/modules/]]`):
+      ```
+      ⚠️ $ID changed this run with effort=$EFFORT confidence=$CONF.
+         Consider /ship-propose $ID before /ship-next.
+      ```
+    - Next suggested action:
+      ```
+      $ /ship-propose                    ← auto-picks next R-NNN without active proposal
+      (or specify: /ship-propose <R-NNN>)
+      ```
 
 ## Fallback
 

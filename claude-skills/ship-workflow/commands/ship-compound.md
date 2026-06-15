@@ -48,7 +48,28 @@ You are wrapping up a Roadmap item.
    - Move the line to "✅ Done" with `· ✅ $(date +%Y-%m-%d)` suffix
    - Atomic write via `.tmp` + `mv`
 
-8. **Re-sync:**
+7b. **Update Proposal (if any).** Find any vault proposal for this R-NNN:
+
+   ```bash
+   PROJECT_PATH=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)
+   PROPOSALS_DIR="$PROJECT_PATH/Proposals"
+   PROPOSAL_FILE=$(find "$PROPOSALS_DIR" -name "*-${ID}-*-proposal.md" 2>/dev/null | head -1)
+
+   if [ -n "$PROPOSAL_FILE" ]; then
+     # 1. Flip status to shipped
+     sed -i.bak 's/^status: .*/status: shipped/' "$PROPOSAL_FILE"
+     rm "$PROPOSAL_FILE.bak"
+
+     # 2. Add cross-link to the learning at the end of §8.
+     if ! grep -q "Shipped via:" "$PROPOSAL_FILE"; then
+       printf "\n- Shipped via: [[docs/learnings/%s-%s]]\n" "$ID" "$slug" >> "$PROPOSAL_FILE"
+     fi
+
+     echo "Marked $PROPOSAL_FILE as shipped + linked learning."
+   fi
+   ```
+
+8. **Re-sync** (after ROADMAP + proposal updates so docs/product/ and docs/proposals/ both refresh):
    ```bash
    ~/.claude/skills/ship-workflow/lib/sync.sh --force
    ```
@@ -56,7 +77,7 @@ You are wrapping up a Roadmap item.
 9. **Log + commit:**
    ```bash
    echo "| $(date +%Y-%m-%d\ %H:%M) | ship-compound | $ID | shipped | n |" >> docs/learnings/_log.md
-   git add docs/learnings/${ID}-${slug}.md docs/product/ROADMAP.md docs/learnings/_log.md
+   git add docs/learnings/${ID}-${slug}.md docs/product/ROADMAP.md docs/proposals/ docs/learnings/_log.md
    git commit -m "compound: $ID — shipped + learning + ROADMAP update"
    ```
 
