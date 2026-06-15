@@ -1,11 +1,11 @@
 ---
 name: ship-workflow
-description: Per-repo product development workflow integrating Superpowers (brainstorm/spec/plan/build) with Compound Engineering (roadmap/decision/learnings). Installs 7 ship-* slash commands. Use when starting product development in a new repo, capturing ideas/decisions, planning roadmap, or shipping features through the brainstorm → spec → plan → build → compound loop.
+description: Per-repo product development workflow integrating Superpowers (brainstorm/spec/plan/build) with Compound Engineering (roadmap/decision/learnings). Installs 10 ship-* slash commands. Use when starting product development in a new repo, capturing ideas/decisions, planning roadmap, or shipping features through the brainstorm → spec → plan → build → compound loop.
 ---
 
 # Ship Workflow
 
-Per-repo product development workflow. Installs 9 slash commands into a target repo's `.claude/commands/`:
+Per-repo product development workflow. Installs 10 slash commands into a target repo's `.claude/commands/`:
 
 **Core lifecycle (7):**
 - **`/ship-init`** — Bootstrap workflow (folders, commands, AIR-OS Product Brain stub)
@@ -16,14 +16,22 @@ Per-repo product development workflow. Installs 9 slash commands into a target r
 - **`/ship-build [--from-spec <path>]`** — Plan + execute via superpowers + executor
 - **`/ship-compound`** — Write learning + promote patterns + close Roadmap item
 
-**Knowledge-input bridges (2):**
-- **`/ship-arch`** — Refresh AIR-OS Architecture/ docs (thin wrapper over `/obsidian-architect`)
+**Knowledge bridges (3):**
+- **`/ship-arch`** — Refresh AIR-OS Architecture/ docs (thin wrapper over `/obsidian-architect`) — **descriptive** snapshot of current state
 - **`/ship-research <topic>`** — Vault-first deep research (thin wrapper over `/obsidian-research-deep`)
+- **`/ship-propose [R-NNN]`** — Produce **prescriptive** proposal doc for a Roadmap item (orthogonal to ship-arch); orchestrates ship-research as sub-step; Self-FAQ pattern is the forcing function
 
 ## Dual-Brain Architecture
 
-- **Obsidian Product Brain** at AIR-OS `10 Projects/<repo-name>/` holds VISION / STRATEGY / ROADMAP / QUARTERLY_GOALS
-- **Repo Execution Brain** at `<repo>/docs/` holds ideas / decisions / brainstorms / specs / plans / learnings
+- **Obsidian Product Brain** at AIR-OS `10 Projects/<repo-name>/`:
+  - VISION / STRATEGY / ROADMAP / QUARTERLY_GOALS (manual + ship-roadmap)
+  - `Architecture/` (ship-arch, descriptive)
+  - `Proposals/` (ship-propose, prescriptive)
+  - `Research/` (ship-research, external grounding)
+- **Repo Execution Brain** at `<repo>/docs/`:
+  - `ideas/` `decisions/` `brainstorms/` `specs/` `plans/` `learnings/`
+  - `product/` (mirror of vault strategy + roadmap)
+  - `proposals/` (mirror of vault Proposals/)
 - One-way sync (Obsidian → repo) on every ship-* command invocation, with 60-second freshness window
 
 ## Usage
