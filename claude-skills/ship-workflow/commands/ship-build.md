@@ -2,7 +2,7 @@
 name: ship-build
 description: Spec → plan via superpowers:writing-plans → user picks executor (subagent / inline / codex)
 argument-hint: "[--from-spec <path>]"
-discord-visible: false
+discord-visible: true
 ---
 
 # /ship-build

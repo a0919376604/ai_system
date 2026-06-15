@@ -1,7 +1,7 @@
 ---
 name: ship-init
 description: Bootstrap Ship Workflow in current repo (folders + commands + AIR-OS Product Brain stub)
-argument-hint: "[--custom] [--upgrade]"
+argument-hint: "[<repo>]"
 discord-visible: true
 ---
 
@@ -11,6 +11,7 @@ You are bootstrapping the Ship Workflow in the user's current repo.
 
 ## Arguments
 
+- `<repo>` (optional) — single bare word treated as the project name override (skip basename(pwd) lookup). Useful when invoking from Discord where the channel-bound cwd doesn't match the intended AIR-OS project name. e.g. `/ship-init langlive-line-oa` forces `10 Projects/langlive-line-oa/` as the AIR-OS target.
 - `--custom` — interactively prompt for per-repo config overrides and write `.claude/ship-config.yml`
 - `--upgrade` — only re-copy `.claude/commands/ship-*.md` from the skill (preserves docs/ and Obsidian content)
 
@@ -22,6 +23,8 @@ You are bootstrapping the Ship Workflow in the user's current repo.
    ~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path
    ~/.claude/skills/ship-workflow/lib/airos-binding.sh vault
    ```
+   **If `$ARGUMENTS` is a single bare word (no flags), use it as the project name and skip the basename(pwd) lookup.** This lets Discord callers force a specific AIR-OS project even when the channel-bound cwd has a different folder name. Persist this override into `.claude/ship-config.yml` with `airos_project: <repo>` so subsequent ship-* commands resolve the same way.
+
    If the global config (`~/.claude/ship-workflow.yml`) is missing, STOP and ask the user to create it with `airos_vault: /path/to/SecondBrain`.
 
 2. **`--upgrade` short-circuit.** If `--upgrade`:

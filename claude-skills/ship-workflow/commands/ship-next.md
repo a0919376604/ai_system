@@ -2,7 +2,7 @@
 name: ship-next
 description: Pick next Roadmap item, enter superpowers:brainstorming to produce brainstorm + spec
 argument-hint: "[--adhoc <description>]"
-discord-visible: false
+discord-visible: true
 ---
 
 # /ship-next
