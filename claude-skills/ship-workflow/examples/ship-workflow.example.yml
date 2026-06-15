@@ -5,6 +5,7 @@ airos_vault: /Users/leric/Documents/SecondBrain
 
 # Optional (defaults shown)
 airos_projects_dir: "10 Projects"
-default_roadmap_mode: soft           # soft | strict
-default_id_pad: 3                    # IDEA-001 vs IDEA-1
-auto_pull_freshness_window: 60       # seconds; sync.sh skip threshold
+code_root: /Users/leric/Desktop/code   # /ship-init <repo> resolves to <code_root>/<repo>
+default_roadmap_mode: soft             # soft | strict
+default_id_pad: 3                      # IDEA-001 vs IDEA-1
+auto_pull_freshness_window: 60         # seconds; sync.sh skip threshold

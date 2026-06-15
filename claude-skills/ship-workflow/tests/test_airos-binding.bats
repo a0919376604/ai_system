@@ -60,3 +60,22 @@ EOF
   result="$(HOME="$HOME_OVERRIDE" "$SHIP_LIB/airos-binding.sh" roadmap_mode)"
   [ "$result" = "soft" ]
 }
+
+@test "airos-binding: emits code_root" {
+  cat > "$HOME_OVERRIDE/.claude/ship-workflow.yml" <<EOF
+airos_vault: $AIROS
+code_root: /Users/test/Desktop/code   # local workspace root
+EOF
+  cd "$REPO" || exit 1
+  result="$(HOME="$HOME_OVERRIDE" "$SHIP_LIB/airos-binding.sh" code_root)"
+  [ "$result" = "/Users/test/Desktop/code" ]
+}
+
+@test "airos-binding: code_root empty when not set" {
+  cat > "$HOME_OVERRIDE/.claude/ship-workflow.yml" <<EOF
+airos_vault: $AIROS
+EOF
+  cd "$REPO" || exit 1
+  result="$(HOME="$HOME_OVERRIDE" "$SHIP_LIB/airos-binding.sh" code_root)"
+  [ -z "$result" ]
+}

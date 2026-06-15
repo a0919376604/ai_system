@@ -11,21 +11,49 @@ You are bootstrapping the Ship Workflow in the user's current repo.
 
 ## Arguments
 
-- `<repo>` (optional) — single bare word treated as the project name override (skip basename(pwd) lookup). Useful when invoking from Discord where the channel-bound cwd doesn't match the intended AIR-OS project name. e.g. `/ship-init langlive-line-oa` forces `10 Projects/langlive-line-oa/` as the AIR-OS target.
+- `<repo>` (optional) — accepts three forms:
+  - **Bare word** (e.g. `langlive-line-oa`) — resolves to `<code_root>/<repo>` (where `code_root` comes from `~/.claude/ship-workflow.yml`). If that directory exists, `cd` there and use `<repo>` as the AIR-OS project name. This is the mobile-friendly form.
+  - **Absolute path** (starts with `/`) — `cd` there, use basename as project name.
+  - **Omitted** — use current working directory; project name = basename(pwd) or `.claude/ship-config.yml` override.
 - `--custom` — interactively prompt for per-repo config overrides and write `.claude/ship-config.yml`
 - `--upgrade` — only re-copy `.claude/commands/ship-*.md` from the skill (preserves docs/ and Obsidian content)
 
 ## Steps
 
-1. **Identify project name and AIR-OS path.** Run:
+1. **Resolve target directory + project name.** Order of checks:
+
+   ```bash
+   ARG="$1"   # may be empty, a bare word, or an absolute path
+   CODE_ROOT=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh code_root)
+
+   if [ -z "$ARG" ]; then
+     # No arg → use current cwd
+     TARGET_DIR="$(pwd)"
+   elif [[ "$ARG" == /* ]]; then
+     # Absolute path
+     TARGET_DIR="$ARG"
+   elif [ -d "$CODE_ROOT/$ARG" ]; then
+     # Bare word + code_root has matching subdir
+     TARGET_DIR="$CODE_ROOT/$ARG"
+   else
+     # Bare word but no matching code_root subdir → treat as project-name override only
+     TARGET_DIR="$(pwd)"
+     PROJECT_NAME_OVERRIDE="$ARG"   # used to write .claude/ship-config.yml
+   fi
+
+   cd "$TARGET_DIR"
+   ```
+
+   Then resolve identity:
    ```bash
    ~/.claude/skills/ship-workflow/lib/airos-binding.sh project_name
    ~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path
    ~/.claude/skills/ship-workflow/lib/airos-binding.sh vault
    ```
-   **If `$ARGUMENTS` is a single bare word (no flags), use it as the project name and skip the basename(pwd) lookup.** This lets Discord callers force a specific AIR-OS project even when the channel-bound cwd has a different folder name. Persist this override into `.claude/ship-config.yml` with `airos_project: <repo>` so subsequent ship-* commands resolve the same way.
 
-   If the global config (`~/.claude/ship-workflow.yml`) is missing, STOP and ask the user to create it with `airos_vault: /path/to/SecondBrain`.
+   If `PROJECT_NAME_OVERRIDE` was set (rare path-mismatch case), persist into `.claude/ship-config.yml` with `airos_project: <name>` so subsequent ship-* commands resolve the same way.
+
+   If the global config (`~/.claude/ship-workflow.yml`) is missing, STOP and ask the user to create it with `airos_vault: /path/to/SecondBrain` and `code_root: /path/to/code/workspace`.
 
 2. **`--upgrade` short-circuit.** If `--upgrade`:
    - `cp ~/.claude/skills/ship-workflow/commands/*.md .claude/commands/`

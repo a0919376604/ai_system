@@ -6,6 +6,9 @@
 #   airos-binding.sh project_path   # prints AIR-OS 10 Projects/<name>/ path
 #   airos-binding.sh project_name   # prints just the project name
 #   airos-binding.sh roadmap_mode   # prints "soft" | "strict"
+#   airos-binding.sh code_root      # prints local code workspace root
+#                                     (e.g. /Users/leric/Desktop/code)
+#                                     /ship-init <repo> resolves to <code_root>/<repo>
 
 set -euo pipefail
 
@@ -38,6 +41,7 @@ PROJECTS_DIR="$(read_yaml_key "$GLOBAL_CFG" airos_projects_dir)"
 PROJECTS_DIR="${PROJECTS_DIR:-10 Projects}"
 ROADMAP_MODE_GLOBAL="$(read_yaml_key "$GLOBAL_CFG" default_roadmap_mode)"
 ROADMAP_MODE_GLOBAL="${ROADMAP_MODE_GLOBAL:-soft}"
+CODE_ROOT="$(read_yaml_key "$GLOBAL_CFG" code_root)"
 
 # Per-repo overrides
 PROJECT_NAME_OVERRIDE=""
@@ -55,8 +59,9 @@ case "${1:-}" in
   project_path)  echo "$VAULT/$PROJECTS_DIR/$PROJECT_NAME" ;;
   project_name)  echo "$PROJECT_NAME" ;;
   roadmap_mode)  echo "$ROADMAP_MODE" ;;
+  code_root)     echo "$CODE_ROOT" ;;
   *)
-    echo "Usage: $0 {vault|project_path|project_name|roadmap_mode}" >&2
+    echo "Usage: $0 {vault|project_path|project_name|roadmap_mode|code_root}" >&2
     exit 2
     ;;
 esac
