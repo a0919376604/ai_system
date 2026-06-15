@@ -23,7 +23,7 @@ You are producing a **prescriptive** proposal doc for a Roadmap item — orthogo
 This file currently covers:
 - ✅ Phase 1: Manual draft generation
 - ✅ Phase 2: Self-FAQ pass via adversarial reviewer sub-agent
-- ⬜ Phase 3: /ship-research orchestration
+- ✅ Phase 3: /ship-research orchestration + `--no-research` flag
 - ⬜ Phase 4: no-arg auto-pick + --supersede / --from-idea / --size flags
 - ⬜ Phase 5: downstream ship-* hooks
 
@@ -45,11 +45,20 @@ This file currently covers:
    mkdir -p "$PROPOSALS_DIR"
    ```
 
-3. **Parse argument.** The `argument-hint` allows `[R-NNN]` as first positional. If user provided `R-NNN` explicitly, use it. Otherwise (Phase 4 will add auto-pick) **abort with**:
+3. **Parse arguments.**
+   - `[R-NNN]` — first positional; required until Phase 4 (auto-pick lands)
+   - `--no-research` — boolean; skip the external research sub-step
+   - `--size S|M|L` — explicit size override (added in Phase 4)
+   - `--from-idea IDEA-NNN` — inherit context from IDEA (added in Phase 4)
+   - `--supersede` — replace existing active proposal (added in Phase 4)
+
+   For Phase 3, only `[R-NNN]` and `--no-research` are honored. Set `DO_RESEARCH=1` by default, `DO_RESEARCH=0` if `--no-research` present.
+
+   If `[R-NNN]` is omitted (auto-pick not yet implemented), abort with:
 
    ```
    ERROR: /ship-propose requires an R-NNN until Phase 4 ergonomics are implemented.
-   Usage: /ship-propose R-001
+   Usage: /ship-propose R-001 [--no-research]
    ```
 
 4. **Fetch the R-NNN line + description from ROADMAP:**
@@ -112,6 +121,36 @@ This file currently covers:
     ```
 
     Build a list of `[[docs/ideas/IDEA-NNN]]` / `[[docs/decisions/D-NNN]]` wikilinks.
+
+10b. **External grounding** (unless `--no-research`): orchestrate `/ship-research` as a sub-step.
+
+    If `$DO_RESEARCH = 1`:
+
+    a. Build the research topic string from R-NNN description + nearby technical keywords. Example for R-001:
+       ```
+       TOPIC="$DESC | ai companion narrative generation prior art (storylet / drama manager / arc systems)"
+       ```
+
+    b. Dispatch `/ship-research` with the topic. The research-deep command will:
+       - Phase 1: scan vault for existing knowledge
+       - Phase 2: gap analysis → sub-queries
+       - Phase 3: fetch via `scripts.research.research_deep`
+       - Phase 4: synthesize delta + write file with AI-first frontmatter
+
+    c. Note where research-deep wrote the result. Typical path:
+       ```
+       $PROJECT_PATH/Research/<slug>-deep.md
+       ```
+
+    d. **Read the result.** Extract the 3-5 most-relevant findings (look for sections like
+       "Key findings", "Industry patterns", "Cross-references"). These get cited in:
+       - §2 現狀 (when prior art frames our limitations)
+       - §3 提案 (when prior art validates / refutes our direction)
+       - §3.x Self-FAQ (the sub-agent in Phase 2 sees research too — pass it in as part of the adversarial reviewer prompt)
+       - `sources:` frontmatter — add `"[[Research/<slug>-deep]]"` to the list
+
+    e. **If research-deep returns thin / nothing useful**, log a note in §7 開放問題:
+       `- External research returned no strong signal — direction is novel or under-researched.`
 
 11. **Render template + draft proposal.** Read `~/.claude/skills/ship-workflow/templates/obsidian/PROPOSAL.md`, substitute:
     - `{{id}}` → `$ID`
