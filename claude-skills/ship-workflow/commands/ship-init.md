@@ -2,7 +2,7 @@
 name: ship-init
 description: Bootstrap Ship Workflow in current repo (folders + commands + AIR-OS Product Brain stub)
 argument-hint: "[--custom] [--upgrade]"
-discord-visible: false
+discord-visible: true
 ---
 
 # /ship-init
