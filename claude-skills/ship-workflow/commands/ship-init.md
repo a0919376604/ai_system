@@ -61,8 +61,8 @@ You are bootstrapping the Ship Workflow in the user's current repo.
    - Done. Skip the rest.
 
 3. **Scaffold repo side.** Create:
-   - `.claude/commands/` and copy all 9 `ship-*.md` from `~/.claude/skills/ship-workflow/commands/` (7 core + 2 bridges: ship-arch, ship-research)
-   - `docs/ideas/`, `docs/decisions/`, `docs/brainstorms/`, `docs/specs/`, `docs/plans/`, `docs/learnings/`, `docs/product/`
+   - `.claude/commands/` and copy all 10 `ship-*.md` from `~/.claude/skills/ship-workflow/commands/` (7 core + 3 bridges: ship-arch, ship-research, **ship-propose**)
+   - `docs/ideas/`, `docs/decisions/`, `docs/brainstorms/`, `docs/specs/`, `docs/plans/`, `docs/learnings/`, `docs/product/`, `docs/proposals/`
    - `docs/learnings/_log.md` with header:
      ```markdown
      # Ship Workflow Log
@@ -91,8 +91,8 @@ You are bootstrapping the Ship Workflow in the user's current repo.
 
 7. **Verify.** Run:
    ```bash
-   ls .claude/commands/   # should have 9 ship-*.md files
-   ls docs/               # should have 7 subdirs
+   ls .claude/commands/   # should have 10 ship-*.md files
+   ls docs/               # should have 8 subdirs
    ls "<project_path>"    # should have 4 strategy .md files
    ```
 
