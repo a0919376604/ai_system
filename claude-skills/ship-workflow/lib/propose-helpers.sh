@@ -34,6 +34,7 @@ list_roadmap_items() {
       [ -n "$section" ] && [ "$section" != "Done" ] && printf "%s\t%s\t%s\n" "$section" "$id" "$desc"
     fi
   done < "$roadmap"
+  return 0
 }
 
 list_active_proposals() {
