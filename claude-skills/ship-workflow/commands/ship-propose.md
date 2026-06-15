@@ -22,7 +22,7 @@ You are producing a **prescriptive** proposal doc for a Roadmap item — orthogo
 
 This file currently covers:
 - ✅ Phase 1: Manual draft generation
-- ⬜ Phase 2: Self-FAQ pass via adversarial reviewer sub-agent
+- ✅ Phase 2: Self-FAQ pass via adversarial reviewer sub-agent
 - ⬜ Phase 3: /ship-research orchestration
 - ⬜ Phase 4: no-arg auto-pick + --supersede / --from-idea / --size flags
 - ⬜ Phase 5: downstream ship-* hooks
@@ -123,8 +123,8 @@ This file currently covers:
 
     | Size | What to draft now |
     |---|---|
-    | `L` (Full) | §1 / §2 / §3 / §4 / §5 all filled. §3.x left as placeholder for Phase 2. |
-    | `M` (Lite) | §1 / §3 / §4 / §5 filled. §2 a 2-3 bullet summary linking Architecture. |
+    | `L` (Full) | §1 / §2 / §3 / §4 / §5 all filled. §3.x filled by step 11b below. |
+    | `M` (Lite) | §1 / §3 / §4 / §5 filled. §2 a 2-3 bullet summary linking Architecture. §3.x filled by step 11b below. |
     | (`skip` already handled at step 7) | |
 
     Drive a short interactive dialogue with the user to fill in:
@@ -133,6 +133,43 @@ This file currently covers:
     - §3 提案結構(含 mermaid 圖建議)
     - §4 替代方案
     - §5 高層 phase
+
+11b. **Self-FAQ pass** (required for L and M sizes; skip for `skip`-classified). The forcing function of the entire proposal — **the author must answer the questions; the sub-agent only generates them**.
+
+    Dispatch `compound-engineering:ce-adversarial-document-reviewer` with this prompt:
+
+    ```
+    You are reviewing a draft Roadmap proposal for ai-companion / FastAPI project ai-eden-service.
+
+    The proposal's R-NNN is $ID, titled "$DESC". Below is the current draft (sections §1-§5).
+    Cross-reference these context files: $ARCH_CROSSLINKS, $RESEARCH_NOTES (if any).
+
+    Your task: produce 5-10 sharp questions that an outside reviewer (or the author themselves
+    3 months later) would ask about this proposal. Focus on:
+      - Unstated assumptions
+      - Weak justifications for "why this approach not <obvious alternative>"
+      - Missing analysis of failure modes
+      - Conflicts with existing Architecture (especially [[Architecture/decisions]] known-limitations)
+      - Scope inflation / scope under-coverage
+
+    Return as a numbered list. ONE QUESTION PER ITEM. No answers — just questions.
+
+    Draft proposal:
+    ---
+    <paste §1-§5 draft here>
+    ---
+    ```
+
+    When the sub-agent returns 5-10 questions:
+    - Read them carefully
+    - Pick 3-7 that feel weakest (i.e. you can't immediately answer with confidence)
+    - For each picked question:
+      - Add it to §3.x as `### Q<n>: <question text>` followed by `**答:** <your answer>`
+      - If you cannot honestly answer, copy the question to §7 開放問題 instead
+    - Unpicked questions (those you immediately know the answer to with high confidence) can be skipped — they would not change the design
+
+    **Quality check:** if all 3-7 answers feel trivially obvious, the sub-agent didn't push hard enough; re-dispatch with adversarial intensity dial-up:
+    "Be harsher. Look for the failure mode I haven't thought of. Don't be polite."
 
 12. **Write file atomically:**
 
