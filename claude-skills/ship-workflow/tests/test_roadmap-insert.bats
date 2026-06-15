@@ -57,3 +57,51 @@ teardown() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"Now"* ]]
 }
+
+@test "roadmap-insert: --epic adds (epic) marker" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014 "Webhook retry" --epic
+  grep -q '\*\*R-014 (epic)\*\*' "$ROADMAP"
+}
+
+@test "roadmap-insert: --child inserts indented child under parent" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014 "Webhook retry" --epic
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014.1 "Backoff layer" --child R-014
+  # Child appears after parent
+  parent_ln=$(grep -n 'R-014 (epic)' "$ROADMAP" | head -1 | cut -d: -f1)
+  child_ln=$(grep -n 'R-014\.1' "$ROADMAP" | head -1 | cut -d: -f1)
+  [ "$child_ln" -gt "$parent_ln" ]
+  # Child is indented (starts with 2 spaces)
+  grep -E '^  - \[ \] \*\*R-014\.1\*\*' "$ROADMAP"
+}
+
+@test "roadmap-insert: --child errors if parent not found" {
+  run "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014.1 "Orphan" --child R-099
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"parent R-099 not found"* ]]
+}
+
+@test "roadmap-insert: --mark-warning adds ⚠️ + flagged annotation" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014 "Webhook retry"
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014 --mark-warning "touches 3 modules"
+  grep -q '⚠️ \*\*R-014\*\*' "$ROADMAP"
+  grep -q 'flagged: touches 3 modules' "$ROADMAP"
+}
+
+@test "roadmap-insert: --mark-warning idempotent" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014 "Webhook retry"
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014 --mark-warning "reason 1"
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014 --mark-warning "reason 2"
+  warning_count=$(grep -c '⚠️ \*\*R-014\*\*' "$ROADMAP")
+  [ "$warning_count" -eq 1 ]
+}
+
+@test "roadmap-insert: --mark-epic strips ⚠️ + adds (epic)" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014 "Webhook retry"
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014 --mark-warning "too big"
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014 --mark-epic
+  # ⚠️ gone, (epic) present
+  ! grep -q '⚠️' "$ROADMAP"
+  grep -q '\*\*R-014 (epic)\*\*' "$ROADMAP"
+  # flagged annotation also gone
+  ! grep -q 'flagged:' "$ROADMAP"
+}

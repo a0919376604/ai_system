@@ -81,3 +81,42 @@ EOF
   ids=$(cat "$REPO"/.tmp-* | sort -u | wc -l | tr -d ' ')
   [ "$ids" -eq 5 ]
 }
+
+@test "id-gen: --child returns R-014.1 when no children exist" {
+  cd "$REPO"
+  result="$("$SHIP_LIB/id-gen.sh" roadmap --child R-014)"
+  [ "$result" = "R-014.1" ]
+}
+
+@test "id-gen: --child returns next after existing children on disk" {
+  cd "$REPO"
+  touch docs/specs/R-014.1-foo.md
+  touch docs/specs/R-014.2-bar.md
+  result="$("$SHIP_LIB/id-gen.sh" roadmap --child R-014)"
+  [ "$result" = "R-014.3" ]
+}
+
+@test "id-gen: --child scans ROADMAP.md too for **R-014.M**" {
+  cd "$REPO"
+  cat > docs/product/ROADMAP.md <<EOF
+## 🔥 Now
+- [ ] **R-014 (epic)** Webhook retry
+  - [ ] **R-014.5** Foo
+  - [ ] **R-014.2** Bar
+EOF
+  result="$("$SHIP_LIB/id-gen.sh" roadmap --child R-014)"
+  [ "$result" = "R-014.6" ]
+}
+
+@test "id-gen: --child requires roadmap type" {
+  cd "$REPO"
+  run "$SHIP_LIB/id-gen.sh" idea --child R-014
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--child only valid with type 'roadmap'"* ]]
+}
+
+@test "id-gen: --child rejects malformed parent" {
+  cd "$REPO"
+  run "$SHIP_LIB/id-gen.sh" roadmap --child bogus
+  [ "$status" -ne 0 ]
+}

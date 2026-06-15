@@ -5,14 +5,25 @@
 #   id-gen.sh idea            # next IDEA-NNN
 #   id-gen.sh decision        # next D-NNN
 #   id-gen.sh roadmap         # next R-NNN
-#   id-gen.sh <type> --reserve  # next + create a reservation marker so concurrent
-#                                callers can't pick the same NNN
+#   id-gen.sh roadmap --child R-014   # next child of R-014 (e.g. R-014.3)
+#   id-gen.sh <type> --reserve        # next + create a reservation marker so
+#                                       concurrent callers can't pick the same NNN
 
 set -euo pipefail
 
 TYPE="${1:-}"
 RESERVE=0
-[ "${2:-}" = "--reserve" ] && RESERVE=1
+CHILD_PARENT=""
+
+# Parse optional flags
+shift || true
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --reserve)  RESERVE=1; shift ;;
+    --child)    CHILD_PARENT="${2:-}"; shift 2 ;;
+    *)          shift ;;
+  esac
+done
 
 REPO_ROOT="$(pwd)"
 LOCKDIR="$REPO_ROOT/.claude/.id-gen.lock"
@@ -61,6 +72,74 @@ case "$TYPE" in
     exit 2
     ;;
 esac
+
+# Child allocation: given parent R-014, return next R-014.M.
+# Scans:
+#   - on-disk files starting with R-014. in the 4 R-NNN folders
+#   - ROADMAP.md mirror for **R-014.M** markers
+#   - reservation file lines starting with R-014.
+# Then prints R-014.<max+1>
+if [ -n "$CHILD_PARENT" ]; then
+  if [ "$TYPE" != "roadmap" ]; then
+    echo "ERROR: --child only valid with type 'roadmap'" >&2
+    exit 2
+  fi
+  if [[ ! "$CHILD_PARENT" =~ ^R-[0-9]+$ ]]; then
+    echo "ERROR: --child requires a parent R-NNN (got '$CHILD_PARENT')" >&2
+    exit 2
+  fi
+
+  child_prefix="${CHILD_PARENT}."
+
+  next_child() {
+    local max=0
+    for d in "${search_dirs[@]}"; do
+      [ -d "$d" ] || continue
+      while IFS= read -r f; do
+        local n
+        n=$(basename "$f" | sed -E "s/^${CHILD_PARENT}\.([0-9]+).*/\1/")
+        n=$((10#$n))
+        [ "$n" -gt "$max" ] && max=$n
+      done < <(find "$d" -maxdepth 1 -type f -name "${CHILD_PARENT}.*.md" 2>/dev/null)
+    done
+
+    # ROADMAP scan for **R-014.M** patterns
+    if [ -f "$REPO_ROOT/docs/product/ROADMAP.md" ]; then
+      local escaped_parent
+      escaped_parent=$(echo "$CHILD_PARENT" | sed 's/[.]/\\./g')
+      while IFS= read -r line; do
+        local n
+        n=$(echo "$line" | sed -E "s/.*\*\*${escaped_parent}\.([0-9]+)\*\*.*/\1/")
+        [[ "$n" =~ ^[0-9]+$ ]] || continue
+        n=$((10#$n))
+        [ "$n" -gt "$max" ] && max=$n
+      done < <(grep -oE "\*\*${escaped_parent}\.[0-9]+\*\*" "$REPO_ROOT/docs/product/ROADMAP.md")
+    fi
+
+    # Reservation file scan
+    if [ -f "$REPO_ROOT/.claude/.id-reservations" ]; then
+      while IFS= read -r line; do
+        if [[ "$line" == "${child_prefix}"* ]]; then
+          local n
+          n="${line#${child_prefix}}"
+          [[ "$n" =~ ^[0-9]+$ ]] || continue
+          n=$((10#$n))
+          [ "$n" -gt "$max" ] && max=$n
+        fi
+      done < "$REPO_ROOT/.claude/.id-reservations"
+    fi
+
+    echo "${child_prefix}$((max + 1))"
+  }
+
+  acquire_lock
+  new_id="$(next_child)"
+  if [ "$RESERVE" -eq 1 ]; then
+    echo "$new_id" >> "$REPO_ROOT/.claude/.id-reservations"
+  fi
+  echo "$new_id"
+  exit 0
+fi
 
 next_id() {
   local max=0

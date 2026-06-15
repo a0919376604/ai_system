@@ -9,6 +9,7 @@ project: "[[{{project}}]]"
 roadmap-item: {{id}}
 spec-path: docs/specs/{{id}}-{{slug}}.md
 plan-path: docs/plans/{{id}}-{{slug}}.md
+parent: null   # if this is a child of an epic R-NNN, set to that R-NNN
 ---
 
 ## For future Claude

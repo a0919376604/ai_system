@@ -22,16 +22,28 @@ You are picking the next item and entering the brainstorm flow.
    ~/.claude/skills/ship-workflow/lib/sync.sh
    ```
 
-2. **Read** `docs/product/ROADMAP.md` "🔥 Now" section. Parse R-NNN items not marked `✅`.
+2. **Read** `docs/product/ROADMAP.md` "🔥 Now" section. Parse R-NNN items not marked `✅`. **Detect special states:**
+   - `⚠️ R-NNN` — flagged for decomposition by `/ship-roadmap`. Treat as actionable: when picking, the FIRST action is to offer decomposition (see step 4a).
+   - `R-NNN (epic)` — already decomposed. The epic itself is NOT directly actionable; only its `R-NNN.M` children are. When ranking, skip the epic and rank its children individually.
+   - `R-NNN.M` — child of an epic. Treat as a regular item.
 
 3. **Rank** by:
    - Explicit `impact=high` markers first
    - Dependencies satisfied (no unresolved `dep:` references)
    - `adhoc-inserted=true` items deprioritized vs planned items (planned > emergency)
+   - **Epics themselves are not in the rank** — their children are
 
-4. **Present top 1-2** to the user, get confirmation. Capture the chosen `R-NNN` and `<slug>`.
+4. **Present top 1-2** to the user, get confirmation. Capture the chosen `R-NNN` (or `R-NNN.M`) and `<slug>`.
 
-5. **Skip to "Common: Enter brainstorming" below.**
+4a. **Decompose-first if ⚠️ flagged.** If the chosen item carries the `⚠️` marker:
+    ```
+    R-NNN was flagged as too big by /ship-roadmap.
+    Decompose it now into 2-5 children before brainstorming the work itself? [Y/n]
+    ```
+    - **Y** (default): same flow as `/ship-roadmap` step 7 — short decompose brainstorm, allocate children via `id-gen.sh roadmap --child R-NNN`, insert via `roadmap-insert.sh ... --child`, convert parent to epic via `--mark-epic`. Then ask "Pick one child to brainstorm now?" and continue with that child as the chosen item.
+    - **n**: strip the ⚠️ (acknowledge as fine-as-is) and continue with the original R-NNN to brainstorming.
+
+5. **Skip to "Common: Enter brainstorming" below** with the (possibly child) chosen item.
 
 ### Branch B: `--adhoc <description>`
 

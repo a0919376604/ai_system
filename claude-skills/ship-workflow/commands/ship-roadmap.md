@@ -41,22 +41,51 @@ You are running the Roadmap refresh ritual.
    - Strip `adhoc-inserted=true` markers from any item now in Done
    - Sort "Next" and "Later" by Impact × Dependency
 
-6. **Show diff.** Render a unified diff between current ROADMAP.md and proposed, ask the user to confirm.
+6. **Detect "too big" items.** For each item in "Now", evaluate against this rubric:
+   - Description contains ≥ 2 distinct outcomes ("do X and Y and Z")
+   - Touches ≥ 3 modules per `Architecture/overview.md`
+   - Estimated effort (`est=`) > 1 week
+   - Has ≥ 3 unresolved dependencies (`dep: R-... R-... R-...`)
+   - ce-strategy independently rates `complexity: high`
 
-7. **On confirm: write to AIR-OS, then sync back to repo:**
+   **If ≥ 2 are true** → mark via `roadmap-insert.sh <ROADMAP> <R-NNN> --mark-warning "<one-line reason>"`. This prefixes the line with ⚠️ and adds a `↳ flagged: <reason>` annotation.
+
+7. **Interactive decompose (per ⚠️ item).** After all warnings applied, for each flagged R-NNN ask the user:
+   ```
+   ⚠️ R-NNN looks too big: <reason>
+   Decompose now into 2-5 smaller R-NNN.M children? [y/N/later]
+   ```
+   - **`y`**: Enter short decompose brainstorm — ask user "What are the 2-5 independently-shippable sub-items?" Generate slugs for each. Then:
+     ```bash
+     # Convert parent to epic
+     roadmap-insert.sh "$ROADMAP" R-NNN --mark-epic
+
+     # For each child, allocate ID + insert under parent
+     for desc in "child1 desc" "child2 desc" "child3 desc"; do
+       CHILD_ID=$(id-gen.sh roadmap --child R-NNN --reserve)
+       roadmap-insert.sh "$ROADMAP" "$CHILD_ID" "$desc" --child R-NNN
+     done
+     ```
+   - **`N`** (or default): drop the ⚠️ marker. User has decided this item is fine as-is. Run `roadmap-insert.sh <ROADMAP> R-NNN --mark-epic` to convert to epic without children (acknowledged but kept whole). Wait no — that's wrong. For `N`, just leave the ⚠️ off entirely:
+     - Re-write the line without ⚠️ by manually editing ROADMAP.md (sed `s/⚠️ //` for that specific line) and remove the ↳ flagged annotation
+   - **`later`** (or `l`): keep ⚠️ marker so ship-next can re-prompt next time the item is picked. Don't touch the line.
+
+8. **Show diff.** Render a unified diff between current ROADMAP.md and proposed, ask the user to confirm overall.
+
+9. **On confirm: write to AIR-OS, then sync back to repo:**
    ```bash
    # Edit $ROADMAP_PATH (atomic write — .tmp then mv)
    ~/.claude/skills/ship-workflow/lib/sync.sh --force
    ```
 
-8. **Log + commit (repo side):**
+10. **Log + commit (repo side):**
    ```bash
    echo "| $(date +%Y-%m-%d\ %H:%M) | ship-roadmap | - | refresh | n |" >> docs/learnings/_log.md
    git add docs/product/ROADMAP.md docs/learnings/_log.md
    git commit -m "chore: refresh ROADMAP.md"
    ```
 
-9. **Report:** Count of items moved between sections, top 3 "Now" priorities, next suggested action (`/ship-next`).
+11. **Report:** Count of items moved between sections, top 3 "Now" priorities, **count of newly-decomposed epics + child counts**, next suggested action (`/ship-next`).
 
 ## Fallback
 
