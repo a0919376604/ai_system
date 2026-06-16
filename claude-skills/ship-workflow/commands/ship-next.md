@@ -27,11 +27,13 @@ You are picking the next item and entering the brainstorm flow.
    - `R-NNN (epic)` — already decomposed. The epic itself is NOT directly actionable; only its `R-NNN.M` children are. When ranking, skip the epic and rank its children individually.
    - `R-NNN.M` — child of an epic. Treat as a regular item.
 
-3. **Rank** by:
+3. **Rank** by (in tiebreaker order, top down):
    - Explicit `impact=high` markers first
    - Dependencies satisfied (no unresolved `dep:` references)
    - `adhoc-inserted=true` items deprioritized vs planned items (planned > emergency)
-   - **Epics themselves are not in the rank** — their children are
+   - **Children of the same epic ordered ascending by `.M`** (R-014.1 before R-014.2 before R-014.3). The decompose brainstorm produces children in intended sequence; honor that order. Don't pick R-014.3 unless R-014.1 and R-014.2 are already done.
+   - For top-level R-NNN when all else ties: ascending by NNN (earlier-decided items go first). Weak preference — usually impact/dependency already broke the tie.
+   - **Epics themselves are not in the rank** — their children are. Skip any line containing `(epic)` when iterating "Now".
 
 4. **Present top 1-2** to the user, get confirmation. Capture the chosen `R-NNN` (or `R-NNN.M`) and `<slug>`.
 
