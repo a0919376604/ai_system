@@ -42,8 +42,18 @@ You are picking the next item and entering the brainstorm flow.
     R-NNN was flagged as too big by /ship-roadmap.
     Decompose it now into 2-5 children before brainstorming the work itself? [Y/n]
     ```
-    - **Y** (default): same flow as `/ship-roadmap` step 7 — short decompose brainstorm, allocate children via `id-gen.sh roadmap --child R-NNN`, insert via `roadmap-insert.sh ... --child`, convert parent to epic via `--mark-epic`. Then ask "Pick one child to brainstorm now?" and continue with that child as the chosen item.
-    - **n**: strip the ⚠️ (acknowledge as fine-as-is) and continue with the original R-NNN to brainstorming.
+    - **Y** (default): same flow as `/ship-roadmap` step 7 — short decompose brainstorm. **Every child MUST have action-verb description + done-when criterion** before being inserted (this is what makes "R-NNN.M" entries readable later; reject vague descriptions like "improve X" — push back for refinement). For each sub-item, capture `desc` (imperative verb + object), `done_when` (one observable success criterion), and optional `est`. Then allocate + insert:
+      ```bash
+      # Convert parent to epic
+      ~/.claude/skills/ship-workflow/lib/roadmap-insert.sh "$ROADMAP_PATH" R-NNN --mark-epic
+
+      # For each child gathered above:
+      CHILD_ID=$(~/.claude/skills/ship-workflow/lib/id-gen.sh roadmap --child R-NNN --reserve)
+      ~/.claude/skills/ship-workflow/lib/roadmap-insert.sh "$ROADMAP_PATH" "$CHILD_ID" "$desc" \
+        --child R-NNN --done-when "$done_when" ${est:+--est "$est"}
+      ```
+      Then ask "Pick one child to brainstorm now?" and continue with that child as the chosen item. The brainstorm for the picked child should start from its `done when:` annotation as the AC #1.
+    - **n**: strip the ⚠️ (acknowledge as fine-as-is) and continue with the original R-NNN to brainstorming. If the item lacks a `↳ done when:` annotation, prompt the user for one now and inject it via a manual edit of ROADMAP.md before continuing — brainstorming without a done-when is allowed but produces weaker specs.
 
 5. **Skip to "Common: Enter brainstorming" below** with the (possibly child) chosen item.
 

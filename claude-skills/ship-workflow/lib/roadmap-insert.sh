@@ -2,21 +2,24 @@
 # roadmap-insert.sh — modify ROADMAP.md "🔥 Now" section.
 #
 # Usage:
-#   roadmap-insert.sh <ROADMAP.md> <R-NNN> <description> [--adhoc] [--epic]
+#   roadmap-insert.sh <ROADMAP.md> <R-NNN> <description> [--adhoc] [--epic] [--done-when "<criteria>"] [--est <duration>]
 #       Insert a new R-NNN line at the top of "Now".
-#       --adhoc  → add adhoc-inserted=true marker
-#       --epic   → add (epic) suffix to RID (marks parent of decomposition)
+#       --adhoc      → add adhoc-inserted=true marker
+#       --epic       → add (epic) suffix to RID (marks parent of decomposition)
+#       --done-when  → add a "done when" annotation on a second line
+#       --est        → add est=<duration> to the line (e.g. "3d", "1w")
 #
-#   roadmap-insert.sh <ROADMAP.md> <R-NNN.M> <description> --child <parent>
-#       Insert a child line indented under the parent's row.
+#   roadmap-insert.sh <ROADMAP.md> <R-NNN.M> <description> --child <parent> [--done-when ...] [--est ...]
+#       Insert an indented child line under the parent. Same --done-when /
+#       --est annotations supported.
 #
 #   roadmap-insert.sh <ROADMAP.md> <R-NNN> --mark-warning "<reason>"
-#       Prefix the existing R-NNN line with ⚠️ + add a `↳ flagged:` annotation
-#       on the next line. Idempotent.
+#       Prefix the existing R-NNN line with WARN icon + add a flagged
+#       annotation on the next line. Idempotent.
 #
 #   roadmap-insert.sh <ROADMAP.md> <R-NNN> --mark-epic
-#       Convert existing line to (epic) — strip ⚠️ + flagged annotation if
-#       present, append (epic) marker. Used when decomposition starts.
+#       Convert existing line to (epic) — strip warn icon + flagged annotation
+#       if present, append (epic) marker. Used when decomposition starts.
 
 set -euo pipefail
 
@@ -43,8 +46,10 @@ ADHOC=0
 EPIC=0
 CHILD_PARENT=""
 WARN_REASON=""
+DONE_WHEN=""
+EST=""
 
-# Pull arg at position 3 if it's not a flag → it's DESC
+# Pull arg at position 3 if it is not a flag → it is DESC
 if [ $# -ge 3 ] && [[ "${3:-}" != --* ]]; then
   DESC="$3"
   shift 3
@@ -59,6 +64,8 @@ while [ $# -gt 0 ]; do
     --child)        MODE="child"; CHILD_PARENT="$2"; shift 2 ;;
     --mark-warning) MODE="mark-warning"; WARN_REASON="${2:-}"; shift 2 ;;
     --mark-epic)    MODE="mark-epic"; shift ;;
+    --done-when)    DONE_WHEN="${2:-}"; shift 2 ;;
+    --est)          EST="${2:-}"; shift 2 ;;
     *)              shift ;;
   esac
 done
@@ -67,23 +74,28 @@ TMP="${ROADMAP}.tmp"
 
 case "$MODE" in
   insert)
-    # Default mode: insert new line at top of Now
+    # Default mode: insert new line at top of Now (plus optional done-when annotation)
     if [ -z "$DESC" ]; then
       echo "ERROR: insert mode requires <description>" >&2
       exit 2
     fi
     suffix=""
-    [ "$ADHOC" -eq 1 ] && suffix=" · adhoc-inserted=true"
+    [ -n "$EST" ]      && suffix=" · est=${EST}"
+    [ "$ADHOC" -eq 1 ] && suffix="${suffix} · adhoc-inserted=true"
     suffix="${suffix} · status=in-progress"
     if [ "$EPIC" -eq 1 ]; then
       NEW_LINE="- [ ] **${RID} (epic)** ${DESC}${suffix}"
     else
       NEW_LINE="- [ ] **${RID}** ${DESC}${suffix}"
     fi
-    awk -v line="$NEW_LINE" '
+    ANNOTATION=""
+    [ -n "$DONE_WHEN" ] && ANNOTATION="    ↳ done when: ${DONE_WHEN}"
+
+    awk -v line="$NEW_LINE" -v annot="$ANNOTATION" '
       { print }
       /^## 🔥 Now/ && !inserted {
         print line
+        if (annot != "") print annot
         inserted = 1
       }
     ' "$ROADMAP" > "$TMP"
@@ -91,7 +103,7 @@ case "$MODE" in
     ;;
 
   child)
-    # Insert child line indented under parent's row
+    # Insert child line indented under parent (plus optional done-when annotation)
     if [ -z "$DESC" ]; then
       echo "ERROR: child mode requires <description>" >&2
       exit 2
@@ -100,36 +112,19 @@ case "$MODE" in
       echo "ERROR: --child requires a parent R-NNN" >&2
       exit 2
     fi
-    NEW_LINE="  - [ ] **${RID}** ${DESC} · status=in-progress"
-    # Parent pattern: `- [ ] **R-014` followed by either `**` or ` ` (epic case)
-    awk -v parent="$CHILD_PARENT" -v line="$NEW_LINE" '
-      {
-        print
-        if (!inserted && match($0, "^- \\[ \\] (⚠️ )?\\*\\*" parent "(\\*\\*| )")) {
-          # Skip any existing "↳" annotation line that follows
-          inserted = 1
-          pending_child = 1
-          next
-        }
-        if (pending_child) {
-          if ($0 ~ /^[[:space:]]*↳/) {
-            # Print the annotation, then queue our child
-            next   # already printed above
-          }
-          # Not annotation → print our child BEFORE this line
-          # But we already printed this line. Need different approach.
-          pending_child = 0
-        }
-      }
-      # After main loop: nothing. We handle inline above.
-    ' "$ROADMAP" > "$TMP"
-    # The simpler approach: just insert child directly after parent line.
-    # Re-do with cleaner logic:
-    awk -v parent="$CHILD_PARENT" -v line="$NEW_LINE" '
+    suffix=""
+    [ -n "$EST" ] && suffix=" · est=${EST}"
+    suffix="${suffix} · status=in-progress"
+    NEW_LINE="  - [ ] **${RID}** ${DESC}${suffix}"
+    ANNOTATION=""
+    [ -n "$DONE_WHEN" ] && ANNOTATION="      ↳ done when: ${DONE_WHEN}"
+
+    awk -v parent="$CHILD_PARENT" -v line="$NEW_LINE" -v annot="$ANNOTATION" '
       {
         print
         if (!inserted && match($0, "^- \\[ \\] (⚠️ )?\\*\\*" parent "(\\*\\*| )")) {
           print line
+          if (annot != "") print annot
           inserted = 1
         }
       }

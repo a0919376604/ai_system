@@ -105,3 +105,39 @@ teardown() {
   # flagged annotation also gone
   ! grep -q 'flagged:' "$ROADMAP"
 }
+
+@test "roadmap-insert: --done-when writes a 2-line entry (insert mode)" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-030 "Add OTel tracing to webhook handler" \
+    --done-when "p95 trace coverage > 95% in staging"
+  grep -q '\*\*R-030\*\* Add OTel tracing' "$ROADMAP"
+  grep -q '↳ done when: p95 trace coverage > 95% in staging' "$ROADMAP"
+  # done-when line is INDENTED (4 spaces) and immediately follows the entry
+  entry_ln=$(grep -n '\*\*R-030\*\*' "$ROADMAP" | head -1 | cut -d: -f1)
+  next_ln=$((entry_ln + 1))
+  sed -n "${next_ln}p" "$ROADMAP" | grep -qE '^    ↳ done when:'
+}
+
+@test "roadmap-insert: --est adds est=<duration> to suffix" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-031 "Refactor auth layer" --est 3d
+  grep -q 'est=3d' "$ROADMAP"
+}
+
+@test "roadmap-insert: --done-when + --est combine on the same entry" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-032 "Migrate to pnpm" \
+    --est 1w --done-when "pnpm install green on CI"
+  # Entry line carries est=
+  grep -E '\*\*R-032\*\*.*est=1w' "$ROADMAP"
+  # Annotation present
+  grep -q '↳ done when: pnpm install green on CI' "$ROADMAP"
+}
+
+@test "roadmap-insert: --done-when in --child mode writes indented (6 spaces) annotation" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014 "Webhook retry" --epic
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014.1 "Backoff layer" --child R-014 \
+    --done-when "exponential backoff 200ms→3s passes integration test"
+  grep -q '↳ done when: exponential backoff' "$ROADMAP"
+  # The done-when annotation under a child must be indented by 6 spaces
+  child_ln=$(grep -n '\*\*R-014\.1\*\*' "$ROADMAP" | head -1 | cut -d: -f1)
+  next_ln=$((child_ln + 1))
+  sed -n "${next_ln}p" "$ROADMAP" | grep -qE '^      ↳ done when:'
+}
