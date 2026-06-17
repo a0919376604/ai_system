@@ -64,6 +64,19 @@ if [ -d "$VAULT_PROPOSALS" ]; then
   done
 fi
 
+# Mirror vault Roadmap-Notes/ → repo docs/roadmap-notes/ (read-only one-way mirror).
+VAULT_NOTES="$PROJECT_PATH/Roadmap-Notes"
+REPO_NOTES="$REPO_ROOT/docs/roadmap-notes"
+if [ -d "$VAULT_NOTES" ]; then
+  mkdir -p "$REPO_NOTES"
+  for f in "$VAULT_NOTES"/*.md; do
+    [ -f "$f" ] || continue
+    bn=$(basename "$f")
+    cp "$f" "$REPO_NOTES/$bn.tmp"
+    mv "$REPO_NOTES/$bn.tmp" "$REPO_NOTES/$bn"
+  done
+fi
+
 # Update freshness marker
 mkdir -p "$REPO_ROOT/.claude"
 date +%s > "$LAST_PULL"

@@ -65,3 +65,26 @@ teardown() {
   # After sync no .tmp files should remain
   ! ls "$REPO/docs/product/"*.tmp 2>/dev/null
 }
+
+@test "sync: mirrors Roadmap-Notes/ to docs/roadmap-notes/" {
+  notes_src="$AIROS/10 Projects/test-repo/Roadmap-Notes"
+  mkdir -p "$notes_src"
+  cat > "$notes_src/R-001-foo.md" <<'EOF'
+---
+type: roadmap-note
+id: R-001
+---
+Test note.
+EOF
+  cd "$REPO" && HOME="$HOME_OVERRIDE" "$SHIP_LIB/sync.sh" --force
+  [ -f "$REPO/docs/roadmap-notes/R-001-foo.md" ]
+  grep -q "Test note." "$REPO/docs/roadmap-notes/R-001-foo.md"
+}
+
+@test "sync: Roadmap-Notes mirror uses atomic write (no .tmp leftover)" {
+  notes_src="$AIROS/10 Projects/test-repo/Roadmap-Notes"
+  mkdir -p "$notes_src"
+  echo "x" > "$notes_src/R-002-bar.md"
+  cd "$REPO" && HOME="$HOME_OVERRIDE" "$SHIP_LIB/sync.sh" --force
+  ! ls "$REPO/docs/roadmap-notes/"*.tmp 2>/dev/null
+}
