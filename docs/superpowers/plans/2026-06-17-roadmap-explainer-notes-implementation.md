@@ -1141,3 +1141,20 @@ Plan complete and saved to `docs/superpowers/plans/2026-06-17-roadmap-explainer-
 **2. Inline Execution** — Execute tasks in this session using `superpowers:executing-plans`, batch with checkpoints. Best if you want to review code as I type it.
 
 Which approach?
+
+## Execution log
+
+### Codex run 2026-06-17 (PID 46864, codex-cli 0.134.0, reasoning=high)
+Status: **DONE_WITH_CONCERNS**. 8 commits b49a954..96793cf. Full `bats tests/` suite green (70/70).
+
+- Task 5.2 deferred by codex — skipped symlink/listing under `~/.claude/` per repository-only execution constraint.
+- Task 5.3 deferred: requires Claude `/ship-explain` invocation; covered by Task 10 backfill.
+- Task 6.2 deferred — requires `/ship-explain --all-now` live backfill, covered by Task 10.
+- Task 7.2 deferred: requires Claude `/ship-explain` invocation; covered by Task 10 backfill.
+- Task 8.3 deferred: requires Claude `/ship-explain` invocation; covered by Task 10 backfill.
+- Task 9.1 deferred by codex — skipped symlink/listing under `~/.claude/` per repository-only execution constraint.
+- Task 10 deferred — requires interactive Claude session in ai-eden-service repo.
+
+### Post-codex follow-up by Claude (2026-06-17)
+- **Task 5.2 / 9.1 completed**: symlinked `~/.claude/commands/ship-explain.md` → skill source. `~/.claude/commands/ship-*.md` now shows 10 symlinks (was 9).
+- **Task 10 next**: requires running `/ship-explain --all-now` in `/Users/leric/Desktop/code/ai-eden-service` to backfill 8 explainer notes for R-001 epic + R-001.1–.7.
