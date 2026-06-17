@@ -69,6 +69,7 @@ while [ $# -gt 0 ]; do
     --mark-epic)    MODE="mark-epic"; shift ;;
     --done-when)    DONE_WHEN="${2:-}"; shift 2 ;;
     --explain)      EXPLAIN="${2:-}"; shift 2 ;;
+    --inject-explain) MODE="inject-explain"; EXPLAIN="${2:-}"; shift 2 ;;
     --est)          EST="${2:-}"; shift 2 ;;
     *)              shift ;;
   esac
@@ -203,6 +204,59 @@ case "$MODE" in
         print
       }
     ' "$ROADMAP" > "$TMP"
+    mv "$TMP" "$ROADMAP"
+    ;;
+
+  inject-explain)
+    if [ -z "$EXPLAIN" ]; then
+      echo "ERROR: --inject-explain requires a slug" >&2
+      exit 2
+    fi
+    new_annot="↳ explain: [[${EXPLAIN}]]"
+    awk -v rid="$RID" -v new_annot="$new_annot" '
+      function indent_for(line) {
+        if (match(line, /^  /)) return "      "
+        return "    "
+      }
+      {
+        if (!modified && match($0, "^(  )?- \\[ \\] (⚠️ )?\\*\\*" rid "(\\*\\*| )")) {
+          row_line = $0
+          row_indent = indent_for(row_line)
+          print row_line
+          # Look ahead at next line — may be existing explain annotation
+          if ((getline nxt) > 0) {
+            if (nxt ~ ("^" row_indent "↳ explain:")) {
+              if (nxt == row_indent new_annot) {
+                # Idempotent: same slug, keep as-is
+                print nxt
+              } else {
+                # Different slug — replace + warn to stderr
+                old = nxt
+                sub("^" row_indent "↳ explain: \\[\\[", "", old)
+                sub("\\]\\][[:space:]]*$", "", old)
+                printf("WARN: replacing explain annotation; old slug %s note remains on disk — archive/delete manually if no longer needed\n", old) > "/dev/stderr"
+                print row_indent new_annot
+              }
+            } else {
+              # No existing explain; inject new annotation, then re-emit captured line
+              print row_indent new_annot
+              print nxt
+            }
+          } else {
+            # Row was last line of file
+            print row_indent new_annot
+          }
+          modified = 1
+          next
+        }
+        print
+      }
+    ' "$ROADMAP" > "$TMP"
+    if [ "$(grep -c "$RID" "$TMP")" -eq 0 ]; then
+      echo "ERROR: row $RID not found in $ROADMAP" >&2
+      rm -f "$TMP"
+      exit 1
+    fi
     mv "$TMP" "$ROADMAP"
     ;;
 

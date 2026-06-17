@@ -172,3 +172,40 @@ teardown() {
   next_ln=$((child_ln + 1))
   sed -n "${next_ln}p" "$ROADMAP" | grep -qE '^      ↳ explain: \[\[Roadmap-Notes/R-014\.1'
 }
+
+@test "roadmap-insert: --inject-explain adds explain annotation to existing row" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-050 "Refactor cache"
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-050 --inject-explain "Roadmap-Notes/R-050-refactor-cache"
+  grep -qF '↳ explain: [[Roadmap-Notes/R-050-refactor-cache]]' "$ROADMAP"
+  entry_ln=$(grep -n '\*\*R-050\*\*' "$ROADMAP" | head -1 | cut -d: -f1)
+  next_ln=$((entry_ln + 1))
+  sed -n "${next_ln}p" "$ROADMAP" | grep -qE '^    ↳ explain:'
+}
+
+@test "roadmap-insert: --inject-explain is idempotent on same slug" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-051 "Add tracing"
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-051 --inject-explain "Roadmap-Notes/R-051-add-tracing"
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-051 --inject-explain "Roadmap-Notes/R-051-add-tracing"
+  count=$(grep -cF '↳ explain: [[Roadmap-Notes/R-051-add-tracing]]' "$ROADMAP")
+  [ "$count" -eq 1 ]
+}
+
+@test "roadmap-insert: --inject-explain on different slug replaces + warns" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-052 "Add metrics"
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-052 --inject-explain "Roadmap-Notes/R-052-old-slug"
+  run "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-052 --inject-explain "Roadmap-Notes/R-052-new-slug"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARN: replacing explain annotation"* ]]
+  grep -qF '↳ explain: [[Roadmap-Notes/R-052-new-slug]]' "$ROADMAP"
+  ! grep -qF '↳ explain: [[Roadmap-Notes/R-052-old-slug]]' "$ROADMAP"
+}
+
+@test "roadmap-insert: --inject-explain places annotation BEFORE existing done-when" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-053 "Wire X" --done-when "p95 < 100ms"
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-053 --inject-explain "Roadmap-Notes/R-053-wire-x"
+  entry_ln=$(grep -n '\*\*R-053\*\*' "$ROADMAP" | head -1 | cut -d: -f1)
+  explain_ln=$((entry_ln + 1))
+  done_ln=$((entry_ln + 2))
+  sed -n "${explain_ln}p" "$ROADMAP" | grep -qE '^    ↳ explain:'
+  sed -n "${done_ln}p"    "$ROADMAP" | grep -qE '^    ↳ done when:'
+}
