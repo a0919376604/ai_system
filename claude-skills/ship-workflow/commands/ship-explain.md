@@ -113,3 +113,51 @@ You are generating a plain-language **Roadmap Explainer Note** for a ROADMAP row
 - Row `${ID}` not found in ROADMAP.md → ERROR with hint "Did you mean R-NNN.M?"
 - Neither proposal nor Architecture/overview.md available → still produce minimal note (一句話總結 + 這步在做什麼 + 深入閱讀); leave 為什麼 section with a hint "需要 /ship-propose 後 refresh"
 - `--force-refresh` without arg → ERROR
+
+## Steps (--all-now mode)
+
+1. **Parse "Now" section.** Read ROADMAP.md and collect every `**R-NNN[.M]**` ID under the `## 🔥 Now` heading, in document order (parent epic R-NNN first, then children R-NNN.M ascending).
+
+2. **Filter.** For each `${ID}`, skip if:
+   - Row already has `↳ explain:` annotation, OR
+   - `$NOTES_DIR/${ID}-*.md` already exists on disk
+
+3. **Sequential draft.** For each remaining `${ID}`, run the single-row mode steps 2-9, **but defer the user-interactive Step 10-11 prompt**. Print one-line progress per draft:
+   ```
+   ✓ R-001    (3 sections) → Roadmap-Notes/R-001-...md
+   ✓ R-001.1  (5 sections) → Roadmap-Notes/R-001.1-...md
+   ```
+
+4. **Batch review prompt.** After all drafts done:
+   ```
+   📒 Drafted N explainer notes:
+   - R-001   <one-liner>
+   - R-001.1 <one-liner>
+   ...
+
+   Review all in $EDITOR? [Y/n/list]
+   ```
+   - `Y`: open `$NOTES_DIR/` directory (or sequentially open each file).
+   - `list`: print each note's `## 一句話總結` + `## 為什麼要做這步`.
+   - `n`: skip review.
+
+5. **Atomic-ish rollback.** If any single draft fails midway, abort the rest. Prior drafts remain on disk; user may `git status` to inspect.
+
+6. **Commit (single commit for the batch):**
+   ```bash
+   git add docs/product/ROADMAP.md docs/roadmap-notes/ docs/learnings/_log.md
+   git commit -m "explain: backfill N notes for Now section"
+   ```
+
+## Steps (--force-refresh mode)
+
+1. Confirm existing note file path: `$NOTES_DIR/${ID}-*.md`.
+2. Read existing note → keep its frontmatter `date` field (preserve creation date), update `updated:` to today.
+3. Re-run single-row mode steps 5-9 (gather context + draft + sync + inject — inject is no-op if slug unchanged).
+4. **Show diff** between old and new before writing:
+   ```
+   diff -u <old-note> <new-draft>
+   ```
+   Ask: `Apply? [Y/n]`
+5. On `Y`: atomic write, sync, commit.
+6. On `n`: discard new draft, leave old in place.
