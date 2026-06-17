@@ -141,3 +141,34 @@ teardown() {
   next_ln=$((child_ln + 1))
   sed -n "${next_ln}p" "$ROADMAP" | grep -qE '^      ↳ done when:'
 }
+
+@test "roadmap-insert: --explain writes a [[wikilink]] annotation (insert mode)" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-040 "Add OTel tracing" \
+    --explain "Roadmap-Notes/R-040-add-otel-tracing"
+  grep -q '\*\*R-040\*\* Add OTel tracing' "$ROADMAP"
+  grep -qF '↳ explain: [[Roadmap-Notes/R-040-add-otel-tracing]]' "$ROADMAP"
+  # Annotation indented 4 spaces immediately below entry
+  entry_ln=$(grep -n '\*\*R-040\*\*' "$ROADMAP" | head -1 | cut -d: -f1)
+  next_ln=$((entry_ln + 1))
+  sed -n "${next_ln}p" "$ROADMAP" | grep -qE '^    ↳ explain: \[\['
+}
+
+@test "roadmap-insert: --explain appears BEFORE --done-when when both given (insert mode)" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-041 "Wire SceneEngine" \
+    --explain "Roadmap-Notes/R-041-wire-scene-engine" \
+    --done-when "TTFB 不 regress"
+  entry_ln=$(grep -n '\*\*R-041\*\*' "$ROADMAP" | head -1 | cut -d: -f1)
+  explain_ln=$((entry_ln + 1))
+  done_ln=$((entry_ln + 2))
+  sed -n "${explain_ln}p" "$ROADMAP" | grep -qE '^    ↳ explain: \[\['
+  sed -n "${done_ln}p" "$ROADMAP" | grep -qE '^    ↳ done when:'
+}
+
+@test "roadmap-insert: --explain in child mode indents 6 spaces" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014 "Webhook retry" --epic
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014.1 "Backoff layer" --child R-014 \
+    --explain "Roadmap-Notes/R-014.1-backoff-layer"
+  child_ln=$(grep -n '\*\*R-014\.1\*\*' "$ROADMAP" | head -1 | cut -d: -f1)
+  next_ln=$((child_ln + 1))
+  sed -n "${next_ln}p" "$ROADMAP" | grep -qE '^      ↳ explain: \[\[Roadmap-Notes/R-014\.1'
+}

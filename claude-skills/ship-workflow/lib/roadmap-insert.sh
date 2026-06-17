@@ -7,11 +7,13 @@
 #       --adhoc      → add adhoc-inserted=true marker
 #       --epic       → add (epic) suffix to RID (marks parent of decomposition)
 #       --done-when  → add a "done when" annotation on a second line
+#       --explain    → add ↳ explain: [[<slug>]] annotation (positioned BEFORE done-when)
 #       --est        → add est=<duration> to the line (e.g. "3d", "1w")
 #
 #   roadmap-insert.sh <ROADMAP.md> <R-NNN.M> <description> --child <parent> [--done-when ...] [--est ...]
 #       Insert an indented child line under the parent. Same --done-when /
 #       --est annotations supported.
+#       --explain    → add ↳ explain: [[<slug>]] annotation (positioned BEFORE done-when)
 #
 #   roadmap-insert.sh <ROADMAP.md> <R-NNN> --mark-warning "<reason>"
 #       Prefix the existing R-NNN line with WARN icon + add a flagged
@@ -47,6 +49,7 @@ EPIC=0
 CHILD_PARENT=""
 WARN_REASON=""
 DONE_WHEN=""
+EXPLAIN=""
 EST=""
 
 # Pull arg at position 3 if it is not a flag → it is DESC
@@ -65,6 +68,7 @@ while [ $# -gt 0 ]; do
     --mark-warning) MODE="mark-warning"; WARN_REASON="${2:-}"; shift 2 ;;
     --mark-epic)    MODE="mark-epic"; shift ;;
     --done-when)    DONE_WHEN="${2:-}"; shift 2 ;;
+    --explain)      EXPLAIN="${2:-}"; shift 2 ;;
     --est)          EST="${2:-}"; shift 2 ;;
     *)              shift ;;
   esac
@@ -88,14 +92,17 @@ case "$MODE" in
     else
       NEW_LINE="- [ ] **${RID}** ${DESC}${suffix}"
     fi
-    ANNOTATION=""
-    [ -n "$DONE_WHEN" ] && ANNOTATION="    ↳ done when: ${DONE_WHEN}"
+    EXPLAIN_LINE=""
+    DONE_LINE=""
+    [ -n "$EXPLAIN" ]   && EXPLAIN_LINE="    ↳ explain: [[${EXPLAIN}]]"
+    [ -n "$DONE_WHEN" ] && DONE_LINE="    ↳ done when: ${DONE_WHEN}"
 
-    awk -v line="$NEW_LINE" -v annot="$ANNOTATION" '
+    awk -v line="$NEW_LINE" -v explain="$EXPLAIN_LINE" -v done_line="$DONE_LINE" '
       { print }
       /^## 🔥 Now/ && !inserted {
         print line
-        if (annot != "") print annot
+        if (explain   != "") print explain
+        if (done_line != "") print done_line
         inserted = 1
       }
     ' "$ROADMAP" > "$TMP"
@@ -116,15 +123,18 @@ case "$MODE" in
     [ -n "$EST" ] && suffix=" · est=${EST}"
     suffix="${suffix} · status=in-progress"
     NEW_LINE="  - [ ] **${RID}** ${DESC}${suffix}"
-    ANNOTATION=""
-    [ -n "$DONE_WHEN" ] && ANNOTATION="      ↳ done when: ${DONE_WHEN}"
+    EXPLAIN_LINE=""
+    DONE_LINE=""
+    [ -n "$EXPLAIN" ]   && EXPLAIN_LINE="      ↳ explain: [[${EXPLAIN}]]"
+    [ -n "$DONE_WHEN" ] && DONE_LINE="      ↳ done when: ${DONE_WHEN}"
 
-    awk -v parent="$CHILD_PARENT" -v line="$NEW_LINE" -v annot="$ANNOTATION" '
+    awk -v parent="$CHILD_PARENT" -v line="$NEW_LINE" -v explain="$EXPLAIN_LINE" -v done_line="$DONE_LINE" '
       {
         print
         if (!inserted && match($0, "^- \\[ \\] (⚠️ )?\\*\\*" parent "(\\*\\*| )")) {
           print line
-          if (annot != "") print annot
+          if (explain   != "") print explain
+          if (done_line != "") print done_line
           inserted = 1
         }
       }
