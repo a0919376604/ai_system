@@ -9,6 +9,7 @@ project: "[[{{project}}]]"
 roadmap-item: {{id}}
 spec-path: docs/specs/{{id}}-{{slug}}.md
 plan-path: docs/plans/{{id}}-{{slug}}.md
+roadmap-note-ref: "[[Roadmap-Notes/{{id}}-{{slug}}]]"
 parent: null   # if this is a child of an epic R-NNN, set to that R-NNN
 # --- Outcome contract (mirror of ROADMAP entry) -----------------------------
 # success-criteria: copied verbatim from the ROADMAP "↳ done when:" annotation.
