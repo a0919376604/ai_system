@@ -75,6 +75,20 @@ You are running the Roadmap refresh ritual.
      done
      ```
 
+     After all children inserted, **auto-draft an explainer note for each newly-created child** (and for the newly-converted epic parent):
+
+     ```bash
+     # Run /ship-explain inline for each newly-created child + the parent epic
+     for cid in "R-NNN" "${CHILD_IDS[@]}"; do
+       # Follow /ship-explain single-row mode steps for each cid
+       # (the brainstorm session shares context, so re-reading proposal
+       #  is cheap; explainers benefit from shared voice)
+       ~/.claude/commands/ship-explain.md $cid    # conceptual — Claude follows command file
+     done
+     ```
+
+     Rationale: at decompose time the brainstorm context is hot — Claude has the proposal, Architecture, and the rationale for the split all in mind. Generating explainers in the same session yields higher-quality, more consistent prose than deferring to a later `/ship-explain --all-now`.
+
      **Reject decompositions where any child lacks done-when.** Better to bounce back to the user for clarification than to insert vague children that re-create the original "what does R-001.x mean" problem.
    - **`N`** (or default): drop the ⚠️ marker. User has decided this item is fine as-is. Re-write the line without ⚠️ by manually editing ROADMAP.md (sed `s/⚠️ //` for that specific line) and remove the ↳ flagged annotation.
      **Also** — if the original entry has no done-when annotation, prompt: "R-NNN has no `↳ done when:` annotation. Add one now? [Y/n]" — if Y, ask for the criterion and inject it as a second line under the entry. Keeping the ⚠️ off without a done-when is allowed but flagged in the report.
@@ -108,6 +122,10 @@ You are running the Roadmap refresh ritual.
       ```
       If an item is missing `↳ done when:`, render `(no done-when set — consider adding)` in red so it's visually obvious.
     - **Count of items in "Now" missing `↳ done when:` annotation.** This is the readability health metric — target zero.
+    - **Count of items in "Now" missing `↳ explain:` annotation.** This is the comprehension health metric — target zero. Suggested fix:
+      ```
+      $ /ship-explain --all-now      ← drafts explainers for every Now item without one
+      ```
     - **Count of newly-decomposed epics + child counts**
     - **Proposal suggestions** — scan items that changed this run (newly added, Later→Next, Next→Now). For each that has `effort=L` OR `confidence=low|medium` OR description hints at cross-module impact (≥2 modules in `[[Architecture/modules/]]`):
       ```
