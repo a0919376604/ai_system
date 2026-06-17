@@ -55,6 +55,30 @@ You are picking the next item and entering the brainstorm flow.
       Then ask "Pick one child to brainstorm now?" and continue with that child as the chosen item. The brainstorm for the picked child should start from its `done when:` annotation as the AC #1.
     - **n**: strip the ⚠️ (acknowledge as fine-as-is) and continue with the original R-NNN to brainstorming. If the item lacks a `↳ done when:` annotation, prompt the user for one now and inject it via a manual edit of ROADMAP.md before continuing — brainstorming without a done-when is allowed but produces weaker specs.
 
+4b. **Explainer pre-flight.** Before entering brainstorm:
+    1. Search ROADMAP row for `${ID}` and extract any `↳ explain: [[Roadmap-Notes/<slug>]]` annotation.
+    2. **Branch on presence:**
+       - **Annotation present**: read `$PROJECT_PATH/Roadmap-Notes/<slug>.md`. Print to terminal:
+         ```
+         📒 Loaded explainer: <slug>
+
+         一句話總結
+           <content of ## 一句話總結>
+
+         為什麼要做這步
+           <content of ## 為什麼要做這步>
+
+         Read full note before brainstorm? [Y/n]
+         ```
+         If `Y`, print the entire note body. Then continue.
+       - **Annotation missing**: ask user:
+         ```
+         No explainer for ${ID}. Run /ship-explain ${ID} now? [Y/n]
+         ```
+         If `Y`: invoke `/ship-explain ${ID}` inline (per Task 5 single-row mode), then continue with the freshly-generated explainer as context.
+         If `n`: proceed to brainstorm. Warn: "Proceeding without explainer; brainstorm may lack domain context".
+    3. When entering brainstorming below (step 6), inject the explainer's `## 這步在做什麼` and `## 為什麼要做這步` sections into the initial brainstorm context alongside any proposal §1-§7 already loaded.
+
 5. **Skip to "Common: Enter brainstorming" below** with the (possibly child) chosen item.
 
 ### Branch B: `--adhoc <description>`
