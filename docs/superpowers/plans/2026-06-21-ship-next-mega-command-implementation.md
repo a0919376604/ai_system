@@ -1293,3 +1293,4 @@ Which approach?
 - Task 4.4 deferred — read-only check under ~/.claude/
 - Task 5.2 deferred — user-scope symlink under ~/.claude/, will be removed by Claude post-codex
 - Task 5.6 deferred — user-side action
+- Task 7 deferred — requires interactive Claude session in ai-eden-service repo
