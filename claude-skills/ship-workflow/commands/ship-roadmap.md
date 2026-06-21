@@ -10,6 +10,12 @@ You are running the Roadmap refresh ritual.
 
 ## Steps
 
+0. **Refuse if inside a worktree.** This command modifies ROADMAP / Architecture / Proposals — cross-cutting artifacts that must live on main, not a per-R-NNN worktree.
+   ```bash
+   ~/.claude/skills/ship-workflow/lib/cwd-guard.sh || exit $?
+   ```
+   On failure, the user sees an ERROR pointing them back to main repo and exits non-zero immediately.
+
 1. **Sync product brain:**
    ```bash
    ~/.claude/skills/ship-workflow/lib/sync.sh --force

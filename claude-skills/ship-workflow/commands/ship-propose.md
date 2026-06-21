@@ -15,7 +15,7 @@ You are producing a **prescriptive** proposal doc for a Roadmap item — orthogo
 |---|---|
 | Just after `/ship-roadmap` promoted a big new R-NNN | Lock in why we're going this direction before brainstorm scatters |
 | Before `/ship-next` on an R-NNN with effort=L / confidence<high / cross-multi-module | Self-comprehension gate; brainstorm will be cleaner |
-| Mid `/ship-build` when implementation reveals "we never really decided X" | Pause, propose, return |
+| Mid `/ship-next` when implementation reveals "we never really decided X" | Pause, propose, return |
 | Author feels "I'm about to start coding but I don't fully understand what I'm doing" | The forcing function |
 
 ## Implementation phases (this command)
@@ -28,6 +28,12 @@ This file currently covers:
 - ⬜ Phase 5: downstream ship-* hooks
 
 ## Steps
+
+0. **Refuse if inside a worktree.** This command modifies ROADMAP / Architecture / Proposals — cross-cutting artifacts that must live on main, not a per-R-NNN worktree.
+   ```bash
+   ~/.claude/skills/ship-workflow/lib/cwd-guard.sh || exit $?
+   ```
+   On failure, the user sees an ERROR pointing them back to main repo and exits non-zero immediately.
 
 1. **Sync product brain (forced — proposal needs fresh Architecture):**
 

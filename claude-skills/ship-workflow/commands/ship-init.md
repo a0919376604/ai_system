@@ -21,6 +21,12 @@ You are bootstrapping the Ship Workflow in the user's current repo.
 
 ## Steps
 
+0. **Refuse if inside a worktree.** This command scaffolds repo + vault state which must land on main, not a per-R-NNN worktree.
+   ```bash
+   ~/.claude/skills/ship-workflow/lib/cwd-guard.sh || exit $?
+   ```
+   On failure, the user sees an ERROR pointing them back to main repo and exits non-zero immediately.
+
 1. **Resolve target directory + project name.** Order of checks:
 
    ```bash
