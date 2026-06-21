@@ -1,6 +1,6 @@
 # Ship Workflow
 
-A Claude Code skill that installs a 9-command product development workflow into any repo.
+A Claude Code skill that installs a 10-command product development workflow into any repo.
 
 ## What it gives you
 
