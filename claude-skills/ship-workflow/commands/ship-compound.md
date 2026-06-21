@@ -89,6 +89,6 @@ You are wrapping up a Roadmap item.
 
 ## Failure modes
 
-- No plan found → ask user to run `/ship-build` first
+- No plan found → ask user to run `/ship-next` first
 - `ce-compound` unavailable → fall back to user-driven structured prompt for each section
 - ROADMAP doesn't contain `${ID}` → ERROR, ask user to inspect

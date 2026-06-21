@@ -18,7 +18,7 @@ You are running vault-first deep research to fill a knowledge gap.
 | Phase | Why |
 |---|---|
 | Mid `/ship-next` brainstorm | Brainstorm reveals "I don't fully understand X yet" → research first → return |
-| Mid `/ship-build` | Hit "need to know how Y works" without leaving Claude Code |
+| Mid `/ship-next` | Hit "need to know how Y works" without leaving Claude Code |
 | Before `/ship-roadmap` | Validate a candidate R-NNN belongs on Roadmap by checking what's known |
 | In `/ship-idea` with low confidence | Promote `confidence: speculation` to `medium`+ by grounding in literature |
 | In `/ship-compound` Reusable Patterns | Verify a pattern is novel vs already documented elsewhere |
