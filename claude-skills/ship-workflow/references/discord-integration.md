@@ -18,9 +18,9 @@ Not every ship-* command makes sense from Discord. Frontmatter `discord-visible:
 | `/ship-compound` | ✅ true | One-shot wrap-up |
 | `/ship-arch [<repo>]` | ✅ true | Slow but async-friendly |
 | `/ship-research <topic>` | ✅ true | Async, perfect for Discord |
+| `/ship-propose [R-NNN]` | ✅ true | Async proposal drafting before implementation |
 | `/ship-init` | ❌ false | Filesystem bootstrap; do on terminal |
 | `/ship-next` | ❌ false | Interactive brainstorming; doesn't fit Discord roundtrips |
-| `/ship-build` | ❌ false | Long + needs executor choice; do on terminal |
 
 `discord-visible: false` is honored by claudecode-discord's `discovery.ts` parser. The command still works in the Claude CLI (terminal).
 
@@ -87,8 +87,8 @@ After updating ship-workflow:
 2. **Restart the bot.** It re-runs discovery on startup.
 
 3. **In Discord, type `/`.** You should see:
-   - `/ship-idea`, `/ship-decision`, `/ship-roadmap`, `/ship-compound`, `/ship-arch`, `/ship-research` (6 visible)
-   - NOT `/ship-init`, `/ship-next`, `/ship-build` (3 hidden by `discord-visible: false`)
+   - `/ship-idea`, `/ship-decision`, `/ship-roadmap`, `/ship-compound`, `/ship-arch`, `/ship-research`, `/ship-propose` (7 visible)
+   - NOT `/ship-init`, `/ship-next` (2 hidden by `discord-visible: false`)
 
 4. **In a registered channel, try `/ship-idea test from discord`.** Bot should respond with streaming Claude Code output, and `docs/ideas/IDEA-NNN-test-from-discord.md` should appear in the repo.
 
@@ -97,7 +97,7 @@ After updating ship-workflow:
 | Symptom | Cause | Fix |
 |---|---|---|
 | `/ship-*` doesn't appear in Discord at all | Discovery didn't pick them up | Run `npm run build` + restart bot; check `.claude/commands/ship-*.md` exists in the channel's repo |
-| `/ship-init` / `/ship-next` / `/ship-build` showing in Discord | Old build before `discord-visible` patch | Rebuild claudecode-discord |
+| `/ship-init` / `/ship-next` showing in Discord | Old build before `discord-visible` patch | Rebuild claudecode-discord |
 | Slash commands show generic `args` only | Old `argument-hint` parser | Ensure `argument-hint:` is in the frontmatter and rebuild |
 | Channel says "not registered to a project" | Channel ↔ repo not bound | Run `/register` first |
 | ship-idea works but AIR-OS file not created | Global config missing or wrong vault path | Check `~/.claude/ship-workflow.yml` on the machine running the bot |

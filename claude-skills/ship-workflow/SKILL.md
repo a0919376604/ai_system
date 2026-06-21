@@ -1,19 +1,18 @@
 ---
 name: ship-workflow
-description: Per-repo product development workflow integrating Superpowers (brainstorm/spec/plan/build) with Compound Engineering (roadmap/decision/learnings). Installs 10 ship-* slash commands. Use when starting product development in a new repo, capturing ideas/decisions, planning roadmap, or shipping features through the brainstorm → spec → plan → build → compound loop.
+description: Per-repo product development workflow integrating Superpowers (brainstorm/spec/plan/build) with Compound Engineering (roadmap/decision/learnings). Installs 9 ship-* slash commands. Use when starting product development in a new repo, capturing ideas/decisions, planning roadmap, or shipping features through the /ship-next mega-command (worktree → brainstorm → spec → plan → execute → review → merge).
 ---
 
 # Ship Workflow
 
-Per-repo product development workflow. Installs 10 slash commands into a target repo's `.claude/commands/`:
+Per-repo product development workflow. Installs 9 slash commands into a target repo's `.claude/commands/`:
 
-**Core lifecycle (7):**
+**Core lifecycle (6):**
 - **`/ship-init`** — Bootstrap workflow (folders, commands, AIR-OS Product Brain stub)
 - **`/ship-idea <description>`** — Capture an idea (IDEA-NNN)
 - **`/ship-decision <topic>`** — Record an architectural decision (D-NNN)
 - **`/ship-roadmap`** — Refresh ROADMAP.md via ce-strategy
-- **`/ship-next [--adhoc <desc>]`** — Pick next Roadmap item, brainstorm + spec
-- **`/ship-build [--from-spec <path>]`** — Plan + execute via superpowers + executor
+- **`/ship-next [R-NNN] | --adhoc <desc> | --discard R-NNN`** — End-to-end ship cycle: open worktree → brainstorm → spec → plan → execute → strict code-review gate → squash-merge → cleanup
 - **`/ship-compound`** — Write learning + promote patterns + close Roadmap item
 
 **Knowledge bridges (3):**
@@ -45,9 +44,7 @@ $ cd /path/to/your/repo
 $ /ship-init            # adds .claude/commands/ + docs/ + AIR-OS strategy files
 
 # Daily flow
-$ /ship-next            # pick from Roadmap → brainstorm → spec
-$ /ship-build           # plan → execute
-$ /ship-compound        # learn → promote → close
+$ /ship-next            # pick from Roadmap → end-to-end ship cycle (auto-calls /ship-compound at Phase 8)
 ```
 
 ## Configuration

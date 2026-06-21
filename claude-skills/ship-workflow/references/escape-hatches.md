@@ -22,23 +22,41 @@ When `/ship-compound` ships R-018:
 - Dataview queries on `tags: roadmap` can filter on `adhoc-inserted` history if needed
   by reading the Done-section history (markers are NOT preserved post-ship)
 
-## Mid-build capture
+## Mid-implementation capture
 
-While `/ship-build` is running:
+While `/ship-next` is running:
 
 ```
-/ship-idea --during-build "Maybe rich menu can use templated variants"
-/ship-decision --during-build "Switch to celery-task for retries"
+/ship-idea --during-ship-next "Maybe rich menu can use templated variants"
+/ship-decision --during-ship-next "Switch to celery-task for retries"
 ```
 
 Both produce normal IDEA-NNN / D-NNN files but with extra frontmatter:
 
 ```yaml
-related-roadmap-item: R-018          # the current build's ID
-created-during: build                # the phase
+related-roadmap-item: R-018          # the current ship cycle's ID
+created-during: ship-next            # the phase
 ```
 
-This lets `/ship-compound` later sweep up all captures from this build into the learning.
+This lets `/ship-compound` later sweep up all captures from this ship cycle into the learning.
+
+## Worktree-cwd-block (4 commands)
+
+The following commands refuse to run inside a ship/* worktree because they modify cross-cutting state on main:
+
+- `/ship-roadmap` — modifies ROADMAP.md (canonical)
+- `/ship-arch` — refreshes Architecture/
+- `/ship-init` — scaffolds repo + vault state
+- `/ship-propose` — writes to Proposals/
+
+If you invoke any of these inside a worktree, you'll see:
+
+```
+ERROR: this command cannot run inside a ship/* worktree.
+       cd back to the main repo (the parent project) first.
+```
+
+This is enforced by `lib/cwd-guard.sh` (called at Step 0 of each command).
 
 ## Skipping init
 

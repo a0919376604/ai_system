@@ -32,17 +32,13 @@
                                      ▼
                             ┌─────────────────┐
                             │ /ship-next      │ ◀── /ship-research <topic>
-                            └────────┬────────┘     (fill gap before brainstorm)
-                                     │
-                                     ▼
-                            ┌─────────────────┐
-                            │ /ship-build     │ ◀── /ship-research <topic>
-                            └────────┬────────┘     (mid-build knowledge need)
-                                     │
-                                     ▼
-                            ┌─────────────────┐
-                            │ /ship-compound  │ → optional: /ship-arch (refresh if architecture shifted)
+                            │ (mega)          │     (fill gap before brainstorm or implementation)
                             └────────┬────────┘
+                                     │
+                                     ▼
+                            ┌─────────────────┐
+                            │ ✅ shipped       │ → /ship-compound runs inside Phase 8
+                            └────────┬────────┘   optional: /ship-arch if architecture shifted
                                      │
                                      └─▶ back to /ship-next
 ```

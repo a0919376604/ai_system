@@ -1,11 +1,11 @@
 # Ship Workflow
 
-A Claude Code skill that installs a 7-command product development workflow into any repo.
+A Claude Code skill that installs a 9-command product development workflow into any repo.
 
 ## What it gives you
 
 ```
-Roadmap → Brainstorm → Plan → Build → Compound → Roadmap update
+Roadmap → /ship-next mega-command → Worktree → Brainstorm → Spec → Plan → Execute → Review → Merge
 ```
 
 - Strategy lives in Obsidian (AIR-OS `10 Projects/<repo>/`)
@@ -24,7 +24,7 @@ cd /path/to/your/repo
 
 ## Commands
 
-**Core lifecycle (7):**
+**Core lifecycle (6):**
 
 | Command | Purpose |
 |---|---|
@@ -32,16 +32,16 @@ cd /path/to/your/repo
 | `/ship-idea` | Capture idea (IDEA-NNN) |
 | `/ship-decision` | Record decision (D-NNN) |
 | `/ship-roadmap` | Refresh ROADMAP.md |
-| `/ship-next` | Pick next item → brainstorm + spec |
-| `/ship-build` | Plan + execute |
+| `/ship-next` | End-to-end ship cycle: worktree → brainstorm → spec → plan → execute → review → merge |
 | `/ship-compound` | Learnings + promote patterns + close |
 
-**Knowledge-input bridges (2):**
+**Knowledge-input bridges (3):**
 
 | Command | Purpose |
 |---|---|
 | `/ship-arch` | Refresh AIR-OS Architecture/ via `/obsidian-architect` |
 | `/ship-research <topic>` | Vault-first deep research via `/obsidian-research-deep` |
+| `/ship-propose [R-NNN]` | Produce prescriptive proposal docs for roadmap items |
 
 ## Development
 
