@@ -1,160 +1,310 @@
 ---
 name: ship-next
-description: Pick next Roadmap item, enter superpowers:brainstorming to produce brainstorm + spec
-argument-hint: "[--adhoc <description>]"
+description: Pick next R-NNN and ship end-to-end (worktree → brainstorm → spec → plan → execute → review → squash merge)
+argument-hint: "[R-NNN] | --adhoc <desc> | --discard R-NNN | --resume R-NNN"
 discord-visible: true
 ---
 
 # /ship-next
 
-You are picking the next item and entering the brainstorm flow.
+You are taking a ROADMAP row from "Now" all the way to a squashed commit on the original branch. The work happens in an isolated sibling worktree; an external code-review-skill gates the merge.
 
 ## Arguments
 
-- `--adhoc <description>` — skip Roadmap selection; allocate next R-NNN and insert into "Now"
+- `R-NNN[.M]` — explicit row. If omitted, auto-pick top of "Now" by existing rank logic (epics skipped; children ascending by `.M`).
+- `--adhoc <description>` — same as today: allocate next R-NNN, insert into "Now", continue.
+- `--discard R-NNN` — force-remove the worktree + branch for this R-NNN, exit. Use when brainstorm went off the rails.
+- `--resume R-NNN` — explicit "I know the worktree exists, just continue". Equivalent to invoking `/ship-next R-NNN` and answering `Y` to the resume prompt.
 
-## Steps
+## Pre-flight invariants
 
-### Branch A: Default (pick from Roadmap)
+- This command must run from the **main repo root** (cwd = repo). It does NOT have a `cwd-guard.sh` check at the top, because `/ship-next` itself is what cd's into the worktree. (But it DOES verify that the worktree-target path is not the cwd already — see Phase 1 step 4.)
+- `~/.claude/skills/code-review-skill/SKILL.md` must exist by Phase 6 or the command halts with an install hint.
 
-1. **Sync product brain:**
+## Phase 1 — Pre-flight + R-NNN resolution
+
+1. **Handle `--discard`**:
+   ```bash
+   if [[ "$1" == "--discard" ]]; then
+     ID="$2"
+     # Locate worktree by ID prefix (slug may vary)
+     WT=$(ls -d "$(dirname $(pwd))/$(basename $(pwd))-worktrees/${ID}-"* 2>/dev/null | head -1)
+     if [ -n "$WT" ]; then
+       BRANCH=$(cd "$WT" && git branch --show-current)
+       git worktree remove --force "$WT"
+       git branch -D "$BRANCH" 2>/dev/null || true
+       echo "Discarded worktree at $WT and branch $BRANCH"
+     else
+       echo "No worktree found for $ID"
+     fi
+     exit 0
+   fi
+   ```
+
+2. **Sync product brain:**
    ```bash
    ~/.claude/skills/ship-workflow/lib/sync.sh
    ```
 
-2. **Read** `docs/product/ROADMAP.md` "🔥 Now" section. Parse R-NNN items not marked `✅`. **Detect special states:**
-   - `⚠️ R-NNN` — flagged for decomposition by `/ship-roadmap`. Treat as actionable: when picking, the FIRST action is to offer decomposition (see step 4a).
-   - `R-NNN (epic)` — already decomposed. The epic itself is NOT directly actionable; only its `R-NNN.M` children are. When ranking, skip the epic and rank its children individually.
-   - `R-NNN.M` — child of an epic. Treat as a regular item.
-
-3. **Rank** by (in tiebreaker order, top down):
-   - Explicit `impact=high` markers first
-   - Dependencies satisfied (no unresolved `dep:` references)
-   - `adhoc-inserted=true` items deprioritized vs planned items (planned > emergency)
-   - **Children of the same epic ordered ascending by `.M`** (R-014.1 before R-014.2 before R-014.3). The decompose brainstorm produces children in intended sequence; honor that order. Don't pick R-014.3 unless R-014.1 and R-014.2 are already done.
-   - For top-level R-NNN when all else ties: ascending by NNN (earlier-decided items go first). Weak preference — usually impact/dependency already broke the tie.
-   - **Epics themselves are not in the rank** — their children are. Skip any line containing `(epic)` when iterating "Now".
-
-4. **Present top 1-2** to the user, get confirmation. Capture the chosen `R-NNN` (or `R-NNN.M`) and `<slug>`.
-
-4a. **Decompose-first if ⚠️ flagged.** If the chosen item carries the `⚠️` marker:
-    ```
-    R-NNN was flagged as too big by /ship-roadmap.
-    Decompose it now into 2-5 children before brainstorming the work itself? [Y/n]
-    ```
-    - **Y** (default): same flow as `/ship-roadmap` step 7 — short decompose brainstorm. **Every child MUST have action-verb description + done-when criterion** before being inserted (this is what makes "R-NNN.M" entries readable later; reject vague descriptions like "improve X" — push back for refinement). For each sub-item, capture `desc` (imperative verb + object), `done_when` (one observable success criterion), and optional `est`. Then allocate + insert:
-      ```bash
-      # Convert parent to epic
-      ~/.claude/skills/ship-workflow/lib/roadmap-insert.sh "$ROADMAP_PATH" R-NNN --mark-epic
-
-      # For each child gathered above:
-      CHILD_ID=$(~/.claude/skills/ship-workflow/lib/id-gen.sh roadmap --child R-NNN --reserve)
-      ~/.claude/skills/ship-workflow/lib/roadmap-insert.sh "$ROADMAP_PATH" "$CHILD_ID" "$desc" \
-        --child R-NNN --done-when "$done_when" ${est:+--est "$est"}
-      ```
-      Then ask "Pick one child to brainstorm now?" and continue with that child as the chosen item. The brainstorm for the picked child should start from its `done when:` annotation as the AC #1.
-    - **n**: strip the ⚠️ (acknowledge as fine-as-is) and continue with the original R-NNN to brainstorming. If the item lacks a `↳ done when:` annotation, prompt the user for one now and inject it via a manual edit of ROADMAP.md before continuing — brainstorming without a done-when is allowed but produces weaker specs.
-
-4b. **Explainer pre-flight.** Before entering brainstorm:
-    1. Search ROADMAP row for `${ID}` and extract any `↳ explain: [[Roadmap-Notes/<slug>]]` annotation.
-    2. **Branch on presence:**
-       - **Annotation present**: read `$PROJECT_PATH/Roadmap-Notes/<slug>.md`. Print to terminal:
-         ```
-         📒 Loaded explainer: <slug>
-
-         一句話總結
-           <content of ## 一句話總結>
-
-         為什麼要做這步
-           <content of ## 為什麼要做這步>
-
-         Read full note before brainstorm? [Y/n]
-         ```
-         If `Y`, print the entire note body. Then continue.
-       - **Annotation missing**: ask user:
-         ```
-         No explainer for ${ID}. Run /ship-explain ${ID} now? [Y/n]
-         ```
-         If `Y`: invoke `/ship-explain ${ID}` inline (per Task 5 single-row mode), then continue with the freshly-generated explainer as context.
-         If `n`: proceed to brainstorm. Warn: "Proceeding without explainer; brainstorm may lack domain context".
-    3. When entering brainstorming below (step 6), inject the explainer's `## 這步在做什麼` and `## 為什麼要做這步` sections into the initial brainstorm context alongside any proposal §1-§7 already loaded.
-
-5. **Skip to "Common: Enter brainstorming" below** with the (possibly child) chosen item.
-
-### Branch B: `--adhoc <description>`
-
-1. **Sync product brain (forced)**:
+3. **Handle `--adhoc`** (same flow as the previous `/ship-next`):
    ```bash
-   ~/.claude/skills/ship-workflow/lib/sync.sh --force
+   if [[ "$1" == "--adhoc" ]]; then
+     ~/.claude/skills/ship-workflow/lib/sync.sh --force
+     ID=$(~/.claude/skills/ship-workflow/lib/id-gen.sh roadmap --reserve)
+     ROADMAP_PATH="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/ROADMAP.md"
+     ~/.claude/skills/ship-workflow/lib/roadmap-insert.sh "$ROADMAP_PATH" "$ID" "$2" --adhoc
+     ~/.claude/skills/ship-workflow/lib/sync.sh --force
+     # Continue with $ID, slug derived from "$2"
+   fi
    ```
 
-2. **Allocate R-NNN:**
+4. **Resolve R-NNN:**
+   - If positional arg given: `ID="$1"`.
+   - Else: read `docs/product/ROADMAP.md` "## 🔥 Now" section; rank by existing logic (epics skipped, children ascending by .M, impact/dependency tie-breakers). Pick top.
+
+5. **Derive slug.** From ROADMAP row description, kebab-case English slug 3-5 words, leading imperative verb when possible. Example: "Wire SceneEngine into dialogue.py..." → `wire-scene-engine`. Same convention as `/ship-explain`.
+
+6. **Compute worktree path:**
    ```bash
-   ID=$(~/.claude/skills/ship-workflow/lib/id-gen.sh roadmap --reserve)
+   REPO=$(pwd)
+   REPO_NAME=$(basename "$REPO")
+   PARENT=$(dirname "$REPO")
+   WORKTREE="$PARENT/${REPO_NAME}-worktrees/${ID}-${SLUG}"
+   BRANCH="ship/${ID}-${SLUG}"
+   ORIG_BRANCH=$(git branch --show-current)
    ```
 
-3. **Resolve ROADMAP path + insert:**
+7. **Detect existing worktree:**
+   - If `$WORKTREE` exists: prompt `"Continue ${ID} in existing worktree? [Y/n/discard]"`.
+     - `Y` (or `--resume` was passed): jump to Phase 3, but auto-skip phases already done (detect via commit count + file presence — see Phase 3 step 0).
+     - `discard`: `git worktree remove --force "$WORKTREE"; git branch -D "$BRANCH"`, fall through to Phase 2.
+     - `n`: exit 0.
+
+## Phase 2 — Open worktree
+
+1. **Invoke `superpowers:using-git-worktrees`** with parameters:
+   - `path=$WORKTREE`
+   - `branch=$BRANCH`
+   - `base=$ORIG_BRANCH`
+
+2. **cd into the worktree.** Tell the user explicitly:
+   ```
+   📁 cd'd into ship/${ID}-${SLUG} worktree at ${WORKTREE}.
+      All subsequent commands run there until merge.
+   ```
+
+## Phase 3 — Brainstorm
+
+0. **Resume detection.** Check what's already done in the worktree:
+   - `ls docs/specs/${ID}-${SLUG}.md` exists → skip to Phase 4 (plan stage).
+   - `ls docs/plans/${ID}-${SLUG}.md` exists → skip to Phase 5 (executor).
+   - `git log --oneline ${ORIG_BRANCH}..HEAD | wc -l` > 2 → executor has committed; skip to Phase 6 (review).
+
+1. **Proposal check** (same as existing /ship-next pre-step): look for `<vault>/Proposals/*-${ID}-*-proposal.md`. If `status: accepted`, load §1-§7 as brainstorm context.
+
+2. **Invoke `superpowers:brainstorming`** with context: spec target `docs/specs/${ID}-${SLUG}.md`, project `<project_name>`, proposal context (if loaded).
+
+3. **Verify outputs**: `docs/brainstorms/${ID}-${SLUG}.md` + `docs/specs/${ID}-${SLUG}.md` exist.
+
+4. **Commit:**
+   ```bash
+   git add docs/brainstorms/${ID}-${SLUG}.md docs/specs/${ID}-${SLUG}.md
+   git commit -m "brainstorm+spec: ${ID} ${SLUG}"
+   ```
+
+## Phase 4 — Writing plans
+
+1. **Invoke `superpowers:writing-plans`** with the spec from Phase 3.
+
+2. **Verify output**: `docs/plans/${ID}-${SLUG}.md` exists.
+
+3. **Commit:**
+   ```bash
+   git add docs/plans/${ID}-${SLUG}.md
+   git commit -m "plan: ${ID} ${SLUG}"
+   ```
+
+## Phase 5 — Choose executor + run
+
+1. **Ask the user:**
+   ```
+   Plan ready at docs/plans/${ID}-${SLUG}.md. Choose executor:
+     1. Subagent-driven (recommended) — fresh subagent per task, review between
+     2. Inline executing-plans — sequential in this session, batch with checkpoints
+     3. Codex /run-plan — autonomous in background
+   ```
+
+2. **Record executor choice** to a stash file in the worktree (used by Phase 6 fix-plan re-invoke):
+   ```bash
+   echo "$EXECUTOR_CHOICE" > .claude/.ship-executor
+   ```
+
+3. **Invoke the chosen sub-skill:**
+   - `1` → `superpowers:subagent-driven-development`
+   - `2` → `superpowers:executing-plans`
+   - `3` → `/run-plan docs/plans/${ID}-${SLUG}.md`
+
+4. **Wait for completion.** Executor commits ≥ 1 commit per task into the worktree branch.
+
+## Phase 6 — Code review loop (strict gate)
+
+1. **Verify code-review-skill installed:**
+   ```bash
+   if [ ! -f ~/.claude/skills/code-review-skill/SKILL.md ]; then
+     echo "ERROR: awesome-skills/code-review-skill not installed."
+     echo "Install: git clone https://github.com/awesome-skills/code-review-skill \\"
+     echo "         ~/.claude/skills/code-review-skill"
+     echo "Then re-invoke /ship-next ${ID} to resume from this phase."
+     exit 1
+   fi
+   ```
+
+2. **Loop:**
+   ```
+   attempt=1
+   while attempt <= 3:
+     # Build review input from the squashed diff
+     REVIEW_TARGET = $(git diff ${ORIG_BRANCH}..HEAD)
+
+     # Invoke the external skill — Claude reads its SKILL.md and follows it
+     # using REVIEW_TARGET as the input PR diff. Capture the markdown output
+     # to a temp file (e.g. /tmp/ship-next-review-$ID-$attempt.md).
+
+     REVIEW_OUT=/tmp/ship-next-review-${ID}-${attempt}.md
+     # (Claude invokes the skill here; captures all generated markdown to REVIEW_OUT)
+
+     # Parse counts
+     eval "$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh $REVIEW_OUT)"
+
+     if [ "$BLOCKING_COUNT" -eq 0 ]; then
+       break  # ready to merge
+     fi
+
+     # Print blockers in human-readable form (excerpts from REVIEW_OUT)
+     echo "🛑 ${BLOCKING_COUNT} blocking finding(s):"
+     grep -B1 -A3 -E '(\*\*Severity:\*\*[[:space:]]*blocking|\[blocking\])' $REVIEW_OUT
+
+     attempt=$((attempt + 1))
+     if [ "$attempt" -gt 3 ]; then
+       break  # fall through to manual pause below
+     fi
+
+     # Build inline fix-plan: each blocker → 1 task with file + line + suggestion
+     # Save to a transient plan path:
+     FIX_PLAN=docs/plans/${ID}-${SLUG}-review-fix-${attempt}.md
+
+     # Re-invoke previously-chosen executor on $FIX_PLAN
+     EXECUTOR=$(cat .claude/.ship-executor)
+     case "$EXECUTOR" in
+       1) invoke superpowers:subagent-driven-development on $FIX_PLAN ;;
+       2) invoke superpowers:executing-plans on $FIX_PLAN ;;
+       3) invoke /run-plan $FIX_PLAN ;;
+     esac
+   ```
+
+3. **If still blocking after 3 attempts**, pause:
+   ```
+   3 review attempts didn't clear blockers. Options:
+     [Y] Auto-fix one more cycle (loop continues)
+     [n] Pause indefinitely (user fixes manually, then re-invoke /ship-next ${ID})
+     [abort] Discard everything — /ship-next --discard ${ID}
+   ```
+
+4. **Major findings handling** (only after BLOCKING_COUNT reaches 0): list them and ask per-finding `[F]ix-now / [I]dea-NNN-followup / [S]kip`.
+
+## Phase 7 — Squash merge
+
+1. **Build the commit message body**:
+
    ```bash
    ROADMAP_PATH="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/ROADMAP.md"
-   ~/.claude/skills/ship-workflow/lib/roadmap-insert.sh "$ROADMAP_PATH" "$ID" "<description>" --adhoc
+   ROW=$(grep "\*\*${ID}\*\*" "$ROADMAP_PATH" | head -1)
+   DONE_WHEN=$(grep -A1 "\*\*${ID}\*\*" "$ROADMAP_PATH" | grep "↳ done when:" | sed 's/.*↳ done when: //' | head -1)
+   DESCRIPTION=$(extract row description after the ** id ** part)
    ```
 
-4. **Re-sync** so the repo mirror picks up the insert:
+2. **cd back to original repo:**
+
    ```bash
-   ~/.claude/skills/ship-workflow/lib/sync.sh --force
+   cd "$REPO"
+   git checkout "$ORIG_BRANCH"
    ```
 
-5. **Continue below with $ID and slug derived from `<description>`.**
+3. **Squash merge:**
 
-### Common pre-step: Proposal check
-
-After picking the R-NNN (Branch A step 5 or Branch B), but **before** entering brainstorming:
-
-```bash
-PROJECT_PATH=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)
-PROPOSALS_DIR="$PROJECT_PATH/Proposals"
-PROPOSAL_FILE=$(find "$PROPOSALS_DIR" -name "*-${ID}-*-proposal.md" 2>/dev/null | head -1)
-```
-
-Three branches:
-
-1. **Proposal exists AND `status: accepted`**:
-   - Read the proposal
-   - Load §1-§7 as **brainstorm starting context** (problem is already framed; brainstorm focuses on design choices within the proposal's bounds)
-   - Tell user: "Loaded accepted proposal $(basename $PROPOSAL_FILE) as brainstorm context."
-
-2. **Proposal exists but `status` ∈ {draft, in-review}**:
-   - Tell user: "Proposal exists at $PROPOSAL_FILE but status=$STATUS. Accept it first or proceed without."
-   - Ask: `[A] accept now + use it / [P] proceed without / [N] cancel`
-   - If `A`: edit frontmatter `status: accepted`, sync, log, then load as brainstorm context
-   - If `P`: proceed to brainstorming as if no proposal
-
-3. **No proposal AND R-NNN appears big** (EFFORT extracted from row contains `L`, OR description mentions ≥2 module names):
-   - Ask: `No proposal for $ID. Run /ship-propose first? [Y/n]`
-   - If `Y`: tell user to run `/ship-propose $ID`, exit. Do not continue to brainstorm.
-   - If `n`: proceed to brainstorming with cold start
-
-4. **No proposal AND R-NNN appears small**: proceed straight to brainstorming (skip prompt — the smallness is the design signal that no proposal is needed).
-
-### Common: Enter brainstorming
-
-6. **Invoke `superpowers:brainstorming`** with context: spec target = `docs/specs/${ID}-${slug}.md`, project = `<project_name>`. If a proposal was loaded above, include its §1-§7 in the initial context.
-
-7. **brainstorming will produce** a spec file. Confirm it landed at `docs/specs/${ID}-${slug}.md`.
-
-8. **Also write the brainstorm note** at `docs/brainstorms/${ID}-${slug}.md` (Claude can do this inline or have brainstorming output the file). Use `templates/repo/BRAINSTORM.md` with substitutions.
-
-9. **Log + commit:**
    ```bash
-   adhoc_flag=$([ "$ADHOC" = "1" ] && echo y || echo n)
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | $ID | $description | $adhoc_flag |" >> docs/learnings/_log.md
-   git add docs/brainstorms/${ID}-${slug}.md docs/specs/${ID}-${slug}.md docs/learnings/_log.md docs/product/ROADMAP.md
-   git commit -m "brainstorm+spec: $ID $description"
+   git merge --squash "$BRANCH"
    ```
 
-10. **Report:** ID, slug, brainstorm path, spec path, next suggested command: `/ship-build`.
+4. **Compose commit message** (heredoc to capture multi-line):
+
+   ```bash
+   git commit -m "$(cat <<EOF
+   feat: ${ID} ${DESCRIPTION}
+
+   ↳ done when: ${DONE_WHEN}
+
+   Tasks (from docs/plans/${ID}-${SLUG}.md):
+   $(grep -E '^### Task [0-9]+:' "docs/plans/${ID}-${SLUG}.md" | sed 's/^### /  - /')
+
+   Code review (awesome-skills/code-review-skill):
+   - blocking: 0 ✓
+   - major:    ${MAJOR_COUNT} (see plan §Execution log)
+   - minor:    ${MINOR_COUNT}
+   - praise:   ${PRAISE_COUNT}
+
+   Spec:  docs/specs/${ID}-${SLUG}.md
+   Plan:  docs/plans/${ID}-${SLUG}.md
+   Notes: docs/roadmap-notes/${ID}-${SLUG}.md (if exists)
+
+   🤖 ${BRANCH}
+   Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+   EOF
+   )"
+   ```
+
+## Phase 8 — /ship-compound
+
+1. **Invoke `/ship-compound`** for this R-NNN. It writes the learning, promotes patterns to AIR-OS, marks the ROADMAP row ✅.
+
+   `/ship-compound` runs from the original repo cwd (Phase 7 already cd'd back), so it touches the canonical ROADMAP in the vault directly.
+
+## Phase 9 — Cleanup
+
+1. **Remove worktree:**
+
+   ```bash
+   git worktree remove "$WORKTREE"
+   ```
+
+   If this fails (e.g. uncommitted changes in worktree), print:
+   ```
+   WARN: worktree at $WORKTREE has uncommitted changes; not removed.
+         Inspect with: cd $WORKTREE && git status
+         When ready: git worktree remove --force $WORKTREE
+   ```
+
+2. **Delete worktree branch:**
+
+   ```bash
+   git branch -d "$BRANCH"
+   ```
+
+   The squash merge in Phase 7 doesn't update branch reachability, so `-d` may complain. Use `-D` if needed; the work is already squashed onto $ORIG_BRANCH.
+
+3. **Log + commit (repo side, on $ORIG_BRANCH):**
+
+   ```bash
+   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}) | n |" >> docs/learnings/_log.md
+   git add docs/learnings/_log.md
+   git commit -m "log: ship ${ID}"
+   ```
 
 ## Failure modes
 
-- "Now" empty in default branch → ask user to either `/ship-roadmap` first or use `--adhoc`
-- brainstorming returns no spec file → ERROR, halt before commit
+- **Worktree create fails (dirty index)** → abort, hint `git stash; /ship-next ${ID}`
+- **Brainstorm abandoned mid-flow** → user Ctrl-C; worktree remains. Resume via `/ship-next ${ID}` or destroy via `/ship-next --discard ${ID}`.
+- **Executor fails mid-run** → log to plan's `## Execution log` (existing pattern); worktree remains.
+- **code-review-skill not installed** → ERROR with install hint (Phase 6 step 1).
+- **Merge conflict to original branch** → shouldn't happen (worktree forked from $ORIG_BRANCH and squash merges onto same fork point). If it does, abort merge, worktree intact, hint user to rebase.
+- **Cleanup fails** → print worktree path, instruction to remove manually.

@@ -1287,3 +1287,7 @@ Plan complete and saved to `docs/superpowers/plans/2026-06-21-ship-next-mega-com
 **3. Codex `/run-plan`** — Hand off Tasks 1-6 to codex autonomous; come back for Task 7 (interactive). Codex did well on the previous plan (8/10 tasks, DONE_WITH_CONCERNS).
 
 Which approach?
+
+## Execution log
+
+- Task 4.4 deferred — read-only check under ~/.claude/
