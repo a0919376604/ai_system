@@ -67,6 +67,17 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 
     The `AUTO` variable is referenced throughout the rest of this command file — every interactive prompt has an `if [ "$AUTO" = "1" ]` branch.
 
+1.6. **Self-heal `.claude/.gitignore`** (auto mode only, idempotent):
+    ```bash
+    if [ "$AUTO" = "1" ] && [ -f .claude/.gitignore ]; then
+      if ! grep -qF ".ship-auto-decisions.md" .claude/.gitignore; then
+        echo ".ship-auto-decisions.md" >> .claude/.gitignore
+        # Note: this edit happens in main repo BEFORE Phase 2 opens the worktree.
+        # Worktree inherits the gitignore.
+      fi
+    fi
+    ```
+
 2. **Sync product brain:**
    ```bash
    ~/.claude/skills/ship-workflow/lib/sync.sh

@@ -76,7 +76,7 @@ You are bootstrapping the Ship Workflow in the user's current repo.
      | Date | Command | R-NNN | Note | Adhoc? |
      |---|---|---|---|---|
      ```
-   - `.claude/.gitignore` adding `.ship-last-pull` and `.id-gen.lock` and `.id-reservations`
+   - `.claude/.gitignore` adding `.ship-last-pull`, `.id-gen.lock`, `.id-reservations`, and `.ship-auto-decisions.md`
 
 4. **`--custom` interactive config.** If `--custom`:
    - Ask: "Override AIR-OS project name? (default: <basename>)"
