@@ -294,11 +294,21 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
        "cap=3 exhausted — aborting" \
        "blocking=$BLOCKING_COUNT main untouched, worktree retained at $WORKTREE"
 
-     # DO NOT cd back to ORIG_BRANCH.
-     # DO NOT remove worktree.
-     # DO NOT delete branch.
-     # Notification will fire from Task 8 abort path.
-     # Exit 1 so callers (codex /run-plan, automation) see failure.
+     SUMMARY="🛑 ${ID} ${DESCRIPTION} aborted at P6 — 3 attempts didn't clear blockers.
+   • blocking remaining: ${BLOCKING_COUNT}
+   • last attempt review: /tmp/ship-next-review-${ID}-3.md
+   • worktree retained: ${WORKTREE}
+   • branch retained: ${BRANCH}
+   • resume: cd ${WORKTREE} && /ship-next --resume ${ID}"
+
+     # Channel routing — same as success path
+     # Discord session: call reply with $SUMMARY, chat_id
+     # Else: PushNotification subject="/ship-next ${ID} aborted" body=$SUMMARY
+
+     osascript -e "display notification \"${ID} aborted — see Discord/log\" with title \"/ship-next abort\" sound name \"Sosumi\"" 2>/dev/null || true
+     printf '\a' >&2
+
+     # DO NOT cd back to ORIG_BRANCH. DO NOT remove worktree. DO NOT delete branch.
      exit 1
      ```
 
@@ -424,6 +434,33 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}) | n |" >> docs/learnings/_log.md
    git add docs/learnings/_log.md
    git commit -m "log: ship ${ID}"
+   ```
+
+4. **Auto-mode success notification** (only if `AUTO=1`):
+
+   Build the success message body:
+   ```bash
+   if [ "$AUTO" = "1" ]; then
+     SUMMARY="✅ ${ID} ${DESCRIPTION} shipped (squash ${MERGE_SHA})
+   • blocking: 0 ✓
+   • major: ${MAJOR_COUNT} → IDEA-NNN auto-logged
+   • minor: ${MINOR_COUNT}
+   • praise: ${PRAISE_COUNT}
+   • decisions log: ${WORKTREE}/docs/.ship-auto-decisions.md (kept in worktree pre-cleanup; copy if you want post-mortem)"
+
+     # Channel routing (per /run-plan skill convention):
+     # - Discord session (incoming message tag has channel source="discord"): use Discord reply
+     # - Else: use PushNotification
+     # - Always also fire osascript + bell for local presence
+
+     # Scan conversation context for a discord chat_id (Claude does this at invocation time).
+     # If a chat_id is in scope: call Discord reply with $SUMMARY, chat_id, files=[$WORKTREE/docs/.ship-auto-decisions.md]
+     # Else: call PushNotification subject="/ship-next ${ID} shipped" body=$SUMMARY
+
+     # Local OS notification + bell — fires regardless of channel
+     osascript -e "display notification \"${ID} shipped: squash ${MERGE_SHA}\" with title \"/ship-next done\" sound name \"Glass\"" 2>/dev/null || true
+     printf '\a' >&2
+   fi
    ```
 
 ## Failure modes
