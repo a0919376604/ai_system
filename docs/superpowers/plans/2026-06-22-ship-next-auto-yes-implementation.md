@@ -1103,3 +1103,9 @@ Plan complete and saved to `docs/superpowers/plans/2026-06-22-ship-next-auto-yes
 **3. Codex `/run-plan`** — autonomous background. Worked well for prior plans (DONE_WITH_CONCERNS, 8-of-9 tasks). Expect Codex to skip Task 9 (out-of-tree to ~/.claude/) and Task 11 (interactive smoke) — same defer pattern as before.
 
 Which approach?
+
+## Execution log
+
+- Task 2.4 deferred — manual smoke needs Claude session, not codex
+- Task 9 deferred — user applies manually to ~/.claude/skills/run-plan/SKILL.md
+- Task 11 deferred — requires interactive Claude session in ai-eden-service

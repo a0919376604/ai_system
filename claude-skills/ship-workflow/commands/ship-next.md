@@ -1,6 +1,6 @@
 ---
 name: ship-next
-description: Pick next R-NNN and ship end-to-end (worktree → brainstorm → spec → plan → execute → review → squash merge)
+description: Pick next R-NNN and ship end-to-end via worktree + strict review + squash merge
 argument-hint: "[R-NNN] | --adhoc <desc> | --discard R-NNN | --resume R-NNN | --auto:yes"
 discord-visible: true
 ---
