@@ -1,7 +1,7 @@
 ---
 name: ship-next
 description: Pick next R-NNN and ship end-to-end (worktree → brainstorm → spec → plan → execute → review → squash merge)
-argument-hint: "[R-NNN] | --adhoc <desc> | --discard R-NNN | --resume R-NNN"
+argument-hint: "[R-NNN] | --adhoc <desc> | --discard R-NNN | --resume R-NNN | --auto:yes"
 discord-visible: true
 ---
 
@@ -15,6 +15,9 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 - `--adhoc <description>` — same as today: allocate next R-NNN, insert into "Now", continue.
 - `--discard R-NNN` — force-remove the worktree + branch for this R-NNN, exit. Use when brainstorm went off the rails.
 - `--resume R-NNN` — explicit "I know the worktree exists, just continue". Equivalent to invoking `/ship-next R-NNN` and answering `Y` to the resume prompt.
+- `--auto:yes` (alias `--auto`) — **fire-and-forget mode**. Runs the entire 9-phase cycle without interactive prompts: brainstorm clarifying questions auto-pick option 1; spec/plan review gates auto-approve; executor auto = subagent; review loop iterates fix-plans automatically up to cap=3; major findings auto-forwarded to `IDEA-NNN` follow-ups. On cap=3 failure: abort with worktree retained + Discord push. Requires the ROADMAP row to have a `↳ done when:` annotation. Records every auto decision to `docs/.ship-auto-decisions.md` (gitignored) in the worktree.
+
+  **Mutually exclusive with `--discard`** (deletion is destructive; auto must never delete).
 
 ## Pre-flight invariants
 
@@ -40,6 +43,29 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
      exit 0
    fi
    ```
+
+1.5. **Detect `--auto:yes`** (anywhere in the arg list):
+    ```bash
+    AUTO=0
+    for arg in "$@"; do
+      case "$arg" in
+        --auto:yes|--auto) AUTO=1 ;;
+      esac
+    done
+
+    # Mutual exclusion with --discard
+    if [ "$AUTO" = "1" ] && [[ "$1" == "--discard" ]]; then
+      echo "ERROR: --auto:yes and --discard are mutually exclusive." >&2
+      echo "       --discard is destructive — never auto." >&2
+      exit 2
+    fi
+
+    if [ "$AUTO" = "1" ]; then
+      echo "🤖 Auto:yes mode — no interactive prompts. Decision log: <worktree>/docs/.ship-auto-decisions.md"
+    fi
+    ```
+
+    The `AUTO` variable is referenced throughout the rest of this command file — every interactive prompt has an `if [ "$AUTO" = "1" ]` branch.
 
 2. **Sync product brain:**
    ```bash
