@@ -126,10 +126,16 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    ```
 
 7. **Detect existing worktree:**
-   - If `$WORKTREE` exists: prompt `"Continue ${ID} in existing worktree? [Y/n/discard]"`.
-     - `Y` (or `--resume` was passed): jump to Phase 3, but auto-skip phases already done (detect via commit count + file presence — see Phase 3 step 0).
-     - `discard`: `git worktree remove --force "$WORKTREE"; git branch -D "$BRANCH"`, fall through to Phase 2.
-     - `n`: exit 0.
+   - If `$WORKTREE` exists:
+     - **In auto mode** (`AUTO=1`): auto-continue. Log:
+       ```bash
+       ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P1" "existing worktree detected — auto-continuing" "branch=$BRANCH"
+       ```
+       Jump to Phase 3.
+     - **Interactive**: prompt `"Continue ${ID} in existing worktree? [Y/n/discard]"`.
+       - `Y` (or `--resume` was passed): jump to Phase 3, but auto-skip phases already done (detect via commit count + file presence — see Phase 3 step 0).
+       - `discard`: `git worktree remove --force "$WORKTREE"; git branch -D "$BRANCH"`, fall through to Phase 2.
+       - `n`: exit 0.
 
 ## Phase 2 — Open worktree
 
@@ -155,6 +161,18 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 
 2. **Invoke `superpowers:brainstorming`** with context: spec target `docs/specs/${ID}-${SLUG}.md`, project `<project_name>`, proposal context (if loaded).
 
+   **In auto mode (`AUTO=1`):** the brainstorming skill is still invoked, but **every clarifying question is auto-answered by picking option 1**. The brainstorming skill convention is to lead with the recommended option, so option 1 = recommended.
+
+   After each auto-answered question, log:
+   ```bash
+   ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P3" "brainstorm Q${N} auto-picked option 1" "<question summary truncated to 80 chars>"
+   ```
+
+   When the brainstorming skill reaches the "Review spec first?" gate, auto-approve:
+   ```bash
+   ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P3" "spec review → auto-approved"
+   ```
+
 3. **Verify outputs**: `docs/brainstorms/${ID}-${SLUG}.md` + `docs/specs/${ID}-${SLUG}.md` exist.
 
 4. **Commit:**
@@ -167,6 +185,11 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 
 1. **Invoke `superpowers:writing-plans`** with the spec from Phase 3.
 
+   **In auto mode (`AUTO=1`):** the writing-plans skill's "Review plan first?" gate is auto-approved.
+   ```bash
+   ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P4" "plan review → auto-approved"
+   ```
+
 2. **Verify output**: `docs/plans/${ID}-${SLUG}.md` exists.
 
 3. **Commit:**
@@ -177,17 +200,23 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 
 ## Phase 5 — Choose executor + run
 
-1. **Ask the user:**
-   ```
-   Plan ready at docs/plans/${ID}-${SLUG}.md. Choose executor:
-     1. Subagent-driven (recommended) — fresh subagent per task, review between
-     2. Inline executing-plans — sequential in this session, batch with checkpoints
-     3. Codex /run-plan — autonomous in background
-   ```
+1. **Choose executor.**
+   - **In auto mode (`AUTO=1`):** auto-pick `1` (subagent-driven). Log:
+     ```bash
+     ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P5" "executor → auto-picked: 1 (subagent-driven)"
+     ```
+   - **Interactive:** prompt
+     ```
+     Plan ready at docs/plans/${ID}-${SLUG}.md. Choose executor:
+       1. Subagent-driven (recommended) — fresh subagent per task, review between
+       2. Inline executing-plans — sequential in this session, batch with checkpoints
+       3. Codex /run-plan — autonomous in background
+     ```
 
 2. **Record executor choice** to a stash file in the worktree (used by Phase 6 fix-plan re-invoke):
    ```bash
    echo "$EXECUTOR_CHOICE" > .claude/.ship-executor
+   # In auto mode, the log entry from step 5.4 already captured the choice.
    ```
 
 3. **Invoke the chosen sub-skill:**
