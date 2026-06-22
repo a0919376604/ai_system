@@ -242,53 +242,73 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 2. **Loop:**
    ```
    attempt=1
-   while attempt <= 3:
-     # Build review input from the squashed diff
-     REVIEW_TARGET = $(git diff ${ORIG_BRANCH}..HEAD)
-
-     # Invoke the external skill — Claude reads its SKILL.md and follows it
-     # using REVIEW_TARGET as the input PR diff. Capture the markdown output
-     # to a temp file (e.g. /tmp/ship-next-review-$ID-$attempt.md).
-
+   while [ "$attempt" -le 3 ]; do
+     REVIEW_TARGET=$(git diff ${ORIG_BRANCH}..HEAD)
      REVIEW_OUT=/tmp/ship-next-review-${ID}-${attempt}.md
-     # (Claude invokes the skill here; captures all generated markdown to REVIEW_OUT)
+     # Invoke awesome-skills/code-review-skill on REVIEW_TARGET; capture output to $REVIEW_OUT
 
-     # Parse counts
      eval "$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh $REVIEW_OUT)"
 
-     if [ "$BLOCKING_COUNT" -eq 0 ]; then
-       break  # ready to merge
+     # Auto mode: log every attempt
+     if [ "$AUTO" = "1" ]; then
+       ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P6" \
+         "review attempt $attempt" \
+         "blocking=$BLOCKING_COUNT major=$MAJOR_COUNT minor=$MINOR_COUNT praise=$PRAISE_COUNT"
      fi
 
-     # Print blockers in human-readable form (excerpts from REVIEW_OUT)
-     echo "🛑 ${BLOCKING_COUNT} blocking finding(s):"
-     grep -B1 -A3 -E '(\*\*Severity:\*\*[[:space:]]*blocking|\[blocking\])' $REVIEW_OUT
+     if [ "$BLOCKING_COUNT" -eq 0 ]; then break; fi
+
+     # Print blockers ONLY in interactive mode (auto mode keeps quiet)
+     if [ "$AUTO" = "0" ]; then
+       echo "🛑 ${BLOCKING_COUNT} blocking finding(s):"
+       grep -B1 -A3 -E '(\*\*Severity:\*\*[[:space:]]*blocking|\[blocking\]|🔴)' $REVIEW_OUT
+     fi
 
      attempt=$((attempt + 1))
-     if [ "$attempt" -gt 3 ]; then
-       break  # fall through to manual pause below
+     if [ "$attempt" -gt 3 ]; then break; fi  # fall through to abort below
+
+     # Build inline fix-plan
+     FIX_PLAN=docs/plans/${ID}-${SLUG}-review-fix-${attempt}.md
+     # ... (existing logic: write fix-plan, invoke subagent on it)
+
+     if [ "$AUTO" = "1" ]; then
+       ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P6" \
+         "building fix-plan attempt $attempt" \
+         "$FIX_PLAN with $BLOCKING_COUNT blockers"
      fi
 
-     # Build inline fix-plan: each blocker → 1 task with file + line + suggestion
-     # Save to a transient plan path:
-     FIX_PLAN=docs/plans/${ID}-${SLUG}-review-fix-${attempt}.md
-
-     # Re-invoke previously-chosen executor on $FIX_PLAN
      EXECUTOR=$(cat .claude/.ship-executor)
      case "$EXECUTOR" in
        1) invoke superpowers:subagent-driven-development on $FIX_PLAN ;;
        2) invoke superpowers:executing-plans on $FIX_PLAN ;;
        3) invoke /run-plan $FIX_PLAN ;;
      esac
+   done
    ```
 
-3. **If still blocking after 3 attempts**, pause:
-   ```
-   3 review attempts didn't clear blockers. Options:
-     [Y] Auto-fix one more cycle (loop continues)
-     [n] Pause indefinitely (user fixes manually, then re-invoke /ship-next ${ID})
-     [abort] Discard everything — /ship-next --discard ${ID}
-   ```
+3. **If still blocking after 3 attempts:**
+
+   - **In auto mode (`AUTO=1`):** **ABORT** the cycle.
+     ```bash
+     ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P6" \
+       "cap=3 exhausted — aborting" \
+       "blocking=$BLOCKING_COUNT main untouched, worktree retained at $WORKTREE"
+
+     # DO NOT cd back to ORIG_BRANCH.
+     # DO NOT remove worktree.
+     # DO NOT delete branch.
+     # Notification will fire from Task 8 abort path.
+     # Exit 1 so callers (codex /run-plan, automation) see failure.
+     exit 1
+     ```
+
+   - **Interactive (`AUTO=0`):** pause and prompt:
+     ```
+     3 review attempts didn't clear blockers. Options:
+       [Y] Auto-fix one more cycle (loop continues)
+       [n] Pause indefinitely (user fixes manually, then re-invoke /ship-next ${ID})
+       [abort] Discard everything — /ship-next --discard ${ID}
+     ```
 
 4. **Major findings handling** (only after BLOCKING_COUNT reaches 0): list them and ask per-finding `[F]ix-now / [I]dea-NNN-followup / [S]kip`.
 
