@@ -88,6 +88,31 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    - If positional arg given: `ID="$1"`.
    - Else: read `docs/product/ROADMAP.md` "## 🔥 Now" section; rank by existing logic (epics skipped, children ascending by .M, impact/dependency tie-breakers). Pick top.
 
+4.5. **Auto pre-flight gate** (only in `--auto:yes` mode):
+    ```bash
+    if [ "$AUTO" = "1" ]; then
+      ROADMAP_PATH="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/ROADMAP.md"
+
+      # Required: done-when annotation on the row
+      ROW=$(grep -A2 "\*\*${ID}\*\*" "$ROADMAP_PATH" || true)
+      DONE_WHEN=$(echo "$ROW" | grep "↳ done when:" || true)
+      if [ -z "$DONE_WHEN" ]; then
+        echo "ERROR: --auto:yes refused — R-NNN $ID has no ↳ done when: annotation." >&2
+        echo "       fire-and-forget mode requires an explicit success criterion." >&2
+        echo "       Run /ship-roadmap (or edit ROADMAP.md to add ↳ done when: <criterion>)," >&2
+        echo "       then re-invoke /ship-next $ID --auto:yes." >&2
+        exit 2
+      fi
+
+      # Recommended (warn only): explainer + proposal
+      EXPLAIN=$(echo "$ROW" | grep "↳ explain:" || true)
+      [ -z "$EXPLAIN" ] && echo "WARN: $ID has no ↳ explain: annotation — brainstorm may pick defaults that don't match your intent" >&2
+
+      PROPOSAL=$(ls "$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/Proposals/"*"${ID}"*"-proposal.md" 2>/dev/null | head -1)
+      [ -z "$PROPOSAL" ] && echo "WARN: $ID has no proposal — brainstorm design space is less constrained" >&2
+    fi
+    ```
+
 5. **Derive slug.** From ROADMAP row description, kebab-case English slug 3-5 words, leading imperative verb when possible. Example: "Wire SceneEngine into dialogue.py..." → `wire-scene-engine`. Same convention as `/ship-explain`.
 
 6. **Compute worktree path:**
