@@ -310,7 +310,33 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
        [abort] Discard everything — /ship-next --discard ${ID}
      ```
 
-4. **Major findings handling** (only after BLOCKING_COUNT reaches 0): list them and ask per-finding `[F]ix-now / [I]dea-NNN-followup / [S]kip`.
+4. **Major findings handling** (only after `BLOCKING_COUNT == 0`):
+
+   - **In auto mode (`AUTO=1`):** every major finding becomes an `IDEA-NNN` follow-up (NEVER skip; quality-debt must be visible).
+     ```bash
+     if [ "$MAJOR_COUNT" -gt 0 ]; then
+       # Extract major findings from $REVIEW_OUT — grab the line + 1-2 lines context
+       MAJOR_LINES=$(grep -B0 -A2 -E '(\*\*Severity:\*\*[[:space:]]*major|\[major\]|🟡)' $REVIEW_OUT)
+
+       # Parse each finding into a 1-line description
+       IFS=$'\n'
+       for finding in $(echo "$MAJOR_LINES" | awk 'NR==1 || /^[🟡]|\[major\]|\*\*Severity/' | head -$MAJOR_COUNT); do
+         finding_desc=$(echo "$finding" | sed 's/^[🟡[:space:]]*//' | head -c 120)
+         /ship-idea --during-build \
+           "P6 major from $ID: $finding_desc" \
+           --severity major \
+           --source "code-review-skill auto-run during $ID" \
+           --related-roadmap-item "$ID"
+       done
+       unset IFS
+
+       ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P6" \
+         "majors → IDEAs created" \
+         "$MAJOR_COUNT IDEA-NNN follow-ups via /ship-idea --during-build"
+     fi
+     ```
+
+   - **Interactive (`AUTO=0`):** list majors and ask per-finding `[F]ix-now / [I]dea-NNN-followup / [S]kip`.
 
 ## Phase 7 — Squash merge
 
