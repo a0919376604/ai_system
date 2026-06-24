@@ -24,3 +24,17 @@ Do **not** invoke the skill for:
 The skill's template includes some .NET-flavored test-framework defaults
 (MSTest, FluentAssertions, Moq). Substitute the project's actual test
 stack (pytest / vitest / jest / etc.) when applying.
+
+## Post-pull sync
+
+After every `git pull` (or any operation that fast-forwards / merges remote
+changes into the working tree), immediately run:
+
+```bash
+./sync.sh restore
+```
+
+This applies the project's restore step so the local environment stays in
+sync with what was just pulled. Run it even if the pull reported "Already
+up to date" only when the user explicitly asks; otherwise run it whenever
+the pull actually updated files.
