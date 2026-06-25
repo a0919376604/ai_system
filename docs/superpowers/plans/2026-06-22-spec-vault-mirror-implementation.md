@@ -647,3 +647,7 @@ Plan complete and saved to `docs/superpowers/plans/2026-06-22-spec-vault-mirror-
 **3. Codex `/run-plan`** — autonomous background. Tasks 1-3 are full execution (file system + repo only — no `~/.claude/` to dodge). Task 4 (interactive smoke) is the only defer. Best fit for a small plan like this (~1.5h, no skill-tool blockers).
 
 Which approach?
+
+## Execution log
+
+- Task 4 deferred — requires interactive Claude session
