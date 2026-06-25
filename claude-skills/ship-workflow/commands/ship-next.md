@@ -26,12 +26,85 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 
 ## Phase 1 — Pre-flight + R-NNN resolution
 
-1. **Handle `--discard`**:
+0. **Parse all args FIRST** (before any destructive operation, so mutex checks run before discard):
+
    ```bash
-   if [[ "$1" == "--discard" ]]; then
-     ID="$2"
+   # Initialize flag state
+   AUTO=0
+   MODE=""              # one of: discard | adhoc | resume | "" (positional)
+   TARGET=""            # ID for discard/resume, or description for adhoc
+   POSITIONAL=""        # R-NNN if user typed `/ship-next R-NNN` plain
+
+   # Walk args once, consuming flags
+   while [ $# -gt 0 ]; do
+     case "$1" in
+       --auto:yes|--auto)
+         AUTO=1
+         shift
+         ;;
+       --discard)
+         MODE="discard"
+         TARGET="${2:-}"
+         shift 2 || shift  # robust against missing arg
+         ;;
+       --adhoc)
+         MODE="adhoc"
+         TARGET="${2:-}"
+         shift 2 || shift
+         ;;
+       --resume)
+         MODE="resume"
+         TARGET="${2:-}"
+         shift 2 || shift
+         ;;
+       --*)
+         echo "ERROR: unknown flag: $1" >&2
+         exit 2
+         ;;
+       *)
+         # First non-flag positional = R-NNN
+         [ -z "$POSITIONAL" ] && POSITIONAL="$1"
+         shift
+         ;;
+     esac
+   done
+
+   # Mutex: --discard + --auto are incompatible (auto must never delete)
+   if [ "$MODE" = "discard" ] && [ "$AUTO" = "1" ]; then
+     echo "ERROR: --auto:yes and --discard are mutually exclusive." >&2
+     echo "       --discard is destructive — never auto." >&2
+     exit 2
+   fi
+
+   # Required-arg checks for modes that take a value
+   if [ "$MODE" = "discard" ] && [ -z "$TARGET" ]; then
+     echo "ERROR: --discard requires an R-NNN argument." >&2
+     exit 2
+   fi
+   if [ "$MODE" = "resume" ] && [ -z "$TARGET" ]; then
+     echo "ERROR: --resume requires an R-NNN argument." >&2
+     exit 2
+   fi
+   if [ "$MODE" = "adhoc" ] && [ -z "$TARGET" ]; then
+     echo "ERROR: --adhoc requires a description argument." >&2
+     exit 2
+   fi
+
+   if [ "$AUTO" = "1" ]; then
+     echo "🤖 Auto:yes mode — no interactive prompts. Decision log: <worktree>/.claude/.ship-auto-decisions.md"
+   fi
+   ```
+
+1. **Handle `--discard`** (now safely after mutex check):
+
+   ```bash
+   if [ "$MODE" = "discard" ]; then
+     ID="$TARGET"
+     # Quote repo path computations against spaces
+     REPO="$(pwd)"
+     WT_ROOT="$(dirname "$REPO")/$(basename "$REPO")-worktrees"
      # Locate worktree by ID prefix (slug may vary)
-     WT=$(ls -d "$(dirname $(pwd))/$(basename $(pwd))-worktrees/${ID}-"* 2>/dev/null | head -1)
+     WT=$(ls -d "$WT_ROOT/${ID}-"* 2>/dev/null | head -1)
      if [ -n "$WT" ]; then
        BRANCH=$(cd "$WT" && git branch --show-current)
        git worktree remove --force "$WT"
@@ -47,30 +120,9 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    fi
    ```
 
-1.5. **Detect `--auto:yes`** (anywhere in the arg list):
-    ```bash
-    AUTO=0
-    for arg in "$@"; do
-      case "$arg" in
-        --auto:yes|--auto) AUTO=1 ;;
-      esac
-    done
+1.6. **Self-heal repo root `.gitignore`** (auto mode only, idempotent):
 
-    # Mutual exclusion with --discard
-    if [ "$AUTO" = "1" ] && [[ "$1" == "--discard" ]]; then
-      echo "ERROR: --auto:yes and --discard are mutually exclusive." >&2
-      echo "       --discard is destructive — never auto." >&2
-      exit 2
-    fi
-
-    if [ "$AUTO" = "1" ]; then
-      echo "🤖 Auto:yes mode — no interactive prompts. Decision log: <worktree>/docs/.ship-auto-decisions.md"
-    fi
-    ```
-
-    The `AUTO` variable is referenced throughout the rest of this command file — every interactive prompt has an `if [ "$AUTO" = "1" ]` branch.
-
-1.6. **Self-heal `.claude/.gitignore`** (auto mode only, idempotent):
+    The decision log lives at `<worktree>/.claude/.ship-auto-decisions.md` (under `.claude/` so the existing `.claude/.gitignore` rule covers it):
     ```bash
     if [ "$AUTO" = "1" ] && [ -f .claude/.gitignore ]; then
       if ! grep -qF ".ship-auto-decisions.md" .claude/.gitignore; then
@@ -86,21 +138,25 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    ~/.claude/skills/ship-workflow/lib/sync.sh
    ```
 
-3. **Handle `--adhoc`** (same flow as the previous `/ship-next`):
+3. **Handle `--adhoc`** (uses pre-parsed `TARGET` as description):
    ```bash
-   if [[ "$1" == "--adhoc" ]]; then
+   if [ "$MODE" = "adhoc" ]; then
      ~/.claude/skills/ship-workflow/lib/sync.sh --force
      ID=$(~/.claude/skills/ship-workflow/lib/id-gen.sh roadmap --reserve)
      ROADMAP_PATH="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/ROADMAP.md"
-     ~/.claude/skills/ship-workflow/lib/roadmap-insert.sh "$ROADMAP_PATH" "$ID" "$2" --adhoc
+     ~/.claude/skills/ship-workflow/lib/roadmap-insert.sh "$ROADMAP_PATH" "$ID" "$TARGET" --adhoc
      ~/.claude/skills/ship-workflow/lib/sync.sh --force
-     # Continue with $ID, slug derived from "$2"
+     # Continue with $ID, slug derived from "$TARGET"
    fi
    ```
 
 4. **Resolve R-NNN:**
-   - If positional arg given: `ID="$1"`.
+   - If `MODE == "resume"`: `ID="$TARGET"`. (Skip auto-pick; user explicitly named the row.)
+   - Elif `MODE == "adhoc"`: `ID` already set by Step 3.
+   - Elif `$POSITIONAL` is set: `ID="$POSITIONAL"`.
    - Else: read `docs/product/ROADMAP.md` "## 🔥 Now" section; rank by existing logic (epics skipped, children ascending by .M, impact/dependency tie-breakers). Pick top.
+
+   **Critical:** never assign `ID="$1"` directly — that pattern captures flags like `--auto:yes` as the row ID. Always use the parsed variables.
 
 4.5. **Auto pre-flight gate** (only in `--auto:yes` mode):
     ```bash
