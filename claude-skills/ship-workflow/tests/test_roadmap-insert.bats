@@ -80,6 +80,44 @@ teardown() {
   [[ "$output" == *"parent R-099 not found"* ]]
 }
 
+@test "roadmap-insert: --child errors if child ID exists elsewhere but parent missing (no false-positive)" {
+  # Seed ROADMAP with the child ID appearing in a comment/Notes link but
+  # WITHOUT the parent. The pre-fix grep -q would false-positive on the
+  # child ID elsewhere and exit 0 silently without inserting.
+  sed -i.bak '/^## 🔥 Now/a\
+<!-- mentioned: [[Roadmap-Notes/R-014.1-foo]] -->' "$ROADMAP" && rm "$ROADMAP.bak"
+
+  run "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014.1 "Orphan" --child R-099
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"parent R-099 not found"* ]]
+  # Verify nothing was inserted under the comment line either
+  ! grep -E '^  - \[ \] \*\*R-014\.1\*\* Orphan' "$ROADMAP"
+}
+
+@test "roadmap-insert: --mark-warning errors if row not found (no silent no-op)" {
+  run "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-999 --mark-warning "test"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"R-999 not found"* ]]
+}
+
+@test "roadmap-insert: --mark-epic errors if row not found (no silent no-op)" {
+  run "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-999 --mark-epic
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"R-999 not found"* ]]
+}
+
+@test "roadmap-insert: --inject-explain errors if row not found (no false-positive on wikilink)" {
+  # Seed ROADMAP with the ID appearing only as a wikilink, not as a real row
+  sed -i.bak '/^## 🔥 Now/a\
+<!-- see [[Roadmap-Notes/R-777-foo]] for prior art -->' "$ROADMAP" && rm "$ROADMAP.bak"
+
+  run "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-777 --inject-explain "Roadmap-Notes/R-777-foo"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"R-777 not found"* ]]
+  # Verify no annotation got injected near the comment line either
+  ! grep -E '^[[:space:]]+↳ explain: \[\[Roadmap-Notes/R-777' "$ROADMAP"
+}
+
 @test "roadmap-insert: --mark-warning adds ⚠️ + flagged annotation" {
   "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014 "Webhook retry"
   "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014 --mark-warning "touches 3 modules"

@@ -129,7 +129,11 @@ case "$MODE" in
     [ -n "$EXPLAIN" ]   && EXPLAIN_LINE="      ↳ explain: [[${EXPLAIN}]]"
     [ -n "$DONE_WHEN" ] && DONE_LINE="      ↳ done when: ${DONE_WHEN}"
 
-    awk -v parent="$CHILD_PARENT" -v line="$NEW_LINE" -v explain="$EXPLAIN_LINE" -v done_line="$DONE_LINE" '
+    # awk's `END { exit !inserted }` returns non-zero if no row matched the
+    # parent regex. This is more robust than grepping for $RID afterwards,
+    # which false-positives when the child ID happens to appear elsewhere
+    # in the file (e.g. as a wikilink in a comment).
+    if awk -v parent="$CHILD_PARENT" -v line="$NEW_LINE" -v explain="$EXPLAIN_LINE" -v done_line="$DONE_LINE" '
       {
         print
         if (!inserted && match($0, "^- \\[ \\] (⚠️ )?\\*\\*" parent "(\\*\\*| )")) {
@@ -139,13 +143,14 @@ case "$MODE" in
           inserted = 1
         }
       }
-    ' "$ROADMAP" > "$TMP"
-    if ! grep -q "$RID" "$TMP"; then
+      END { exit !inserted }
+    ' "$ROADMAP" > "$TMP"; then
+      mv "$TMP" "$ROADMAP"
+    else
       echo "ERROR: parent $CHILD_PARENT not found in ROADMAP" >&2
       rm -f "$TMP"
       exit 1
     fi
-    mv "$TMP" "$ROADMAP"
     ;;
 
   mark-warning)
@@ -154,9 +159,13 @@ case "$MODE" in
       echo "ERROR: --mark-warning requires a reason string" >&2
       exit 2
     fi
-    awk -v rid="$RID" -v reason="$WARN_REASON" '
+    # awk's `END { exit !modified }` returns non-zero when no row matched.
+    # The match regex allows an optional `⚠️ ` already on the row so that
+    # re-applying mark-warning on an already-flagged row is a no-op (idempotent),
+    # not an error.
+    if awk -v rid="$RID" -v reason="$WARN_REASON" '
       {
-        if (!modified && match($0, "^- \\[ \\] \\*\\*" rid "(\\*\\*| )")) {
+        if (!modified && match($0, "^- \\[ \\] (⚠️ )?\\*\\*" rid "(\\*\\*| )")) {
           # Add ⚠️ if not already present
           if ($0 !~ /⚠️/) {
             sub(/^- \[ \] /, "- [ ] ⚠️ ", $0)
@@ -175,13 +184,20 @@ case "$MODE" in
         }
         print
       }
-    ' "$ROADMAP" > "$TMP"
-    mv "$TMP" "$ROADMAP"
+      END { exit !modified }
+    ' "$ROADMAP" > "$TMP"; then
+      mv "$TMP" "$ROADMAP"
+    else
+      echo "ERROR: row $RID not found in $ROADMAP" >&2
+      rm -f "$TMP"
+      exit 1
+    fi
     ;;
 
   mark-epic)
     # Convert R-NNN line to (epic): strip ⚠️ + ↳ flagged annotation, add (epic)
-    awk -v rid="$RID" '
+    # awk's `END { exit !modified }` returns non-zero when no row matched.
+    if awk -v rid="$RID" '
       {
         if (!modified && match($0, "^- \\[ \\] (⚠️ )?\\*\\*" rid "(\\*\\*| )")) {
           # Strip ⚠️
@@ -203,8 +219,14 @@ case "$MODE" in
         }
         print
       }
-    ' "$ROADMAP" > "$TMP"
-    mv "$TMP" "$ROADMAP"
+      END { exit !modified }
+    ' "$ROADMAP" > "$TMP"; then
+      mv "$TMP" "$ROADMAP"
+    else
+      echo "ERROR: row $RID not found in $ROADMAP" >&2
+      rm -f "$TMP"
+      exit 1
+    fi
     ;;
 
   inject-explain)
@@ -213,7 +235,10 @@ case "$MODE" in
       exit 2
     fi
     new_annot="↳ explain: [[${EXPLAIN}]]"
-    awk -v rid="$RID" -v new_annot="$new_annot" '
+    # awk's `END { exit !modified }` returns non-zero if no row matched the regex.
+    # This is more robust than counting $RID occurrences afterwards, which
+    # would false-positive if $RID appears as a wikilink elsewhere in the file.
+    if awk -v rid="$RID" -v new_annot="$new_annot" '
       function indent_for(line) {
         if (match(line, /^  /)) return "      "
         return "    "
@@ -251,13 +276,14 @@ case "$MODE" in
         }
         print
       }
-    ' "$ROADMAP" > "$TMP"
-    if [ "$(grep -c "$RID" "$TMP")" -eq 0 ]; then
+      END { exit !modified }
+    ' "$ROADMAP" > "$TMP"; then
+      mv "$TMP" "$ROADMAP"
+    else
       echo "ERROR: row $RID not found in $ROADMAP" >&2
       rm -f "$TMP"
       exit 1
     fi
-    mv "$TMP" "$ROADMAP"
     ;;
 
   *)
