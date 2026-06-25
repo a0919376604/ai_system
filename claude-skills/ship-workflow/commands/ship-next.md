@@ -36,6 +36,9 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
        BRANCH=$(cd "$WT" && git branch --show-current)
        git worktree remove --force "$WT"
        git branch -D "$BRANCH" 2>/dev/null || true
+       # Also clean vault mirror (no orphan)
+       VAULT_SPECS_DIR="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/Specs"
+       rm -f "$VAULT_SPECS_DIR/${ID}-"*.md
        echo "Discarded worktree at $WT and branch $BRANCH"
      else
        echo "No worktree found for $ID"
@@ -164,7 +167,13 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 ## Phase 3 — Brainstorm
 
 0. **Resume detection.** Check what's already done in the worktree:
-   - `ls docs/specs/${ID}-${SLUG}.md` exists → skip to Phase 4 (plan stage).
+   - `ls docs/specs/${ID}-${SLUG}.md` exists → **first re-mirror spec to vault** (catch any post-write edits), then skip to Phase 4 (plan stage):
+     ```bash
+     VAULT_SPECS_DIR="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/Specs"
+     ~/.claude/skills/ship-workflow/lib/spec-mirror.sh \
+       docs/specs/${ID}-${SLUG}.md \
+       "$VAULT_SPECS_DIR/${ID}-${SLUG}.md"
+     ```
    - `ls docs/plans/${ID}-${SLUG}.md` exists → skip to Phase 5 (executor).
    - `git log --oneline ${ORIG_BRANCH}..HEAD | wc -l` > 2 → executor has committed; skip to Phase 6 (review).
 
