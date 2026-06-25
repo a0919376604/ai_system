@@ -186,6 +186,25 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 
 3. **Verify outputs**: `docs/brainstorms/${ID}-${SLUG}.md` + `docs/specs/${ID}-${SLUG}.md` exist.
 
+3.5. **Dual-write spec to vault** (Obsidian visibility):
+
+    ```bash
+    VAULT_SPECS_DIR="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/Specs"
+    ~/.claude/skills/ship-workflow/lib/spec-mirror.sh \
+      docs/specs/${ID}-${SLUG}.md \
+      "$VAULT_SPECS_DIR/${ID}-${SLUG}.md"
+    ```
+
+    The helper handles `mkdir -p`, atomic write, and `mirror-source:` frontmatter injection. The vault file is NOT committed to git (repo is canonical; vault is one-way write target).
+
+    **Auto-mode log:**
+    ```bash
+    if [ "$AUTO" = "1" ]; then
+      ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P3" \
+        "spec mirrored to vault" "$VAULT_SPECS_DIR/${ID}-${SLUG}.md"
+    fi
+    ```
+
 4. **Commit:**
    ```bash
    git add docs/brainstorms/${ID}-${SLUG}.md docs/specs/${ID}-${SLUG}.md
