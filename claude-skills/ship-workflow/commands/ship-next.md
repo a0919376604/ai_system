@@ -15,7 +15,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 - `--adhoc <description>` — same as today: allocate next R-NNN, insert into "Now", continue.
 - `--discard R-NNN` — force-remove the worktree + branch for this R-NNN, exit. Use when brainstorm went off the rails.
 - `--resume R-NNN` — explicit "I know the worktree exists, just continue". Equivalent to invoking `/ship-next R-NNN` and answering `Y` to the resume prompt.
-- `--auto:yes` (alias `--auto`) — **fire-and-forget mode**. Runs the entire 9-phase cycle without interactive prompts: brainstorm clarifying questions auto-pick option 1; spec/plan review gates auto-approve; executor auto = subagent; review loop iterates fix-plans automatically up to cap=3; major findings auto-forwarded to `IDEA-NNN` follow-ups. On cap=3 failure: abort with worktree retained + Discord push. Requires the ROADMAP row to have a `↳ done when:` annotation. Records every auto decision to `docs/.ship-auto-decisions.md` (gitignored) in the worktree.
+- `--auto:yes` (alias `--auto`) — **fire-and-forget mode**. Runs the entire 9-phase cycle without interactive prompts: brainstorm clarifying questions auto-pick option 1; spec/plan review gates auto-approve; executor auto = subagent; review loop iterates fix-plans automatically up to cap=3; major findings auto-forwarded to `IDEA-NNN` follow-ups. On cap=3 failure: abort with worktree retained + Discord push. Requires the ROADMAP row to have a `↳ done when:` annotation. Records every auto decision to `.claude/.ship-auto-decisions.md` (gitignored) in the worktree.
 
   **Mutually exclusive with `--discard`** (deletion is destructive; auto must never delete).
 
@@ -541,7 +541,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    • major: ${MAJOR_COUNT} → IDEA-NNN auto-logged
    • minor: ${MINOR_COUNT}
    • praise: ${PRAISE_COUNT}
-   • decisions log: ${WORKTREE}/docs/.ship-auto-decisions.md (kept in worktree pre-cleanup; copy if you want post-mortem)"
+   • decisions log: ${WORKTREE}/.claude/.ship-auto-decisions.md (kept in worktree pre-cleanup; copy if you want post-mortem)"
 
      # Channel routing (per /run-plan skill convention):
      # - Discord session (incoming message tag has channel source="discord"): use Discord reply
@@ -549,7 +549,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
      # - Always also fire osascript + bell for local presence
 
      # Scan conversation context for a discord chat_id (Claude does this at invocation time).
-     # If a chat_id is in scope: call Discord reply with $SUMMARY, chat_id, files=[$WORKTREE/docs/.ship-auto-decisions.md]
+     # If a chat_id is in scope: call Discord reply with $SUMMARY, chat_id, files=[$WORKTREE/.claude/.ship-auto-decisions.md]
      # Else: call PushNotification subject="/ship-next ${ID} shipped" body=$SUMMARY
 
      # Local OS notification + bell — fires regardless of channel
