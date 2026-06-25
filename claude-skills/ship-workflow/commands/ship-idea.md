@@ -42,13 +42,35 @@ You are capturing a new idea into `docs/ideas/IDEA-NNN-<slug>.md`.
 
    - **Interactive mode (default)**: Use `<description>` and any extra context the user provided. Leave Target User / Evidence / Impact / Confidence / Dependencies / Risks / Possible Roadmap Item as section headers with `_to-fill_` placeholders only if the user is explicit that they want a quick capture; otherwise drive a short interactive fill-in.
 
-   - **`--during-build` mode**: Skip interactive fill entirely. Write only the `<description>` into Summary + Problem. Other sections stay as `_to-fill_` placeholders. Add three extra frontmatter keys at the top (after existing keys, before the closing `---`):
+   - **`--during-build` mode**: Skip interactive fill entirely. Write only the `<description>` into Summary + Problem. Other sections stay as `_to-fill_` placeholders. Frontmatter customization:
+
+     **`severity` and `source` are NEW keys** — inject them at the top of the frontmatter block (after `status:` line, before closing `---`):
      ```yaml
-     severity: <severity-arg-value>           # major | minor | nit
-     source: <source-arg-value>               # free-form
-     related-roadmap-item: <R-NNN-arg-value>  # cross-link to parent
+     severity: <severity-arg-value>   # major | minor | nit
+     source: <source-arg-value>       # free-form
      ```
-     These are emitted only when the corresponding flag was provided. Missing flag → omit the key entirely (do not write `null`).
+
+     **`related-roadmap-item` ALREADY EXISTS** in the template as `related-roadmap-item: null` (line 14). When `--related-roadmap-item R-NNN` is given, **REPLACE the existing line in-place** rather than appending a duplicate key. Use `sed` or careful `awk` — do NOT use `cat >> file` (would create a second key and yield ambiguous YAML).
+
+     Suggested implementation:
+     ```bash
+     # Inject severity + source after status: line (only if flags given)
+     if [ -n "$SEVERITY" ]; then
+       sed -i.bak "/^status:/a\\
+     severity: $SEVERITY" "$IDEA_FILE" && rm "$IDEA_FILE.bak"
+     fi
+     if [ -n "$SOURCE" ]; then
+       sed -i.bak "/^status:/a\\
+     source: $SOURCE" "$IDEA_FILE" && rm "$IDEA_FILE.bak"
+     fi
+
+     # Replace existing related-roadmap-item line (do not append a duplicate)
+     if [ -n "$RELATED_ROADMAP" ]; then
+       sed -i.bak "s|^related-roadmap-item:.*|related-roadmap-item: $RELATED_ROADMAP|" "$IDEA_FILE" && rm "$IDEA_FILE.bak"
+     fi
+     ```
+
+     Flags not given → leave template defaults (e.g. `related-roadmap-item: null` stays).
 
 7. **Append log line:**
    ```bash
