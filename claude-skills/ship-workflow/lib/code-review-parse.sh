@@ -5,21 +5,32 @@
 #   eval "$(code-review-parse.sh /path/to/review.md)"
 #   echo "$BLOCKING_COUNT"   # → e.g. 2
 #
-# Recognizes THREE severity-tag styles in the input (any one counts):
+# Recognizes severity-tag styles in the input (any one counts):
 #
 #   1. `**Severity:** <level>`            — markdown bold key-value pair
-#   2. `[<level>]`                        — inline square-bracket tag
-#   3. emoji-tier (awesome-skills/code-review-skill convention):
+#   2. `[<level>]` at line start          — inline square-bracket tag
+#   3. emoji-tier at line start (awesome-skills/code-review-skill convention):
 #        🔴 → BLOCKING
 #        🟡 → MAJOR
 #        🟢 → MINOR
 #        🎉 → PRAISE
 #      Also accepts `[nit]` as MINOR (awesome-skills idiom).
+#      Also accepts `[important]` and the word `important` after **Severity:** as MAJOR
+#      (awesome-skills uses [important] for yellow-tier instead of [major]).
 #
-# Word match is case-insensitive: blocking | major | minor | nit | praise.
+# Word match is case-insensitive: blocking | major | important | minor | nit | praise.
 # Emoji match is exact codepoint.
 #
 # Each MATCHING LINE counts once — a line with both 🔴 and `[blocking]` counts as 1 (not 2).
+#
+# **Legend / example / explanation lines are deliberately ignored** by anchoring
+# inline emoji + bracket tags to line start. This prevents counting things like:
+#
+#   Legend: 🔴 blocking, 🟡 major, 🟢 minor, 🎉 praise
+#   Severity levels: 🔴 / 🟡 / 🟢 are the three tiers ...
+#
+# as findings. The `**Severity:** <word>` form is left unanchored because that
+# pattern is structurally specific to finding documentation.
 
 set -euo pipefail
 
@@ -32,25 +43,28 @@ fi
 # Each helper greps lines matching ANY pattern for the level and counts.
 # Note: `grep -c` counts matching lines, not match instances — so duplicate
 # patterns on one line still count as 1.
+#
+# Inline emoji and `[tag]` must be at the **start of a line** (after optional
+# leading whitespace) to count — this filters out legend / inline-text usage.
 
 count_blocking() {
-  # `**Severity:** blocking` OR `[blocking]` OR 🔴
-  grep -ciE '(\*\*Severity:\*\*[[:space:]]*blocking|\[blocking\]|🔴)' "$FILE" || echo 0
+  # Line start: 🔴 or [blocking]; OR anywhere: **Severity:** blocking/🔴
+  grep -ciE '^[[:space:]]*(🔴|\[blocking\])|\*\*Severity:\*\*[[:space:]]*(blocking|🔴)' "$FILE" || echo 0
 }
 
 count_major() {
-  # `**Severity:** major` OR `[major]` OR 🟡
-  grep -ciE '(\*\*Severity:\*\*[[:space:]]*major|\[major\]|🟡)' "$FILE" || echo 0
+  # Line start: 🟡, [major], or [important]; OR anywhere: **Severity:** major/important/🟡
+  grep -ciE '^[[:space:]]*(🟡|\[major\]|\[important\])|\*\*Severity:\*\*[[:space:]]*(major|important|🟡)' "$FILE" || echo 0
 }
 
 count_minor() {
-  # `**Severity:** minor` OR `[minor]` OR `[nit]` OR 🟢
-  grep -ciE '(\*\*Severity:\*\*[[:space:]]*minor|\[minor\]|\[nit\]|🟢)' "$FILE" || echo 0
+  # Line start: 🟢, [minor], or [nit]; OR anywhere: **Severity:** minor/nit/🟢
+  grep -ciE '^[[:space:]]*(🟢|\[minor\]|\[nit\])|\*\*Severity:\*\*[[:space:]]*(minor|nit|🟢)' "$FILE" || echo 0
 }
 
 count_praise() {
-  # `**Severity:** praise` OR `[praise]` OR 🎉
-  grep -ciE '(\*\*Severity:\*\*[[:space:]]*praise|\[praise\]|🎉)' "$FILE" || echo 0
+  # Line start: 🎉 or [praise]; OR anywhere: **Severity:** praise/🎉
+  grep -ciE '^[[:space:]]*(🎉|\[praise\])|\*\*Severity:\*\*[[:space:]]*(praise|🎉)' "$FILE" || echo 0
 }
 
 BLOCKING=$(count_blocking)

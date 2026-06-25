@@ -120,3 +120,68 @@ EOF
   [[ "$output" == *"MINOR_COUNT=3"* ]]
   [[ "$output" == *"PRAISE_COUNT=2"* ]]
 }
+
+@test "code-review-parse: [important] tag counts as major (awesome-skills yellow-tier)" {
+  imp="$SCRATCH/important.md"
+  cat > "$imp" <<'EOF'
+[important] handler.py:45 — input validation missing
+[important] cache.py:12 — error swallowed silently
+**Severity:** important — service.py:88 — N+1 query
+EOF
+  run "$SHIP_LIB/code-review-parse.sh" "$imp"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"MAJOR_COUNT=3"* ]]
+}
+
+@test "code-review-parse: legend / example lines do NOT count as findings" {
+  legend="$SCRATCH/with-legend.md"
+  cat > "$legend" <<'EOF'
+# Code Review Output
+
+## Legend
+Severity levels: 🔴 / 🟡 / 🟢 are the three severity tiers
+- 🔴 [blocking] - Must fix before merge
+- 🟡 [important] - Should address
+- 🟢 [nit] - Nice to have, not blocking
+- 🎉 [praise] - Good work, keep it up!
+
+Example: a finding tagged with 🔴 [blocking] looks like the one below.
+
+## Real findings
+
+🔴 handler.py:45 — actual SQL injection
+🟡 service.py:88 — actual N+1 query
+🟢 utils.py:200 — actual style nit
+🎉 dialogue.py:312 — actual praise
+EOF
+  run "$SHIP_LIB/code-review-parse.sh" "$legend"
+  [ "$status" -eq 0 ]
+  # Only the 4 real findings count. Legend bullets start with `- 🔴 ...`
+  # — the `- ` prefix is not whitespace, so our `^[[:space:]]*` anchor
+  # doesn't match them. Inline `Severity levels: 🔴 / 🟡 ...` has the
+  # emoji mid-line, also doesn't match. Example sentence has emoji mid-line
+  # too. So only the 4 bare-emoji-prefixed finding lines count.
+  [[ "$output" == *"BLOCKING_COUNT=1"* ]]
+  [[ "$output" == *"MAJOR_COUNT=1"* ]]
+  [[ "$output" == *"MINOR_COUNT=1"* ]]
+  [[ "$output" == *"PRAISE_COUNT=1"* ]]
+}
+
+@test "code-review-parse: inline 'Legend:' paragraph does NOT inflate counts" {
+  inline_legend="$SCRATCH/inline-legend.md"
+  cat > "$inline_legend" <<'EOF'
+Legend: 🔴 blocking, 🟡 major, 🟢 minor, 🎉 praise. These are explanatory only.
+
+Real findings below:
+
+🔴 handler.py:45 — real blocking issue
+EOF
+  run "$SHIP_LIB/code-review-parse.sh" "$inline_legend"
+  [ "$status" -eq 0 ]
+  # Inline `Legend: 🔴 ...` has emoji NOT at line start (mid-line), so shouldn't count
+  # Only the bare `🔴 handler.py:45 ...` line at start counts
+  [[ "$output" == *"BLOCKING_COUNT=1"* ]]
+  [[ "$output" == *"MAJOR_COUNT=0"* ]]
+  [[ "$output" == *"MINOR_COUNT=0"* ]]
+  [[ "$output" == *"PRAISE_COUNT=0"* ]]
+}
