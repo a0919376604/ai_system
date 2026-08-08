@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 # airos-binding.sh — resolve AIR-OS vault + per-repo project path.
 #
+# Canonical direction for strategy docs (VISION/STRATEGY/ROADMAP/QUARTERLY_GOALS.md):
+#   vault → repo (vault is source of truth; repo mirror is for cwd-local tooling)
+#
+# When repo docs/product/*.md have committed changes that vault has not caught
+# up on, sync.sh will detect the divergence and abort (R-087). To carry repo
+# edits back to vault, the user updates vault manually (or via obsidian sync)
+# BEFORE re-running sync.sh. See lib/sync.sh for the divergence-detection
+# implementation and CLI flags.
+#
 # Usage:
 #   airos-binding.sh vault          # prints vault root
 #   airos-binding.sh project_path   # prints AIR-OS 10 Projects/<name>/ path
