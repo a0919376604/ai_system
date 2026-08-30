@@ -233,6 +233,20 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
 
 ## Phase 3 — Brainstorm
 
+0. **UA pre-brainstorm context (auto-detect, silent if UA absent):**
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
+   if ua_check_installed; then
+     mkdir -p .ship
+     ua_get_pre_brainstorm_context "$RID" > .ship/ua-context.md
+     [ -s .ship/ua-context.md ] && echo "UA pre-context saved to .ship/ua-context.md — Read this before brainstorm dialog."
+   fi
+   ```
+
+   When the brainstorming skill kicks off, it should Read `.ship/ua-context.md` (if present) as part of its opening context — this gives the design dialog concrete grounding in how the target files actually connect.
+
 0. **Resume detection.** Check what's already done in the worktree:
    - `ls docs/specs/${ID}-${SLUG}.md` exists → **first re-mirror spec to vault** (catch any post-write edits), then skip to Phase 4 (plan stage):
      ```bash
