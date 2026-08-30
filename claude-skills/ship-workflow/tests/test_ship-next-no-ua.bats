@@ -30,3 +30,8 @@ teardown() {
   DRIFT_WARN=$(ua_check_drift)
   [ -z "$DRIFT_WARN" ]
 }
+
+@test "ship-next Phase 3 passes the resolved ID to UA pre-context" {
+  run grep -F 'ua_get_pre_brainstorm_context "$ID"' "$SHIP_SKILL_ROOT/commands/ship-next.md"
+  [ "$status" -eq 0 ]
+}

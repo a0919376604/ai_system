@@ -240,7 +240,7 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
    if ua_check_installed; then
      mkdir -p .ship
-     ua_get_pre_brainstorm_context "$RID" > .ship/ua-context.md
+     ua_get_pre_brainstorm_context "$ID" > .ship/ua-context.md
      [ -s .ship/ua-context.md ] && echo "UA pre-context saved to .ship/ua-context.md — Read this before brainstorm dialog."
    fi
    ```
