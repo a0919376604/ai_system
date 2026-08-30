@@ -207,6 +207,17 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
        - `discard`: `git worktree remove --force "$WORKTREE"; git branch -D "$BRANCH"`, fall through to Phase 2.
        - `n`: exit 0.
 
+## Phase 1.5 — UA drift check (auto-detect, silent no-op if UA absent)
+
+```bash
+# shellcheck disable=SC1091
+source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
+DRIFT_WARN=$(ua_check_drift)
+[ -n "$DRIFT_WARN" ] && echo "$DRIFT_WARN"
+```
+
+When UA plugin + repo KG are both present and the KG's baseline commit differs from HEAD by any project files, this prints a warning block. It does NOT gate; the phase proceeds. See `docs/superpowers/specs/2026-08-30-ua-ship-workflow-integration-design.md`.
+
 ## Phase 2 — Open worktree
 
 1. **Invoke `superpowers:using-git-worktrees`** with parameters:
