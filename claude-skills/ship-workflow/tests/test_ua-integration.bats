@@ -193,6 +193,7 @@ EOF
   [[ "$output" =~ "foo.py" ]]
   [[ "$output" =~ "Affected components" ]]
   [[ "$output" =~ "Affected layers" ]]
+  [[ "$output" =~ "file:bar.py" ]]
 }
 
 @test "ua_get_diff_report: writes full report to .ship/ua-diff-full.md on huge diff" {

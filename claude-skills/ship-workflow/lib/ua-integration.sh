@@ -249,7 +249,7 @@ ua_get_diff_report() {
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     _ua_extract_callers "$f"
-  done <<< "$changed" | sort -t 'weight ' -k2 -n -r | head -20
+  done <<< "$changed" | sort -k6,6nr | head -20
   echo
   echo "### Affected layers"
   _ua_extract_layers $(printf '%s\n' "$changed" | tr '\n' ' ')
