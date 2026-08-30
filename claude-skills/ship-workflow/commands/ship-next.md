@@ -348,6 +348,35 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
 
 ## Phase 6 — Code review loop (strict gate)
 
+0. **UA blast-radius report + REMINDERS cross-ref (auto-detect, silent if UA absent):**
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
+   source ~/.claude/skills/ship-workflow/lib/airos-binding.sh
+   if ua_check_installed; then
+     mkdir -p .ship
+     ua_get_diff_report main > .ship/ua-diff-report.md
+
+     # Cross-ref: for each changed file, check vault REMINDERS.md for a rule
+     PROJECT=$(airos_project_name 2>/dev/null || echo "")
+     REMINDERS_PATH="$(airos_vault_path)/10 Projects/$PROJECT/Architecture/REMINDERS.md"
+     if [ -n "$PROJECT" ] && [ -f "$REMINDERS_PATH" ]; then
+       CHANGED=$(git diff --name-only main...HEAD)
+       while IFS= read -r f; do
+         [ -z "$f" ] && continue
+         base=$(basename "$f" | sed 's/\.[^.]*$//')
+         if grep -q "$base" "$REMINDERS_PATH" 2>/dev/null; then
+           echo "> ℹ REMINDERS.md has a rule mentioning \`$base\` — review before merge." >> .ship/ua-diff-report.md
+         fi
+       done <<< "$CHANGED"
+     fi
+     echo "UA blast-radius report → .ship/ua-diff-report.md"
+   fi
+   ```
+
+   code-review-skill should Read `.ship/ua-diff-report.md` when present, treating it as pre-computed review context alongside the diff itself.
+
 1. **Verify code-review-skill installed:**
    ```bash
    if [ ! -f ~/.claude/skills/code-review-skill/SKILL.md ]; then
