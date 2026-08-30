@@ -44,6 +44,7 @@ You are wrapping up a Roadmap item.
    source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
    source ~/.claude/skills/ship-workflow/lib/render-template.sh
    if ua_check_installed; then
+     PROJECT=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_name)
      UA_FACTS=$(ua_get_shipped_facts "$ID")
      UA_CHANGED=$(echo "$UA_FACTS" | sed -n '/### Changed components/,/^###/p' | sed '/^###/d')
      UA_BLAST=$(echo "$UA_FACTS" | sed -n '/### Affected components/,/^###/p' | sed '/^###/d')

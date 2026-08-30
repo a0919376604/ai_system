@@ -353,15 +353,15 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    ```bash
    # shellcheck disable=SC1091
    source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
-   source ~/.claude/skills/ship-workflow/lib/airos-binding.sh
    if ua_check_installed; then
      mkdir -p .ship
      ua_get_diff_report main > .ship/ua-diff-report.md
 
      # Cross-ref: for each changed file, check vault REMINDERS.md for a rule
-     PROJECT=$(airos_project_name 2>/dev/null || echo "")
-     REMINDERS_PATH="$(airos_vault_path)/10 Projects/$PROJECT/Architecture/REMINDERS.md"
-     if [ -n "$PROJECT" ] && [ -f "$REMINDERS_PATH" ]; then
+     PROJECT=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_name 2>/dev/null || echo "")
+     PROJECT_PATH=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path 2>/dev/null || echo "")
+     REMINDERS_PATH="$PROJECT_PATH/Architecture/REMINDERS.md"
+     if [ -n "$PROJECT" ] && [ -n "$PROJECT_PATH" ] && [ -f "$REMINDERS_PATH" ]; then
        CHANGED=$(git diff --name-only main...HEAD)
        while IFS= read -r f; do
          [ -z "$f" ] && continue

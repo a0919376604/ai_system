@@ -111,8 +111,9 @@ You are bootstrapping the Ship Workflow in the user's current repo.
 
 8.5. **Seed vault Architecture/ skeleton (always):**
    ```bash
-   PROJECT=$(airos_project_name)
-   ARCH_DIR="$(airos_vault_path)/10 Projects/$PROJECT/Architecture"
+   PROJECT=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_name)
+   PROJECT_PATH=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)
+   ARCH_DIR="$PROJECT_PATH/Architecture"
    mkdir -p "$ARCH_DIR/cases"
    for f in POCKET.md JOURNEY.md GLOSSARY.md REMINDERS.md; do
      [ -f "$ARCH_DIR/$f" ] || cat > "$ARCH_DIR/$f" <<EOF
