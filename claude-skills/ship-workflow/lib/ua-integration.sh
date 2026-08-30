@@ -37,3 +37,46 @@ _ua_kg_path() {
     echo "$root/.understand-anything/knowledge-graph.json"
   fi
 }
+
+# --- 2. Drift check ----------------------------------------------------------
+
+# ua_check_drift — echoes markdown warning block if KG's baseline commit
+# differs from HEAD by any project files. Empty stdout when UA absent
+# or KG fresh. Always exit 0 (drift is a warning, not a gate).
+#
+# Format:
+#   ≤50 file diff → yellow (⚠) "UA KG is stale: N file(s) changed..."
+#   >50 file diff → red (❌) "UA KG severely stale: N file(s) changed..."
+ua_check_drift() {
+  ua_check_installed 2>/dev/null || return 0
+  local kg_commit
+  kg_commit=$(_ua_kg_commit_hash) || return 0
+  [ -z "$kg_commit" ] && return 0
+  local head_commit
+  head_commit=$(git rev-parse HEAD 2>/dev/null) || return 0
+  [ "$kg_commit" = "$head_commit" ] && return 0
+  # Count project files that diverge (excludes .ua/ artifacts)
+  local diff_count
+  diff_count=$(git diff --name-only "$kg_commit" HEAD -- . ':(exclude).ua' ':(exclude).understand-anything' 2>/dev/null | wc -l | tr -d ' ')
+  [ "$diff_count" -eq 0 ] && return 0
+  if [ "$diff_count" -gt 50 ]; then
+    cat <<EOF
+> ❌ UA KG severely stale: $diff_count file(s) changed since KG built at \`$kg_commit\`.
+>    Blast-radius report will be misleading. Strongly recommend \`/understand\` before merging.
+EOF
+  else
+    cat <<EOF
+> ⚠ UA KG is stale: $diff_count file(s) changed since KG built at \`$kg_commit\`.
+> Run \`/understand\` to refresh before trusting blast-radius output.
+EOF
+  fi
+}
+
+# _ua_kg_commit_hash — echoes project.gitCommitHash field from the KG,
+# or empty on any failure.
+_ua_kg_commit_hash() {
+  local kg
+  kg=$(_ua_kg_path)
+  [ -z "$kg" ] && return 0
+  python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["project"].get("gitCommitHash",""))' "$kg" 2>/dev/null
+}
