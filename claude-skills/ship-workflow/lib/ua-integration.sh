@@ -254,3 +254,21 @@ ua_get_diff_report() {
   echo "### Affected layers"
   _ua_extract_layers $(printf '%s\n' "$changed" | tr '\n' ' ')
 }
+
+# --- 5. Phase 8 compound facts -----------------------------------------------
+
+# ua_get_shipped_facts <R-NNN>
+# Auto-derives the base commit as the first commit whose message contains
+# "chore: plan <R-NNN>"; falls back to --since="2 weeks ago". Then delegates
+# to ua_get_diff_report. Feed the output into the CASE_ELI5.md template.
+ua_get_shipped_facts() {
+  local rid="$1"
+  ua_check_installed 2>/dev/null || return 0
+  local base
+  base=$(git log --format=%H --grep="chore: plan ${rid}" 2>/dev/null | tail -1)
+  if [ -z "$base" ]; then
+    base=$(git log --format=%H --since="2 weeks ago" 2>/dev/null | tail -1)
+  fi
+  [ -z "$base" ] && return 0
+  ua_get_diff_report "$base"
+}

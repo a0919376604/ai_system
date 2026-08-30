@@ -220,3 +220,19 @@ EOF
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+@test "ua_get_shipped_facts: uses plan-commit as base when found" {
+  cd "$SCRATCH"
+  make_fake_ua_plugin_cache "$SCRATCH"
+  git init -q
+  git -c user.email=t@t -c user.name=t commit -q --allow-empty -m "chore: plan R-042"
+  local base; base=$(git rev-parse HEAD)
+  make_fake_ua_kg "$SCRATCH" "$base"
+  echo "changed" > foo.py
+  git add foo.py && git -c user.email=t@t -c user.name=t commit -q -m "impl"
+  source "$SHIP_LIB/ua-integration.sh"
+  run ua_get_shipped_facts "R-042"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "UA blast radius" ]]
+  [[ "$output" =~ "foo.py" ]]
+}
