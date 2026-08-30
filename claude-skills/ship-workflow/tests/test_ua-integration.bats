@@ -141,3 +141,37 @@ teardown() {
   [[ "$output" =~ "core" ]]
   [[ "$output" =~ "core modules" ]]
 }
+
+@test "ua_get_pre_brainstorm_context: emits section per target file" {
+  cd "$SCRATCH"
+  make_fake_ua_plugin_cache "$SCRATCH"
+  git init -q
+  make_fake_ua_kg "$SCRATCH"
+  mkdir -p docs/specs
+  cat > docs/specs/R-999-example.md <<EOF
+---
+target-files:
+  - foo.py
+  - bar.py
+---
+Fake spec.
+EOF
+  source "$SHIP_LIB/ua-integration.sh"
+  run ua_get_pre_brainstorm_context "R-999"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "UA pre-brainstorm context" ]]
+  [[ "$output" =~ "foo.py" ]]
+  [[ "$output" =~ "foo module" ]]
+  [[ "$output" =~ "bar.py" ]]
+}
+
+@test "ua_get_pre_brainstorm_context: empty when spec missing" {
+  cd "$SCRATCH"
+  make_fake_ua_plugin_cache "$SCRATCH"
+  git init -q
+  make_fake_ua_kg "$SCRATCH"
+  source "$SHIP_LIB/ua-integration.sh"
+  run ua_get_pre_brainstorm_context "R-999"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}

@@ -159,3 +159,39 @@ except Exception:
     pass
 ' "$kg" "$files_json" 2>/dev/null
 }
+
+# --- 3. Phase 3 pre-brainstorm context ---------------------------------------
+
+# ua_get_pre_brainstorm_context <R-NNN>
+# Reads docs/specs/<R-NNN>-*.md, extracts target-files: YAML list,
+# echoes markdown per-file with summary + top 3 callers.
+# Empty on any failure (UA absent, spec missing, target-files unset).
+ua_get_pre_brainstorm_context() {
+  local rid="$1"
+  ua_check_installed 2>/dev/null || return 0
+  local spec
+  spec=$(ls docs/specs/${rid}-*.md 2>/dev/null | head -1)
+  [ -z "$spec" ] || [ ! -f "$spec" ] && return 0
+  # Grep the target-files: block (YAML list)
+  local files
+  files=$(awk '/^target-files:/{flag=1; next} /^[a-z-]+:/{flag=0} flag && /^[[:space:]]*-[[:space:]]/{sub(/^[[:space:]]*-[[:space:]]*/,""); print}' "$spec" | head -10)
+  [ -z "$files" ] && return 0
+  echo "## UA pre-brainstorm context"
+  echo
+  echo "The following files are on this R-NNN's target list. UA's take:"
+  echo
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    echo "### \`$f\`"
+    local summary
+    summary=$(_ua_extract_file_summary "$f")
+    [ -n "$summary" ] && echo "$summary" && echo
+    local callers
+    callers=$(_ua_extract_callers "$f" | head -3)
+    if [ -n "$callers" ]; then
+      echo "Callers (top 3):"
+      echo "$callers"
+      echo
+    fi
+  done <<< "$files"
+}
