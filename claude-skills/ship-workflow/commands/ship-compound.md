@@ -37,6 +37,41 @@ You are wrapping up a Roadmap item.
 
 5. **Render** `templates/repo/LEARNING.md` with `{{date}}` / `{{id}}` / `{{project}}` and the ce-compound output. Write to `docs/learnings/${ID}-${slug}.md`.
 
+5.5. **UA-augmented case ELI5 stub (auto-detect, silent if UA absent):**
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
+   source ~/.claude/skills/ship-workflow/lib/render-template.sh
+   if ua_check_installed; then
+     UA_FACTS=$(ua_get_shipped_facts "$ID")
+     UA_CHANGED=$(echo "$UA_FACTS" | sed -n '/### Changed components/,/^###/p' | sed '/^###/d')
+     UA_BLAST=$(echo "$UA_FACTS" | sed -n '/### Affected components/,/^###/p' | sed '/^###/d')
+     STUB_PATH="/tmp/case-stub-${ID}.md"
+     render_template ~/.claude/skills/ship-workflow/templates/repo/CASE_ELI5.md \
+       id="$ID" project="$PROJECT" slug="$SLUG" theme="TODO" \
+       date="$(date +%Y-%m-%d)" \
+       ua_changed_files="$UA_CHANGED" \
+       ua_blast_radius="$UA_BLAST" \
+       ua_raw_diff_report="$UA_FACTS" \
+       > "$STUB_PATH"
+     echo "Case ELI5 stub drafted at $STUB_PATH"
+     echo "Review + add rationale + move to AIR-OS 10 Projects/$PROJECT/Architecture/cases/<theme>/"
+   fi
+   ```
+
+5.6. **REMINDERS candidate prompt (no auto-write):**
+
+   ```bash
+   echo
+   echo "Any new triggered-time rule to add to REMINDERS.md?"
+   echo "Look at UA blast radius — did we touch a module that others should"
+   echo "know a rule about before editing? (e.g. 'before touching X, do Y')"
+   echo "y/n:"
+   ```
+
+   REMINDERS is imperative shape (rules); UA output is declarative (facts). Rather than auto-draft rules (which would hallucinate), just prompt the human.
+
 6. **Delegate to `compound-engineering:ce-promote`** to look at the "Reusable Patterns" section. For each pattern, ask the user:
    - "Promote `<pattern title>` to AIR-OS `40 Knowledge/Concepts/<slug>.md` or `30 Engineering/<slug>.md`?"
    - On confirm, write the promoted note with AIR-OS frontmatter (`type: concept` or `type: engineering`, ai-first preamble, related-projects wikilink back to current project).
