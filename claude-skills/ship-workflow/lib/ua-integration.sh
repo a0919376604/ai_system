@@ -100,3 +100,62 @@ except Exception:
     pass
 ' "$kg" "$target_path" 2>/dev/null
 }
+
+# _ua_extract_callers — echoes markdown bullet lines for 1-hop upstream
+# callers of nodes whose filePath == $1. Format:
+#   - <source_id> (via <edge_type>, weight <n>)
+#
+# NOTE: Python code uses % formatting (not f-strings) so it runs on
+# Python 3.9+ without PEP 701 (which enables nested-same-quote f-string
+# subscripts and only ships in Python 3.12+).
+_ua_extract_callers() {
+  local target_path="$1"
+  local kg
+  kg=$(_ua_kg_path)
+  [ -z "$kg" ] && return 0
+  python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    target_ids = set()
+    for n in d.get("nodes", []):
+        if n.get("filePath") == sys.argv[2]:
+            target_ids.add(n.get("id"))
+    for e in d.get("edges", []):
+        if e.get("target") in target_ids:
+            src = e.get("source", "?")
+            etype = e.get("type", "?")
+            w = e.get("weight", 0)
+            print("- %s (via %s, weight %s)" % (src, etype, w))
+except Exception:
+    pass
+' "$kg" "$target_path" 2>/dev/null
+}
+
+# _ua_extract_layers — echoes markdown bullet lines for layers whose
+# nodeIds intersect nodes of the given files. Format:
+#   - <layer_name>: <description>
+_ua_extract_layers() {
+  local kg
+  kg=$(_ua_kg_path)
+  [ -z "$kg" ] && return 0
+  local files_json
+  files_json=$(printf '%s\n' "$@" | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')
+  python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    files = set(json.loads(sys.argv[2]))
+    node_ids = set()
+    for n in d.get("nodes", []):
+        if n.get("filePath") in files:
+            node_ids.add(n.get("id"))
+    for layer in d.get("layers", []):
+        if set(layer.get("nodeIds", [])) & node_ids:
+            name = layer.get("name", "?")
+            desc = layer.get("description", "")
+            print("- %s: %s" % (name, desc))
+except Exception:
+    pass
+' "$kg" "$files_json" 2>/dev/null
+}

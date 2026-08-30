@@ -116,3 +116,28 @@ teardown() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+@test "_ua_extract_callers: lists 1-hop upstream via imports edge" {
+  cd "$SCRATCH"
+  make_fake_ua_plugin_cache "$SCRATCH"
+  git init -q
+  make_fake_ua_kg "$SCRATCH"
+  source "$SHIP_LIB/ua-integration.sh"
+  run _ua_extract_callers "foo.py"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "file:bar.py" ]]
+  [[ "$output" =~ "imports" ]]
+  [[ "$output" =~ "weight 5" ]]
+}
+
+@test "_ua_extract_layers: lists layers touched by given file" {
+  cd "$SCRATCH"
+  make_fake_ua_plugin_cache "$SCRATCH"
+  git init -q
+  make_fake_ua_kg "$SCRATCH"
+  source "$SHIP_LIB/ua-integration.sh"
+  run _ua_extract_layers "foo.py"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "core" ]]
+  [[ "$output" =~ "core modules" ]]
+}
