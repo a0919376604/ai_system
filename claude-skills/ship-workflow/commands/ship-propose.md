@@ -1,13 +1,13 @@
 ---
 name: ship-propose
-description: Produce a prescriptive proposal doc for a Roadmap R-NNN before brainstorm (3 sizes; optional /ship-research integration). Orthogonal to /ship-arch.
+description: Produce a prescriptive proposal doc for a Roadmap R-NNN before brainstorm (3 sizes; optional /ship-research integration). Rationale-focused; complements Understand-Anything's descriptive code understanding.
 argument-hint: "[R-NNN] [--size S|M|L] [--no-research] [--from-idea IDEA-NNN] [--supersede]"
 discord-visible: true
 ---
 
 # /ship-propose
 
-You are producing a **prescriptive** proposal doc for a Roadmap item — orthogonal to `/ship-arch` (which is descriptive snapshot of current state). The proposal's primary purpose is **the author's own self-comprehension**, with secondary value of team alignment.
+You are producing a **prescriptive** proposal doc for a Roadmap item. This doc's role is rationale (why we should build this, what the alternatives are, what the trade-offs are) — complementary to Understand-Anything's descriptive code understanding available via `/understand-explain` in the target repo. The proposal's primary purpose is **the author's own self-comprehension**, with secondary value of team alignment.
 
 ## When to invoke
 
