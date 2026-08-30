@@ -40,12 +40,11 @@ created-during: ship-next            # the phase
 
 This lets `/ship-compound` later sweep up all captures from this ship cycle into the learning.
 
-## Worktree-cwd-block (4 commands)
+## Worktree-cwd-block (3 commands)
 
 The following commands refuse to run inside a ship/* worktree because they modify cross-cutting state on main:
 
 - `/ship-roadmap` — modifies ROADMAP.md (canonical)
-- `/ship-arch` — refreshes Architecture/
 - `/ship-init` — scaffolds repo + vault state
 - `/ship-propose` — writes to Proposals/
 

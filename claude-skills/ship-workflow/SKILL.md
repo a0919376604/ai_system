@@ -1,11 +1,11 @@
 ---
 name: ship-workflow
-description: Per-repo product development workflow integrating Superpowers (brainstorm/spec/plan/build) with Compound Engineering (roadmap/decision/learnings). Installs 10 ship-* slash commands. Use when starting product development in a new repo, capturing ideas/decisions, planning roadmap, or shipping features through the /ship-next mega-command (worktree → brainstorm → spec → plan → execute → review → merge).
+description: Per-repo product development workflow integrating Superpowers (brainstorm/spec/plan/build) with Compound Engineering (roadmap/decision/learnings). Installs 9 ship-* slash commands. Use when starting product development in a new repo, capturing ideas/decisions, planning roadmap, or shipping features through the /ship-next mega-command (worktree → brainstorm → spec → plan → execute → review → merge).
 ---
 
 # Ship Workflow
 
-Per-repo product development workflow. Installs 10 slash commands into a target repo's `.claude/commands/`:
+Per-repo product development workflow. Installs 9 slash commands into a target repo's `.claude/commands/`:
 
 **Core lifecycle (6):**
 - **`/ship-init`** — Bootstrap workflow (folders, commands, AIR-OS Product Brain stub)
@@ -15,17 +15,18 @@ Per-repo product development workflow. Installs 10 slash commands into a target 
 - **`/ship-next [R-NNN] | --adhoc <desc> | --discard R-NNN`** — End-to-end ship cycle: open worktree → brainstorm → spec → plan → execute → strict code-review gate → squash-merge → cleanup
 - **`/ship-compound`** — Write learning + promote patterns + close Roadmap item
 
-**Knowledge bridges (4):**
-- **`/ship-arch`** — Refresh AIR-OS Architecture/ docs (thin wrapper over `/obsidian-architect`) — **descriptive** snapshot of current state
+**Knowledge bridges (3):**
 - **`/ship-research <topic>`** — Vault-first deep research (thin wrapper over `/obsidian-research-deep`)
-- **`/ship-propose [R-NNN]`** — Produce **prescriptive** proposal doc for a Roadmap item (orthogonal to ship-arch); orchestrates ship-research as sub-step; Self-FAQ pattern is the forcing function
+- **`/ship-propose [R-NNN]`** — Produce **prescriptive** proposal doc for a Roadmap item; orchestrates ship-research as sub-step; Self-FAQ pattern is the forcing function
 - **`/ship-explain [R-NNN | --all-now]`** — Generate plain-language explainer note for a ROADMAP row (so non-domain readers understand what a row actually does); auto-invoked during decompose and `/ship-next` pre-flight
+
+- **UA integration**: `/ship-next` auto-detects `.ua/knowledge-graph.json` in the target repo and injects UA blast-radius context into Phase 3 (brainstorm), Phase 6 (review), and Phase 8 (compound). Silent no-op when UA absent. See `docs/superpowers/specs/2026-08-30-ua-ship-workflow-integration-design.md`.
 
 ## Dual-Brain Architecture
 
 - **Obsidian Product Brain** at AIR-OS `10 Projects/<repo-name>/`:
   - VISION / STRATEGY / ROADMAP / QUARTERLY_GOALS (manual + ship-roadmap)
-  - `Architecture/` (ship-arch, descriptive)
+  - `Architecture/` (hand-written POCKET/JOURNEY/GLOSSARY/REMINDERS + cases/; optional `.ua/knowledge-graph.json` in target repo for descriptive code graph via UA plugin)
   - `Proposals/` (ship-propose, prescriptive)
   - `Research/` (ship-research, external grounding)
 - **Repo Execution Brain** at `<repo>/docs/`:
