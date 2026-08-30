@@ -80,3 +80,23 @@ _ua_kg_commit_hash() {
   [ -z "$kg" ] && return 0
   python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["project"].get("gitCommitHash",""))' "$kg" 2>/dev/null
 }
+
+# _ua_extract_file_summary — echoes the summary field of the node with
+# filePath == $1, or empty if no match / KG unreadable.
+_ua_extract_file_summary() {
+  local target_path="$1"
+  local kg
+  kg=$(_ua_kg_path)
+  [ -z "$kg" ] && return 0
+  python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    for n in d.get("nodes", []):
+        if n.get("filePath") == sys.argv[2] and n.get("type") == "file":
+            print(n.get("summary", ""))
+            break
+except Exception:
+    pass
+' "$kg" "$target_path" 2>/dev/null
+}

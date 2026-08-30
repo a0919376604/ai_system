@@ -94,3 +94,25 @@ teardown() {
   [[ "$output" =~ "severely stale" ]]
   [[ "$output" =~ "60 file(s)" ]]
 }
+
+@test "_ua_extract_file_summary: returns summary when file node exists in KG" {
+  cd "$SCRATCH"
+  make_fake_ua_plugin_cache "$SCRATCH"
+  git init -q
+  make_fake_ua_kg "$SCRATCH"
+  source "$SHIP_LIB/ua-integration.sh"
+  run _ua_extract_file_summary "foo.py"
+  [ "$status" -eq 0 ]
+  [ "$output" = "foo module" ]
+}
+
+@test "_ua_extract_file_summary: empty when file not in KG" {
+  cd "$SCRATCH"
+  make_fake_ua_plugin_cache "$SCRATCH"
+  git init -q
+  make_fake_ua_kg "$SCRATCH"
+  source "$SHIP_LIB/ua-integration.sh"
+  run _ua_extract_file_summary "nonexistent.py"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
