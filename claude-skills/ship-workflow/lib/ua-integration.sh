@@ -195,3 +195,62 @@ ua_get_pre_brainstorm_context() {
     fi
   done <<< "$files"
 }
+
+# --- 4. Phase 6 diff report --------------------------------------------------
+
+# ua_get_diff_report [<base>]
+# Default base = main. Echoes "## UA blast radius" block.
+# Truncates: top 30 changed (git diff order), top 20 affected (edge weight desc).
+# When changed > 100, full report written to .ship/ua-diff-full.md.
+# Empty stdout on UA absent.
+ua_get_diff_report() {
+  local base="${1:-main}"
+  ua_check_installed 2>/dev/null || return 0
+  local drift
+  drift=$(ua_check_drift)
+  local changed
+  changed=$(git diff --name-only "$base"...HEAD -- . ':(exclude).ua' ':(exclude).understand-anything' 2>/dev/null)
+  if [ -z "$changed" ]; then
+    echo "_(no changed files vs $base)_"
+    return 0
+  fi
+  local changed_count
+  changed_count=$(printf '%s\n' "$changed" | wc -l | tr -d ' ')
+  echo "## UA blast radius"
+  echo
+  [ -n "$drift" ] && echo "$drift" && echo
+  echo "### Changed components"
+  local shown=0
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    if [ "$shown" -lt 30 ]; then
+      local summary
+      summary=$(_ua_extract_file_summary "$f")
+      echo "- \`$f\`: ${summary:-_(no KG entry)_}"
+    fi
+    shown=$((shown + 1))
+  done <<< "$changed"
+  if [ "$shown" -gt 30 ]; then
+    mkdir -p .ship
+    {
+      echo "# UA blast radius (full)"
+      echo
+      while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        local summary
+        summary=$(_ua_extract_file_summary "$f")
+        echo "- \`$f\`: ${summary:-_(no KG entry)_}"
+      done <<< "$changed"
+    } > .ship/ua-diff-full.md
+    echo "- ... ($((shown - 30)) more, see .ship/ua-diff-full.md)"
+  fi
+  echo
+  echo "### Affected components (1-hop callers, top 20 by edge weight)"
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    _ua_extract_callers "$f"
+  done <<< "$changed" | sort -t 'weight ' -k2 -n -r | head -20
+  echo
+  echo "### Affected layers"
+  _ua_extract_layers $(printf '%s\n' "$changed" | tr '\n' ' ')
+}
