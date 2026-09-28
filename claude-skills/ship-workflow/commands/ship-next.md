@@ -481,6 +481,61 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
 
    code-review-skill should Read `.ship/ua-diff-report.md` when present, treating it as pre-computed review context alongside the diff itself.
 
+0.5. **Mechanical test gates (pure git + shell, before the LLM review).**
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/test-budget.sh
+
+   # (a) Refactor violation: a `Seam: none` task must not add test lines.
+   MECH_BLOCKERS=0
+   PLAN_FILE="docs/plans/${ID}-${SLUG}.md"
+   if [ -f "$PLAN_FILE" ] && grep -qF 'Seam: none' "$PLAN_FILE"; then
+     for sha in $(git log --format=%H "${ORIG_BRANCH}..HEAD"); do
+       SUBJ=$(git log -1 --format=%s "$sha")
+       TASK_NO=$(echo "$SUBJ" | grep -oE 'Task [0-9]+' | head -1)
+       [ -z "$TASK_NO" ] && continue
+       grep -A6 "### ${TASK_NO}:" "$PLAN_FILE" | grep -qF 'Seam: none' || continue
+       ADDED=$(git diff --numstat "${sha}^" "$sha" -- '*test*' 'tests/' 2>/dev/null \
+               | awk '{s+=$1} END {print s+0}')
+       if [ "${ADDED:-0}" -gt 0 ]; then
+         echo "🛑 blocking: refactor task added test lines (${TASK_NO}, +${ADDED} in tests)" >&2
+         MECH_BLOCKERS=$((MECH_BLOCKERS + 1))
+       fi
+     done
+   fi
+
+   # (b) Test budget, relative to this repo's own baseline.
+   BASELINE_RATIO_BP=$(tb_baseline_ratio)
+   SHIP_RATIO_BP=$(tb_ship_ratio "$ORIG_BRANCH" HEAD)
+   set -- $(tb_ship_lines "$ORIG_BRANCH" HEAD)
+   TEST_LINES_ADDED="$1"; SRC_LINES_ADDED="$2"
+   TEST_BUDGET_VERDICT=$(tb_verdict "$SHIP_RATIO_BP" "$BASELINE_RATIO_BP")
+
+   if tb_shadow_active; then
+     echo "Test budget: ship=${SHIP_RATIO_BP}bp baseline=${BASELINE_RATIO_BP}bp verdict=${TEST_BUDGET_VERDICT} (shadow mode — reporting only)"
+     TEST_BUDGET_VERDICT=pass
+   else
+     echo "Test budget: ship=${SHIP_RATIO_BP}bp baseline=${BASELINE_RATIO_BP}bp verdict=${TEST_BUDGET_VERDICT}"
+     [ "$TEST_BUDGET_VERDICT" = "blocking" ] && MECH_BLOCKERS=$((MECH_BLOCKERS + 1))
+   fi
+
+   # (c) Extra review checks handed to the LLM reviewer.
+   mkdir -p .ship
+   cat > .ship/review-extra-checks.md <<'CHECKS'
+In addition to your normal findings, tag any finding that matches one of these
+categories by appending the literal tag to the finding line:
+
+- `[seam-violation]` — a test asserts something not declared in the spec's `## Seams`
+- `[assertion-roulette]` — one test bundles multiple unrelated assertions
+- `[weak-assertion]` — an assertion that cannot fail for any valid input
+
+Keep your usual severity tag as well; these categories are orthogonal to severity.
+CHECKS
+   ```
+
+   `MECH_BLOCKERS > 0` feeds the same fix-plan loop as LLM blockers in step 2.
+
 1. **Verify code-review-skill installed:**
    ```bash
    if [ ! -f ~/.claude/skills/code-review-skill/SKILL.md ]; then
@@ -504,8 +559,10 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
      REVIEW_TARGET=$(git diff ${ORIG_BRANCH}...HEAD)
      REVIEW_OUT=/tmp/ship-next-review-${ID}-${attempt}.md
      # Invoke awesome-skills/code-review-skill on REVIEW_TARGET; capture output to $REVIEW_OUT
+     # Read .ship/review-extra-checks.md alongside .ship/ua-diff-report.md when present.
 
      eval "$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh $REVIEW_OUT)"
+     BLOCKING_COUNT=$((BLOCKING_COUNT + MECH_BLOCKERS))
 
      # Auto mode: log every attempt
      if [ "$AUTO" = "1" ]; then
@@ -647,6 +704,7 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    - minor:    ${MINOR_COUNT}
    - praise:   ${PRAISE_COUNT}
 
+   Tests: +${TEST_LINES_ADDED} / Src: +${SRC_LINES_ADDED}  (ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp)
    Spec:  docs/specs/${ID}-${SLUG}.md
    Plan:  docs/plans/${ID}-${SLUG}.md
    Notes: docs/roadmap-notes/${ID}-${SLUG}.md (if exists)

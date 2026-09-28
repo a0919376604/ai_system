@@ -2059,3 +2059,33 @@ brackets, and `$`, or the test pins the escaping rather than the wiring.
 - Re-read ship-next.md; copied the prescribed tests and observed 8/8 fail before implementation.
 - Inserted all four prescribed blocks verbatim; targeted tests 8/8 and full `bats tests/` 192/192 green. No additional assertion adjustments.
 - Repo-only scope overrides ship skill global bookkeeping and release actions; no push, branch switch, amend, hook bypass, or live HOME/.claude edits.
+
+### 2026-09-28 — Task 7 BLOCKED at Step 4 (executor transcription error)
+
+- Task 6 committed as `ea43942`; targeted 8/8 and full suite 192/192 green.
+- Re-read all of commands/ship-next.md before Task 7. Copied the prescribed six tests verbatim; all six failed before implementation.
+- Inserted the prescribed P6 mechanical-gate block and blocking-count addition, and added the reviewer instruction. The P7 insertion was incorrect: the extraction regex mistook a closing triple-backtick fence for an opening fence and copied the explanatory paragraph beginning `In **Phase 7 step 4**` instead of the prescribed `Tests: +...` line.
+- Targeted verification: 5/6 pass; `P7 commit message carries the test ratio line` fails at line 45. The full-suite command was chained after targeted success and therefore did not run.
+- This is an executor implementation/transcription error, not an escaping/literal mismatch. Per the user's explicit stop-on-other-failures instruction, stopped without changing any assertion or attempting a corrective edit. Task 7 remains incomplete and uncommitted; Tasks 8–11 were not started.
+- Required next action: replace the accidentally inserted explanatory paragraph with the exact Task 7 ratio line, then run targeted and full-suite verification before committing Task 7. This is not a defect in the prescribed ratio line or test.
+- Durable learning: an untyped Markdown fence regex can treat the closing fence of a preceding typed block as an opener. Extract from a specific structural anchor and assert the extracted content starts with the expected literal before writing; counting regex matches alone is insufficient.
+- No push, branch switch, amend, hook bypass, or live HOME/.claude edits. The pre-existing untracked .claude-uploads/ directory was left untouched.
+
+### 2026-09-29 — Task 7 unblocked by the operator, resuming at Task 8
+
+Codex's diagnosis was exact and its stop was correct: the failure was a transcription
+error in its own P7 insertion, not an escaping mismatch, so it fell outside the
+authorized assertion exception.
+
+Lines 707-711 of `commands/ship-next.md` held the explanatory paragraph
+`In **Phase 7 step 4**, add one line to the commit-message heredoc...` where the
+prescribed ratio line belonged. Replaced with the exact line from Task 7 Step 3, anchored
+on both sentences of the misinserted text and asserted before writing.
+
+Verified empirically, not assumed: `bats tests/test_ship-next-test-gates.bats` 6/6, and
+`bats tests/` 198 tests with 0 failures. Committed as Task 7.
+
+Codex's durable learning is adopted as a standing rule for Tasks 8-10: when inserting a
+block into `ship-next.md`, assert the extracted content starts with the expected literal
+before writing. An untyped Markdown fence regex can mistake a preceding block's closing
+fence for an opening one, and a match count alone will not catch it.
