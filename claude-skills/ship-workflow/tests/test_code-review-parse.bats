@@ -185,3 +185,37 @@ EOF
   [[ "$output" == *"MINOR_COUNT=0"* ]]
   [[ "$output" == *"PRAISE_COUNT=0"* ]]
 }
+
+@test "code-review-parse: emits the three category counts" {
+  CAT="$SHIP_SKILL_ROOT/tests/fixtures/code-review-categories.md"
+  run "$SHIP_LIB/code-review-parse.sh" "$CAT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SEAM_VIOLATION_COUNT=1"* ]]
+  [[ "$output" == *"ASSERTION_ROULETTE_COUNT=1"* ]]
+  [[ "$output" == *"WEAK_ASSERTION_COUNT=1"* ]]
+}
+
+@test "code-review-parse: category tags still count toward severity" {
+  CAT="$SHIP_SKILL_ROOT/tests/fixtures/code-review-categories.md"
+  run "$SHIP_LIB/code-review-parse.sh" "$CAT"
+  [[ "$output" == *"MAJOR_COUNT=1"* ]]
+  [[ "$output" == *"MINOR_COUNT=2"* ]]
+}
+
+@test "code-review-parse: category output is eval-safe" {
+  CAT="$SHIP_SKILL_ROOT/tests/fixtures/code-review-categories.md"
+  run bash -c "eval \"\$('$SHIP_LIB/code-review-parse.sh' '$CAT')\" && echo \"\$SEAM_VIOLATION_COUNT|\$ASSERTION_ROULETTE_COUNT|\$WEAK_ASSERTION_COUNT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"1|1|1"* ]]
+}
+
+@test "code-review-parse: the shared fixture is unperturbed by this change" {
+  run "$SHIP_LIB/code-review-parse.sh" "$FIXTURE"
+  [[ "$output" == *"BLOCKING_COUNT=2"* ]]
+  [[ "$output" == *"MAJOR_COUNT=2"* ]]
+  [[ "$output" == *"MINOR_COUNT=2"* ]]
+  [[ "$output" == *"PRAISE_COUNT=3"* ]]
+  [[ "$output" == *"SEAM_VIOLATION_COUNT=0"* ]]
+  [[ "$output" == *"ASSERTION_ROULETTE_COUNT=0"* ]]
+  [[ "$output" == *"WEAK_ASSERTION_COUNT=0"* ]]
+}
