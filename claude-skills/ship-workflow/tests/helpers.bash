@@ -121,3 +121,23 @@ make_fake_ua_plugin_cache() {
   local scratch="$1"
   mkdir -p "$scratch/home/.claude/plugins/cache/understand-anything"
 }
+
+# Build a fake ponytail plugin cache under <scratch>/home. Caller must
+# export HOME="$scratch/home" before calling lib functions.
+# $2 = version string (default 4.8.4). $3 = "noruleset" to omit AGENTS.md.
+make_fake_ponytail_plugin() {
+  local scratch="$1"
+  local version="${2:-4.8.4}"
+  local mode="${3:-}"
+  local dir="$scratch/home/.claude/plugins/cache/ponytail/$version"
+  mkdir -p "$dir"
+  if [ "$mode" != "noruleset" ]; then
+    cat > "$dir/AGENTS.md" <<'EOF'
+# Ponytail
+
+1. Does this need to exist? -> no: skip it (YAGNI)
+2. Already in this codebase? -> reuse it
+3. Stdlib does it? -> use it
+EOF
+  fi
+}
