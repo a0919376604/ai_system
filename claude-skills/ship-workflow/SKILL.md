@@ -60,6 +60,11 @@ default_id_pad: 3
 auto_pull_freshness_window: 60
 ```
 
+- `ponytail:` configures mode, pinned version, and ruleset SHA-256.
+- `test_budget:` configures the major and blocking multipliers against each repo's baseline.
+
+The shadow-mode ship count is derived from `docs/learnings/_log.md` and is deliberately not stored in config.
+
 **Per-repo** (`.claude/ship-config.yml`, optional, only on `--custom` init).
 
 ## Reference
