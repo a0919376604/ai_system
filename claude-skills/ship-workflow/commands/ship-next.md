@@ -303,6 +303,22 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
 
 ## Phase 4 — Writing plans
 
+**Plan-authoring guidance (learned from R-084.1, 2026-07-30):**
+
+- **Verification/acceptance steps MUST run scoped pytest, not the full
+  suite.** `pytest tests/ -q` in developer/codex environments without
+  `env.json` + PG credentials hits pre-existing baseline timeouts that
+  can stall 30+ min with no natural termination. Instead, list the
+  specific test files/directories the plan touched:
+  `pytest tests/domain/test_foo.py tests/api/test_bar.py -q`. If you
+  genuinely need a broader run, prefer `pytest tests/domain/ tests/api/ -q`
+  (or whatever module scopes are relevant) over `tests/`.
+
+- **Reader-untouched grep guards MUST use three-dot diff:**
+  `git diff <base>...HEAD -- <paths>`, NOT `<base>..HEAD`. Two-dot
+  leaks commits that landed on `<base>` after this branch forked and
+  makes them show up as reverse-diff pollution when you compare.
+
 1. **Invoke `superpowers:writing-plans`** with the spec from Phase 3.
 
    **In auto mode (`AUTO=1`):** the writing-plans skill's "Review plan first?" gate is auto-approved.
@@ -392,7 +408,12 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    ```
    attempt=1
    while [ "$attempt" -le 3 ]; do
-     REVIEW_TARGET=$(git diff ${ORIG_BRANCH}..HEAD)
+     # Three-dot diff: shows only what this branch added relative to the
+     # merge-base. Two-dot (..HEAD) leaks commits that landed on ORIG_BRANCH
+     # after this worktree forked — those are NOT this branch's changes and
+     # would pollute the review with reverse-showing "removed" lines.
+     # See R-084.1 learning (2026-07-30) for the burn.
+     REVIEW_TARGET=$(git diff ${ORIG_BRANCH}...HEAD)
      REVIEW_OUT=/tmp/ship-next-review-${ID}-${attempt}.md
      # Invoke awesome-skills/code-review-skill on REVIEW_TARGET; capture output to $REVIEW_OUT
 
