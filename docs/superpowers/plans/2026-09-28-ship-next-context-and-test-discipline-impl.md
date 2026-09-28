@@ -44,7 +44,7 @@
 - Consumes: nothing from earlier tasks.
 - Produces: `context_md_path`, `context_md_line_count`, `context_md_entry_count`, `context_md_over_cap`, `context_md_orphan_terms`. Task 8 calls `context_md_over_cap` and `context_md_orphan_terms`; Task 6 calls `context_md_path`.
 
-- [x] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing test**
 
 Create `claude-skills/ship-workflow/tests/test_context-md.bats`:
 
@@ -155,12 +155,12 @@ EOF
 }
 ```
 
-- [x] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd claude-skills/ship-workflow && bats tests/test_context-md.bats`
 Expected: FAIL — `context-md.sh` does not exist, so `source` errors in `setup`.
 
-- [x] **Step 3: Write minimal implementation**
+- [ ] **Step 3: Write minimal implementation**
 
 Create `claude-skills/ship-workflow/lib/context-md.sh`:
 
@@ -235,12 +235,12 @@ context_md_orphan_terms() {
 }
 ```
 
-- [x] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd claude-skills/ship-workflow && bats tests/test_context-md.bats`
 Expected: PASS — 12 tests.
 
-- [x] **Step 5: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add claude-skills/ship-workflow/lib/context-md.sh claude-skills/ship-workflow/tests/test_context-md.bats
@@ -261,7 +261,7 @@ git commit -m "feat: add context-md.sh for CONTEXT.md size + orphan checks"
 
 Ratios are emitted as integer basis points (`ratio * 1000`, floored) so bash 3.2 can compare them without `bc`. `tb_verdict` therefore also takes basis-point integers.
 
-- [x] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing test**
 
 Create `claude-skills/ship-workflow/tests/test_test-budget.bats`:
 
@@ -413,12 +413,12 @@ seed() {
 }
 ```
 
-- [x] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd claude-skills/ship-workflow && bats tests/test_test-budget.bats`
 Expected: FAIL — `test-budget.sh` does not exist.
 
-- [x] **Step 3: Write minimal implementation**
+- [ ] **Step 3: Write minimal implementation**
 
 Create `claude-skills/ship-workflow/lib/test-budget.sh`:
 
@@ -536,12 +536,12 @@ tb_shadow_active() {
 }
 ```
 
-- [x] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd claude-skills/ship-workflow && bats tests/test_test-budget.bats`
 Expected: PASS — 17 tests.
 
-- [x] **Step 5: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add claude-skills/ship-workflow/lib/test-budget.sh claude-skills/ship-workflow/tests/test_test-budget.bats
@@ -561,7 +561,7 @@ git commit -m "feat: add test-budget.sh with repo-relative baseline and derived 
 - Consumes: nothing from earlier tasks.
 - Produces: `ponytail_check_installed`, `ponytail_ruleset_path`, `ponytail_ruleset_sha256`, `ponytail_version`, `ponytail_render_rules <outfile>`. Task 6 calls `ponytail_render_rules`; Task 10 calls `ponytail_version` and `ponytail_ruleset_sha256` for the drift line.
 
-- [x] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing test**
 
 Append to `claude-skills/ship-workflow/tests/helpers.bash`:
 
@@ -684,12 +684,12 @@ teardown() {
 }
 ```
 
-- [x] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd claude-skills/ship-workflow && bats tests/test_ponytail-integration.bats`
 Expected: FAIL — `ponytail-integration.sh` does not exist.
 
-- [x] **Step 3: Write minimal implementation**
+- [ ] **Step 3: Write minimal implementation**
 
 Create `claude-skills/ship-workflow/lib/ponytail-integration.sh`:
 
@@ -767,12 +767,12 @@ ponytail_render_rules() {
 }
 ```
 
-- [x] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd claude-skills/ship-workflow && bats tests/test_ponytail-integration.bats`
 Expected: PASS — 11 tests.
 
-- [x] **Step 5: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add claude-skills/ship-workflow/lib/ponytail-integration.sh \
@@ -791,7 +791,7 @@ git commit -m "feat: add ponytail-integration.sh rendering ladder to .ship/"
 - Create: `claude-skills/ship-workflow/tests/fixtures/code-review-categories.md`
 
 **Do NOT modify `tests/fixtures/code-review-output.md`.** It is the contract for the
-pre-existing severity tests; appending findings to it changes `MAJOR_COUNT` and
+pre-existing severity tests; appending findings to it moves `MAJOR_COUNT` and
 `MINOR_COUNT` out from under assertions this task does not own. The category tests get
 their own fixture, and the shared fixture becomes a regression guard proving this task
 is purely additive.
@@ -802,7 +802,7 @@ is purely additive.
 
 These are **category** counters, orthogonal to the existing **severity** counters. A single finding line tagged `[major] [seam-violation]` increments both `MAJOR_COUNT` and `SEAM_VIOLATION_COUNT`. The existing four counters must not change.
 
-- [x] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing test**
 
 Create `claude-skills/ship-workflow/tests/fixtures/code-review-categories.md`:
 
@@ -854,8 +854,150 @@ Append to `claude-skills/ship-workflow/tests/test_code-review-parse.bats`:
 }
 ```
 
-This last test is the point: it pins the pre-existing severity numbers so a future
-change to the category feature cannot silently move them again.
+That last test is the point: it pins the pre-existing severity numbers so a future change
+to the category feature cannot silently move them again.
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd claude-skills/ship-workflow && bats tests/test_code-review-parse.bats`
+Expected: FAIL — the three `*_COUNT` variables are not emitted, so the three new category
+tests fail. Every pre-existing test still passes; inside the new unperturbed-shared-fixture
+guard, only its three `*_COUNT=0` assertions fail.
+
+- [ ] **Step 3: Write minimal implementation**
+
+In `claude-skills/ship-workflow/lib/code-review-parse.sh`, add after `count_praise()`:
+
+```bash
+# --- Category counters (orthogonal to severity) ------------------------------
+# A finding may carry a category tag in addition to its severity tag.
+# Category tags are matched anywhere on the line, since severity already
+# occupies the line-start position.
+
+count_seam_violation() {
+  grep -ciE '\[seam-violation\]' "$FILE" || echo 0
+}
+
+count_assertion_roulette() {
+  grep -ciE '\[assertion-roulette\]' "$FILE" || echo 0
+}
+
+count_weak_assertion() {
+  grep -ciE '\[weak-assertion\]' "$FILE" || echo 0
+}
+```
+
+Then, after the existing `PRAISE=$(count_praise)` line, add:
+
+```bash
+SEAM_VIOLATION=$(count_seam_violation)
+ASSERTION_ROULETTE=$(count_assertion_roulette)
+WEAK_ASSERTION=$(count_weak_assertion)
+```
+
+Extend the whitespace-stripping block with:
+
+```bash
+SEAM_VIOLATION=$(echo -n "$SEAM_VIOLATION" | tr -d '[:space:]')
+ASSERTION_ROULETTE=$(echo -n "$ASSERTION_ROULETTE" | tr -d '[:space:]')
+WEAK_ASSERTION=$(echo -n "$WEAK_ASSERTION" | tr -d '[:space:]')
+```
+
+And extend the output block with:
+
+```bash
+echo "SEAM_VIOLATION_COUNT=${SEAM_VIOLATION}"
+echo "ASSERTION_ROULETTE_COUNT=${ASSERTION_ROULETTE}"
+echo "WEAK_ASSERTION_COUNT=${WEAK_ASSERTION}"
+```
+
+Finally, update the header comment block to document the three category tags alongside the severity styles.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `cd claude-skills/ship-workflow && bats tests/test_code-review-parse.bats`
+Expected: PASS — all pre-existing tests plus 4 new ones.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add claude-skills/ship-workflow/lib/code-review-parse.sh \
+        claude-skills/ship-workflow/tests/test_code-review-parse.bats \
+        claude-skills/ship-workflow/tests/fixtures/code-review-categories.md
+git commit -m "feat: count seam-violation, assertion-roulette, weak-assertion categories"
+```
+
+---
+
+### Task 5: templates and global config documentation
+
+**Files:**
+- Modify: `claude-skills/ship-workflow/templates/repo/SPEC.md`
+- Modify: `claude-skills/ship-workflow/templates/repo/PLAN.md`
+- Modify: `claude-skills/ship-workflow/examples/ship-workflow.example.yml`
+- Modify: `claude-skills/ship-workflow/SKILL.md`
+- Test: `claude-skills/ship-workflow/tests/test_templates-seams.bats`
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: the literal strings `## Seams`, `Seam:`, `Read .ship/tdd-rules.md`, `Read .ship/ponytail-rules.md` in the templates. Tasks 6 and 7 grep-assert against these exact strings.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `claude-skills/ship-workflow/tests/test_templates-seams.bats`:
+
+```bash
+#!/usr/bin/env bats
+load helpers
+
+@test "SPEC template declares the Seams section" {
+  run grep -F '## Seams' "$SHIP_SKILL_ROOT/templates/repo/SPEC.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "SPEC template states the seam assertion rule" {
+  run grep -F 'nothing inside it' "$SHIP_SKILL_ROOT/templates/repo/SPEC.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "PLAN template carries a Seam label line" {
+  run grep -E '^Seam: ' "$SHIP_SKILL_ROOT/templates/repo/PLAN.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "PLAN template points executors at both .ship rule files" {
+  run grep -F 'Read .ship/tdd-rules.md' "$SHIP_SKILL_ROOT/templates/repo/PLAN.md"
+  [ "$status" -eq 0 ]
+  run grep -F 'Read .ship/ponytail-rules.md' "$SHIP_SKILL_ROOT/templates/repo/PLAN.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "example global config documents the ponytail block" {
+  run grep -F 'ponytail:' "$SHIP_SKILL_ROOT/examples/ship-workflow.example.yml"
+  [ "$status" -eq 0 ]
+  run grep -F 'pinned_version:' "$SHIP_SKILL_ROOT/examples/ship-workflow.example.yml"
+  [ "$status" -eq 0 ]
+  run grep -F 'ruleset_sha256:' "$SHIP_SKILL_ROOT/examples/ship-workflow.example.yml"
+  [ "$status" -eq 0 ]
+}
+
+@test "example global config documents the test budget multipliers" {
+  run grep -F 'test_budget:' "$SHIP_SKILL_ROOT/examples/ship-workflow.example.yml"
+  [ "$status" -eq 0 ]
+  run grep -F 'major_multiplier:' "$SHIP_SKILL_ROOT/examples/ship-workflow.example.yml"
+  [ "$status" -eq 0 ]
+}
+
+@test "example global config does NOT store a per-repo ship counter" {
+  run grep -iE 'shipped_count|ship_count' "$SHIP_SKILL_ROOT/examples/ship-workflow.example.yml"
+  [ "$status" -ne 0 ]
+}
+
+@test "SKILL.md global config section mentions ponytail" {
+  run grep -F 'ponytail' "$SHIP_SKILL_ROOT/SKILL.md"
+  [ "$status" -eq 0 ]
+}
+```
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1824,36 +1966,24 @@ git add claude-skills/ship-workflow/tests/test_ship-next-no-ua.bats
 git commit -m "test: assert all three integrations are purely additive"
 ```
 
-## Execution log
+### 2026-09-28 — Task 4 amended (second attempt), resuming
 
-### 2026-09-28 — BLOCKED at Task 4, Step 4
+Two BLOCKED runs, both correct stops by codex.
 
-- Branch remains `ship/ship-next-context-test-discipline`. No remote push, branch switch, amend, hook bypass, or live `$HOME/.claude/` modification performed.
-- Preserved the pre-existing R-084.1 edits verbatim and committed them separately: `c96cc5d` (`docs: carry R-084.1 plan-authoring learnings into ship-next`).
-- Baseline: `cd claude-skills/ship-workflow && bats tests/` passed all 129 tests before implementation; no baseline failures.
-- Task 1 complete: prescribed tests failed first because the library was absent, then passed 12/12. Commit `9b45dad`.
-- Task 2 complete: prescribed tests failed first because the library was absent, then passed 17/17. Commit `d752304`.
-- Task 3 complete: prescribed tests failed first because the library was absent, then passed 11/11. Commit `744f666`.
-- Task 4 Steps 1–3 applied exactly, plus the requested category header documentation. Initial test run: 12/16 passed; the new `category tags still count toward severity` test passed immediately because the existing severity parser already counts the appended emoji-tagged lines. Continued as instructed.
-- Task 4 Step 4: `cd claude-skills/ship-workflow && bats tests/test_code-review-parse.bats` exited 1, with 15/16 passing. The failing test is `code-review-parse: output is eval-safe (caller can source it)` at `tests/test_code-review-parse.bats:25`.
-- Root cause: the prescribed fixture additions add one major and two minor findings. Actual severity output is `BLOCKING_COUNT=2`, `MAJOR_COUNT=3`, `MINOR_COUNT=4`, `PRAISE_COUNT=3`; the existing eval assertion still expects `2|2|2|3`. Step 3 does not update this expectation. The first existing test also retains stale `MAJOR_COUNT=2` and `MINOR_COUNT=2` assertions, although this bats run reports that test as passing. The new severity test expects the correct 3/4 totals.
-- All four new category tests pass after implementation. This is a failure introduced by the prescribed fixture expansion, not a pre-existing baseline failure.
-- Resolution needed: authorize a correction to Task 4 that updates the existing fixture expectations to major=3, minor=4 and eval output `2|3|4|3`, then rerun its tests. Changing severity behavior or dropping fixture findings would contradict the task.
-- Stopped under the user's exact-code/no-improvisation and failed-task stop instructions. Task 4 is incomplete and uncommitted; Tasks 5–11 were not started. The Task 11 full-suite acceptance gate has not run.
-- Durable learning: when appending findings to this shared review fixture, update every fixture-based expectation, including the eval-safe tuple; otherwise the category extension leaves the suite red.
+Run 1 found a real plan defect: Task 4 appended findings to
+`tests/fixtures/code-review-output.md`, the shared contract for pre-existing severity
+assertions it does not own, moving MAJOR_COUNT 2->3 and MINOR_COUNT 2->4. Codex proposed
+updating those assertions; rejected, because that accepts the contamination. Task 4 now
+creates its own `code-review-categories.md`, leaves the shared fixture untouched, and adds
+a test pinning it at 2|2|2|3 with zero category counts. Task 4 was violating the same
+purely-additive property Task 11 enforces.
 
-### 2026-09-28 — Task 4 amended, resuming
+Run 2 was blocked by a defect in the amendment itself, not the plan's content: an
+index-slice edit overshot the Task 4 boundary and deleted Task 4 Steps 2-5 and all of
+Task 5, and it was committed without verification. Restored from 63ce51e and re-applied
+by splitting on task headings so the edit cannot cross a task boundary, with assertions
+on step count and heading count before writing.
 
-Codex's diagnosis was correct and its stop was the right call. The defect was in the
-plan, not the implementation: Task 4 mutated `tests/fixtures/code-review-output.md`,
-which is the shared contract for pre-existing severity assertions this task does not own.
-
-Codex proposed updating those assertions to major=3 / minor=4 / `2|3|4|3`. **Rejected** —
-that accepts the contamination. Task 4 now creates its own
-`tests/fixtures/code-review-categories.md` and leaves the shared fixture untouched, and
-a new test asserts the shared fixture still yields `2|2|2|3` with all three category
-counts at zero. That turns the collision into a permanent regression guard.
-
-This is the same "purely additive" property Task 11 enforces for the three integrations;
-Task 4 was violating it. Tasks 1-3 commits stand. Task 4's partial work was reverted so
-its TDD cycle runs clean. Resume from Task 4.
+Durable learning: when patching a plan file programmatically, split on structural
+boundaries and assert the structure survived. A textual index slice on a 1900-line
+document has no boundary and fails silently.
