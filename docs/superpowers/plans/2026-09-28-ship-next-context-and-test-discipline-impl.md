@@ -1087,7 +1087,7 @@ brittle assertion.
 - Consumes: `context_md_path` (Task 1), `ponytail_render_rules` (Task 3), the `## Seams` / `Read .ship/...` strings (Task 5).
 - Produces: the shell snippets Tasks 7 and 9 extend; exports nothing.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `claude-skills/ship-workflow/tests/test_ship-next-context-wiring.bats`:
 
@@ -1150,12 +1150,12 @@ setup() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd claude-skills/ship-workflow && bats tests/test_ship-next-context-wiring.bats`
 Expected: FAIL — 8 tests fail; none of these strings exist yet.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `commands/ship-next.md`, **Phase 3 step 0**, after the existing UA pre-context block, add:
 
@@ -1261,12 +1261,12 @@ In **Phase 5**, before step 3 (invoke the chosen sub-skill), add:
    subagent-start hooks cannot inject its ruleset.
 ````
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd claude-skills/ship-workflow && bats tests/test_ship-next-context-wiring.bats`
 Expected: PASS — 8 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add claude-skills/ship-workflow/commands/ship-next.md \
@@ -2052,3 +2052,10 @@ Task 6 covering Tasks 6-10, which share this hazard.
 Durable learning: grep assertions against a markdown file that embeds shell code are
 brittle about escaping. Assert on meaning-bearing substrings that avoid backticks,
 brackets, and `$`, or the test pins the escaping rather than the wiring.
+
+### 2026-09-28 — Task 6 complete (resumed from Step 1)
+
+- Started at `17b47d2` on `ship/ship-next-context-test-discipline`; baseline 184/184 green. Tasks 1–5 were not redone.
+- Re-read ship-next.md; copied the prescribed tests and observed 8/8 fail before implementation.
+- Inserted all four prescribed blocks verbatim; targeted tests 8/8 and full `bats tests/` 192/192 green. No additional assertion adjustments.
+- Repo-only scope overrides ship skill global bookkeeping and release actions; no push, branch switch, amend, hook bypass, or live HOME/.claude edits.

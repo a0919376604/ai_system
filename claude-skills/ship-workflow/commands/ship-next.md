@@ -247,6 +247,20 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
 
    When the brainstorming skill kicks off, it should Read `.ship/ua-context.md` (if present) as part of its opening context — this gives the design dialog concrete grounding in how the target files actually connect.
 
+   **CONTEXT.md (project vocabulary):**
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/context-md.sh
+   if [ -n "$(context_md_path)" ]; then
+     echo "CONTEXT.md present — Read it before brainstorm dialog."
+   fi
+   ```
+
+   When present, Read `CONTEXT.md` before the brainstorm dialog. It is the
+   project's shared domain vocabulary; using its terms verbatim avoids
+   re-deriving jargon and keeps naming consistent with what teammates read.
+
 0. **Resume detection.** Check what's already done in the worktree:
    - `ls docs/specs/${ID}-${SLUG}.md` exists → **first re-mirror spec to vault** (catch any post-write edits), then skip to Phase 4 (plan stage):
      ```bash
@@ -261,6 +275,12 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
 1. **Proposal check** (same as existing /ship-next pre-step): look for `<vault>/Proposals/*-${ID}-*-proposal.md`. If `status: accepted`, load §1-§7 as brainstorm context.
 
 2. **Invoke `superpowers:brainstorming`** with context: spec target `docs/specs/${ID}-${SLUG}.md`, project `<project_name>`, proposal context (if loaded).
+
+   Also pass a **required output section: `## Seams`** — a three-column table
+   (Seam | Interface | Guaranteed behavior) declaring every boundary this work
+   introduces or changes. Tests may assert a seam's behavior and nothing inside
+   it. This instruction travels in the invocation context; no `superpowers`
+   file is modified.
 
    **In auto mode (`AUTO=1`):** the brainstorming skill is still invoked, but **every clarifying question is auto-answered by picking option 1**. The brainstorming skill convention is to lead with the recommended option, so option 1 = recommended.
 
@@ -319,6 +339,21 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
   leaks commits that landed on `<base>` after this branch forked and
   makes them show up as reverse-diff pollution when you compare.
 
+0. **Seam gate.**
+
+   ```bash
+   SPEC_FILE="docs/specs/${ID}-${SLUG}.md"
+   if ! grep -qF '## Seams' "$SPEC_FILE"; then
+     if [ "$AUTO" = "1" ]; then
+       echo "ERROR: --auto:yes refused — spec has no \`## Seams\` section." >&2
+       echo "       Add it to $SPEC_FILE, then re-invoke /ship-next ${ID} --auto:yes." >&2
+       exit 2
+     else
+       echo "WARN: spec has no \`## Seams\` — tests will have no declared boundary to attach to." >&2
+     fi
+   fi
+   ```
+
 1. **Invoke `superpowers:writing-plans`** with the spec from Phase 3.
 
    **In auto mode (`AUTO=1`):** the writing-plans skill's "Review plan first?" gate is auto-approved.
@@ -354,6 +389,59 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    echo "$EXECUTOR_CHOICE" > .claude/.ship-executor
    # In auto mode, the log entry from step 5.4 already captured the choice.
    ```
+
+2.5. **Render executor rule files.**
+
+   ```bash
+   mkdir -p .ship
+
+   # TDD discipline, rendered from the spec's ## Seams table
+   {
+     echo "# TDD rules for ${ID}"
+     echo
+     echo "1. Tests attach only to the seams listed below."
+     echo "2. \`Seam: none\` tasks add no tests. Behavior unchanged => tests unchanged."
+     echo "3. One test, one behavior. Do not pack unrelated assertions into a single test."
+     echo
+     echo "## Declared seams"
+     sed -n '/^## Seams/,/^## /p' "docs/specs/${ID}-${SLUG}.md" | sed '$d'
+   } > .ship/tdd-rules.md
+
+   # ponytail ladder (silent no-op when ponytail is not installed)
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/ponytail-integration.sh
+   ponytail_render_rules .ship/ponytail-rules.md
+
+   # Version pin + drift detection (spec §8.4). Drift NEVER blocks: we use the
+   # new ruleset and surface the change, because a stale pin nobody bumps is the
+   # failure mode this project already has.
+   PONYTAIL_CURRENT=$(ponytail_version)
+   PONYTAIL_SHA=$(ponytail_ruleset_sha256)
+   PONYTAIL_PINNED=$(grep -A3 '^ponytail:' ~/.claude/ship-workflow.yml 2>/dev/null \
+                     | grep 'pinned_version:' | sed 's/.*: *//' | tr -d '"' )
+   PONYTAIL_PINNED_SHA=$(grep -A3 '^ponytail:' ~/.claude/ship-workflow.yml 2>/dev/null \
+                     | grep 'ruleset_sha256:' | sed 's/.*: *//' | tr -d '"' )
+   PONYTAIL_DRIFT=0
+   if [ -n "$PONYTAIL_SHA" ] && [ -n "$PONYTAIL_PINNED_SHA" ] \
+      && [ "$PONYTAIL_SHA" != "$PONYTAIL_PINNED_SHA" ]; then
+     PONYTAIL_DRIFT=1
+   fi
+   ```
+
+   **On drift (`PONYTAIL_DRIFT=1`):**
+   - `--auto:yes`: proceed with the new ruleset, log it, and let Phase 9 surface it.
+     ```bash
+     [ "$AUTO" = "1" ] && ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh \
+       "$WORKTREE" "P5" "ponytail ruleset drift" "${PONYTAIL_PINNED} -> ${PONYTAIL_CURRENT}, using new"
+     ```
+   - Interactive: show the version delta and a `diff` of the ruleset against the pin,
+     then offer `[A]ccept and re-pin / [S]kip / [C]ontinue without re-pinning`.
+     `[A]` rewrites `pinned_version` and `ruleset_sha256` in `~/.claude/ship-workflow.yml`.
+
+   The plan's task template already instructs executors to read both files.
+   Rendering to `.ship/` rather than relying on skill activation is deliberate:
+   Phase 5 spawns a fresh subagent per task, and ponytail documents that
+   subagent-start hooks cannot inject its ruleset.
 
 3. **Invoke the chosen sub-skill:**
    - `1` → `superpowers:subagent-driven-development`
