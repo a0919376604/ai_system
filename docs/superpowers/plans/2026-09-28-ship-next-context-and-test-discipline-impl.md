@@ -2139,3 +2139,61 @@ invocation note in Task 8.
 The executor's authorization is widened for the remaining tasks: a grep exiting 2
 (usage error) means the invocation is malformed and may be minimally repaired without
 changing the pattern. Exit 1 still means a genuine no-match and still stops the run.
+
+## RESUME HERE — paused 2026-09-29 (codex workspace out of credits)
+
+**State: clean and green.** Branch `ship/ship-next-context-test-discipline`, HEAD
+`fea7807`, 33 commits ahead of `main`. Working tree clean apart from a pre-existing
+untracked `.claude-uploads/`. `cd claude-skills/ship-workflow && bats tests/` gives
+**198 tests, 0 failures** (baseline before this work was 129).
+
+**Done:** Tasks 1-7, each committed with its own tests green.
+
+| Commit | Task |
+|---|---|
+| `9b45dad` | 1 — `lib/context-md.sh` |
+| `d752304` | 2 — `lib/test-budget.sh` |
+| `744f666` | 3 — `lib/ponytail-integration.sh` |
+| `81fbbc1` | 4 — three category counters in `code-review-parse.sh` |
+| `685af68` | 5 — templates + global config docs |
+| `ea43942` | 6 — P3-P5 wiring (CONTEXT.md, seam gate, `.ship/` rule files) |
+| `1d99026` | 7 — P6 mechanical gates + P7 ratio line |
+
+**Remaining:** Tasks 8, 9, 10, 11 — unstarted, nothing half-applied, no reverts needed.
+
+**To resume, relaunch from Task 8.** The launch prompt that was in flight when credits
+ran out is preserved at `/tmp/run-plan-prompt-<slot>.txt`; regenerate it if /tmp has been
+cleared. It must carry four things, all learned the hard way:
+
+1. **Scope override.** `claude-skills/ship-workflow/` is the target, not agent config to
+   skip. Without this the executor refuses the whole plan.
+2. **Authorized deviation (a): brittle grep assertions.** A search string that fails only
+   because the file escapes a backtick (`\``) or contains a literal `[` `]` `$` may be
+   narrowed to the shortest stable substring. Never edit implementation to satisfy a test.
+3. **Authorized deviation (b): malformed grep invocation.** grep exit 2 is a usage error,
+   not a no-match; repair the invocation (e.g. insert `--`) without changing the pattern.
+   Exit 1 still stops the run.
+4. **Insertion rule for Tasks 8-10.** Assert the extracted block starts with the expected
+   literal before writing. An untyped Markdown fence regex can mistake a preceding block's
+   closing fence for an opening one.
+
+Also: run the full suite as its own command after each task, never chained behind a
+targeted run with `&&`.
+
+### Retrospective on the five blocked runs
+
+Codex stopped five times and was right every time. Four stops were defects in this plan,
+one was its own transcription error, which it correctly identified as outside its
+authorization rather than quietly patching. The defect classes, all authored here:
+
+1. **Shared-fixture contamination** — Task 4 appended to a fixture that other tests own.
+2. **Unbounded programmatic edit** — a textual index slice while repairing Task 4 deleted
+   Task 4 Steps 2-5 and all of Task 5, and was committed unverified.
+3. **Escaping-blind assertions** — Task 6 grepped for bare backticks the file must escape.
+4. **Option-parsing** — Task 8 grepped a pattern beginning with `-` without `--`.
+
+The through-line: every one is an assertion or edit written without executing it. The
+self-review in `writing-plans` checked cross-task variable definitions and caught two real
+gaps, but it cannot catch a string that only fails at runtime. A future plan touching
+markdown-embedded shell should dry-run its grep assertions against the real file before
+the plan is handed to an executor.
