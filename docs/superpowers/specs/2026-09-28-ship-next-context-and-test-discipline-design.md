@@ -20,7 +20,9 @@ supersedes: null
 > git-tracked `CONTEXT.md` read at P3 and auto-written at P8, with a hard line cap.
 > **Gap 2 (test churn):** the executor writes tests with no constraint on where they
 > attach and nothing ever deletes them. Fix = seams declared in the spec, TDD rules
-> injected via `.ship/`, mechanical gates at P6, and a scoped prune at a new P8.5.
+> injected via `.ship/`, mechanical gates at P6, and a prune *report* at a new P8.5
+> (amended 2026-09-29: it was specified to delete; no coverage-derived gate can
+> establish deletion safety, so it reports and the operator deletes — see §7.1).
 > Plus `ponytail` at P5 (product code only) and a threshold-triggered UA KG rebuild
 > at a new P8.7.
 > **The governing constraint:** the operator runs `/ship-next` and nothing else.
@@ -104,8 +106,13 @@ A design that routes work to a command the operator does not run is a no-op.
   (`ponytail` documents this for Cursor `subagentStart`; P5 spawns a fresh subagent
   per task). Render rules to `.ship/*.md` and point the plan's task template at them.
 - **P5. Destructive operations need a mechanical gate, not a human gate.** `--auto:yes`
-  is the operator's normal mode. Guard deletion with verifiable invariants (coverage,
-  green tests) rather than by refusing to run unattended.
+  is the operator's normal mode, so refusing to run unattended is how a mechanism ends
+  up never firing.
+  **Amended 2026-09-29:** this principle originally named coverage and green tests as
+  the verifiable invariants for deletion. They are not: coverage records which lines
+  executed, not whether an assertion observed them (§7.1). The principle survives with a
+  sharper corollary — *if no mechanical invariant exists, do not perform the destructive
+  act at all.* That is why §7 reports rather than deletes.
 - **P6. Reuse thresholds and machinery that already exist.** Do not invent a second
   staleness number when `ua_check_drift` already has one.
 
@@ -505,10 +512,12 @@ if CONTEXT.md quality visibly degrades over the first ~10 ships.**
 - **Seam declaration quality.** A carelessly declared seam makes rule 1 in
   `.ship/tdd-rules.md` useless. The three-column format is a bet that cheap declaration
   beats thorough declaration. Watch whether `--auto:yes` specs produce usable seams.
-- **P8.5 coverage gate is not a mutation test.** Coverage staying flat does not prove
-  assertion strength was preserved. It bounds the damage; it does not eliminate it.
+- **P8.5 deletes nothing, so it carries no deletion risk.** The residual risk moved:
+  candidates are surfaced but nothing enforces that the operator reviews them, so test
+  debt can still accumulate in plain sight. Withdrawn with the gate: the earlier claim
+  that flat coverage bounds the damage of automatic deletion.
 - **Two new phases lengthen the auto cycle.** Both are conditional, but a ship that
-  triggers both pays for a prune plus a full UA rebuild. The P9 summary must make this
+  triggers both pays for a prune report plus a full UA rebuild. The P9 summary must make this
   cost visible so the thresholds can be raised if it bites.
 
 ## §13 Test strategy
@@ -521,8 +530,13 @@ if CONTEXT.md quality visibly degrades over the first ~10 ships.**
   This is the single most important test: all three integrations must be additive.
 - **Threshold boundaries.** Explicit cases at 199/200/201 lines, 59/60/61 entries,
   49/50/51 drifted files, and ratio exactly 2x and exactly 4x.
-- **P8.5 rollback.** Simulate a prune that drops coverage; assert no commit is created
-  and `tests/` is restored.
+- **P8.5 destroys nothing.** Execute the phase's extracted bash against a *dirty*
+  fixture repo — an unstaged edit, a staged file, an existing `.ship/` — and assert the
+  worktree, the index, the stash list and HEAD are all unchanged. Behavioural, not
+  textual: two successive pattern-matching guards were written here and both were
+  defeated (`/bin/rm`, `git -C . add`, `.ship/../tests/x.py`, `sed -e ... -i ''`).
+  The fixture must be dirty or `git add`, `checkout`, `restore` and `stash` are no-ops
+  and slip through.
 - **Shadow mode.** Assert ships 1 to 3 emit no budget finding and ship 4 does.
 - **Seam gate.** Assert `--auto:yes` exits 2 when the spec has no `## Seams`, and that
   interactive mode only warns.

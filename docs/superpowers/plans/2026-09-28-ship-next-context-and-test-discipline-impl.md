@@ -2053,6 +2053,136 @@ document has no boundary and fails silently.
 
 ## Execution log
 
+### 2026-09-29 — Task 11 acceptance BLOCKED at 393e80e
+
+- Applied the invoked ship skill and executing-plans verification/review workflow
+  within the repository-only acceptance scope. Release, global bookkeeping, and
+  live HOME/.claude operations were excluded. No source fixes or committed test
+  changes were made; the existing Task 11 tests were left intact.
+- Ran `cd claude-skills/ship-workflow && bats tests/` as its own command:
+  **229/229 passed, exit 0**. Initial HEAD was `393e80e`; the only initial working
+  tree entry was the pre-existing untracked `.claude-uploads/`.
+
+**BLOCKER: destructive statements still bypass the structural guard.**
+
+Used a scratch copy of `commands/ship-next.md` and the real
+`tests/test_ship-next-prune.bats`. Redirected only the copied test's `load helpers`
+path to the original helpers and its `CMD` assignment to the copied command file.
+Inserted each statement separately immediately after `mkdir -p .ship` inside
+Phase 8.5's existing Bash fence. Ran:
+
+```bash
+bats --filter 'Phase 8.5 deletes nothing' \
+  claude-skills/ship-workflow/tests/.tmp/acceptance-393e80e/guard.bats
+```
+
+| Injected statement | Guard exit | Actual extracted phase effect |
+|---|---:|---|
+| none (control) | 0 | bytes, index and HEAD unchanged |
+| `rm -f tests/src/test_a.py` | 1 | rejected control; not executed |
+| `git add -- tests/src/test_a.py` | 1 | rejected control; not executed |
+| `: > tests/src/test_a.py` | 1 | rejected control; not executed |
+| `git -C . add -- tests/src/test_a.py` | **0** | stages previously unstaged sentinel |
+| `/bin/rm -f tests/src/test_a.py` | **0** | deletes the test file |
+| `: > .ship/../tests/src/test_a.py` | **0** | truncates the test file to zero bytes |
+| `sed -e 's/assert/pass #/' -i '' tests/src/test_a.py` | **0** | edits the test's assertion |
+
+Restoring the original command copy returned guard exit 0. An additional awk
+write injection was rejected, exit 1.
+
+Executed all four accepted destructive mutants through the **actual extracted
+Phase 8.5 Bash**, using `/bin/bash` 3.2.57 and real Git in separate isolated
+repositories under `tests/.tmp/acceptance-393e80e/`. Each fixture had two commits
+changing `src/a.py`, a mapped `tests/src/test_a.py`, distinct staged/unstaged
+sentinels, an isolated HOME, and a one-candidate report. Set
+`TEST_BUDGET_VERDICT=major`, `ORIG_BRANCH=<first commit>`, and
+`BRANCH=<second commit>`. Every mutant exited 0 and reported
+`1 prune candidate(s) ... (nothing deleted)` despite its measured side effect.
+HEAD stayed unchanged; the Git-option mutant changed the index tree, and the
+other three changed or removed the test bytes.
+
+The reasons are concrete: `test_ship-next-prune.bats:44` only recognizes a Git
+subcommand immediately after `git`, missing Git global options; lines 47–48
+still match a verb denylist, missing absolute executable paths and reordered
+sed options; line 59 accepts the lexical `.ship/*` prefix without resolving
+parent traversal. These checks do not enforce the stated shell behavior.
+This is a regression-guard defect, **not a claim that the original phase
+currently contains a destructive operation**, and does not reopen report-only
+as the settled design.
+
+**BLOCKER: current normative spec text still contradicts report-only operation.**
+
+The command, spec §7, spec §10 phase map, and plan Task 9 SUPERSEDED banner agree
+that Phase 8.5 proposes candidates and deletes/commits nothing. The updated P8.7
+text also agrees. However, the spec still contains these unmarked current claims:
+
+- Line 23: “a scoped prune at a new P8.5”.
+- §3 P5, lines 106–108: guard deletion with coverage and green-test invariants
+  rather than refusing unattended operation.
+- §12.4, lines 508–509: the “P8.5 coverage gate” bounds the damage.
+- §13, lines 524–525: simulate a prune that drops coverage and assert rollback
+  restores `tests/`.
+
+Reproduce with:
+
+```bash
+rg -n 'scoped prune at|Guard deletion|P8.5 coverage gate|P8.5 rollback' \
+  docs/superpowers/specs/2026-09-28-ship-next-context-and-test-discipline-design.md
+```
+
+These are outside the explicitly superseded plan history. The shipped-document
+check only searches three phrases and therefore stays green with the contradictory
+residual-risk and test-strategy instructions still present.
+
+**Remaining finishing defect: empty reports emit `00`, not `0`.**
+
+Executed the original extracted phase against three report contents. A single
+`CANDIDATE: ` line correctly reports 1. A header-only `# Candidate report` file
+and a zero-byte file both report **`00 prune candidate(s)`**, exit 0.
+At `commands/ship-next.md:782`, a no-match `grep -c` prints `0` and exits 1;
+`|| echo 0` prints another `0`, and line 783 joins them. The prefix repair fixes
+header collisions for nonempty candidate lists but leaves the previously reported
+zero-result defect. This is a formatting defect, not an assertion that the
+numeric candidate total is nonzero. The guard checks source text rather than
+executing the empty/header-only cases.
+
+**Repairs and absent integrations that hold.**
+
+- Executed the actual P9 log block with `PRUNE_STATUS="7 prune candidate(s)"`
+  and a no-op Git function. It exits 0 and now appends `prune: 7 prune candidate(s)`
+  to the durable row. The missing-log-status finding is fixed.
+- An independent in-host reviewer executed eight actual extracted optional
+  blocks individually and sequentially: P1.5 drift, P3 UA and CONTEXT, P5 ponytail
+  render/drift, P6 UA, ship-compound UA and CONTEXT cap/commit, and P8.7 rebuild.
+  Tested AUTO=0 and AUTO=1, with UA absent and with its plugin present but no KG,
+  always without ponytail or CONTEXT. Installed-library paths were redirected
+  locally and HOME was isolated under tests/.tmp/. File hashes, staged index tree,
+  HEAD and status remained unchanged, including staged/unstaged sentinels.
+  Optional outputs stayed absent, stdout/stderr stayed empty, and binding/mirror
+  sentinels were not called. Public absent-helper checks also passed.
+- Every extracted block exits 0 except the already documented P1.5 trailing
+  false string test, which exits 1 silently. The sequential cycle exits 0 without
+  unspecified errexit. No new absent-integration blocker was found. This checks
+  actual optional-hook blocks, not an entire external agent-driven ship conversation.
+
+**Verdict: BLOCKED. Task 11 remains incomplete; no acceptance commit created.**
+
+Required repair: make the no-destruction guard reject the reproduced mutations,
+remove or explicitly supersede the remaining normative coverage-gate claims, and
+normalize zero candidate output. Preserve report-only operation. No implementation
+fix or test weakening was attempted in this acceptance review.
+
+Scratch fixtures under `tests/.tmp/acceptance-393e80e/` and
+`tests/.tmp/acceptance-393e80e-absent/` were removed after recording the evidence.
+Only this Execution log was edited. No push, branch switch, amend, hook bypass,
+live HOME/.claude modification, or `.claude-uploads/` change occurred.
+
+Durable learning: an allowed subcommand check is still lexical if it cannot parse
+options and executable paths. A permitted path prefix is not directory containment.
+Prove the property using alternate valid shell forms and measured file/index effects;
+exercise zero-output paths rather than asserting that the counting expression exists.
+
+
 ### 2026-09-29 — Final Task 11 acceptance BLOCKED at 9f8c0bf
 
 - Applied the explicitly invoked ship skill and executing-plans review/verification
@@ -3104,3 +3234,55 @@ Durable learning: a denylist guard is only as good as the author's imagination, 
 author is the same person who wrote the thing being guarded. Prefer a structural rule
 that admits a small allowed set over a list of forbidden strings — and prove it by
 injecting the defects it claims to catch, one at a time.
+
+### 2026-09-30 — the no-destruction guard becomes behavioural
+
+Eighth review. Four statements passed the "structural" guard and actually mutated the
+reviewer's fixtures:
+
+    git -C . add -- tests/src/test_a.py          # `-C` is not [a-z], so no subcommand parsed
+    /bin/rm -f tests/src/test_a.py               # `rm` preceded by `/`, not whitespace
+    : > .ship/../tests/src/test_a.py             # target starts with .ship/, traversal
+    sed -e 's/assert/pass #/' -i '' tests/...    # `-i` not adjacent to `sed`
+
+The previous round called those rules "structural, not a denylist". They were not. They
+were still string patterns over shell text, and the ways to spell a destructive command
+are unbounded — `/bin/rm`, `$(command -v rm)`, `eval`, `find -delete`, `python3 -c`.
+A textual guard cannot establish that a shell block does nothing.
+
+**Replaced with a behavioural guard.** The phase's bash is extracted and *executed*
+against a fixture git repo, and the worktree, index, stash list, test-file hashes and
+HEAD are compared before and after. That is how the reviewer found every one of these:
+it ran them.
+
+Two fixture properties turned out to be load-bearing, and both were discovered by
+injection rather than reasoning:
+
+- **The fixture must be dirty.** On a clean tree `git add`, `git checkout -- tests/`,
+  `git restore` and `git stash push` are all no-ops and slip through. With an unstaged
+  edit and a separately staged file present, all four are caught.
+- **`.ship/` must exist.** Otherwise `: > .ship/../tests/x.py` fails on a missing
+  directory and the injection looks harmless, while in a real run the directory is there.
+
+Sixteen destructive statements were injected one at a time, including all four from this
+round and all ten from the last. Every one turns the guard red; reverting turns it green.
+
+**Also fixed.** `grep -c` prints `0` *and* exits 1 when it matches nothing, so
+`|| echo 0` appended a second zero and an empty report displayed `00`. Now `|| true`,
+with the default covering only a missing file. Verified across five cases.
+
+**And the documents, a third time.** §7 was amended in one round, §10 and Phase 8.7 in
+the next, and this round the reviewer still found §3's principle P5, §12.4's residual
+risks and §13's test strategy prescribing the coverage gate. All corrected — this time by
+sweeping the whole spec for `coverage|rollback|prune|deletes` and judging every hit,
+rather than fixing the sections that came to mind. Principle P5 keeps its point and gains
+the corollary the whole episode earned: *if no mechanical invariant exists, do not perform
+the destructive act at all.*
+
+Suite: 229 -> 231, 0 failures.
+
+Durable learning: to prove code does nothing, run it and look at what changed. Every
+textual approximation of that claim — denylist, allowlist, "structural" rules — is a
+guess about how the next author will spell the thing you are forbidding. And when a
+behavioural test passes, check the fixture actually represents the state where the defect
+would bite; a no-op on the wrong fixture is indistinguishable from safety.

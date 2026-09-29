@@ -25,41 +25,56 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "Phase 8.5 deletes nothing — structural, not a denylist" {
-  # Scan the executable bash only. The prose deliberately says "there is no coverage
-  # run", and scanning the whole section would match its own explanation.
+@test "Phase 8.5 bash mutates nothing — executed, not pattern-matched" {
+  # Two textual guards were written here and both were defeated, by `/bin/rm`,
+  # `git -C . add`, `.ship/../tests/x.py` and `sed -e ... -i ''`. Matching patterns
+  # over shell text cannot work: the ways to spell a destructive command are
+  # unbounded. So run the code and look at the tree afterwards.
+  repo="$BATS_TEST_TMPDIR/repo"
+  mkdir -p "$repo/tests/src" "$repo/src"
+  cd "$repo"
+  git init -q .
+  git config user.email t@t
+  git config user.name t
+  printf 'def f():\n    return 1\n' > src/a.py
+  printf 'def test_f():\n    assert f() == 1\n' > tests/src/test_a.py
+  git add -A
+  git commit -q -m init
+
+  # The fixture must be DIRTY. On a clean tree `git add`, `git checkout -- tests/`,
+  # `git restore` and `git stash` are all no-ops and slip past unnoticed; they are
+  # only destructive when there is uncommitted work to destroy. Leave some.
+  printf 'def test_f():\n    assert f() == 1\n    assert f() != 2\n' > tests/src/test_a.py
+  printf 'def test_g():\n    assert True\n' > tests/src/test_b.py
+  git add tests/src/test_b.py   # one staged, one unstaged
+
+  # .ship/ exists in a real run, so path-traversal redirects like
+  # `.ship/../tests/x.py` resolve. Without it the redirect fails on a missing
+  # directory and the injection looks harmless.
+  mkdir -p .ship
+
+  snapshot() {
+    git status --porcelain -- . ':(exclude).ship' | sort
+    git diff --cached --name-status | sort
+    git stash list
+    find tests -type f | sort | while IFS= read -r f; do shasum "$f"; done
+    git rev-parse HEAD
+  }
+  before=$(snapshot)
+
   block=$(awk '/^## Phase 8.5/,/^## Phase 8.7/' "$CMD" \
-          | awk '/^   ```bash/{f=1;next}/^   ```/{f=0}f')
+          | awk '/^   ```bash/{f=1;next}/^   ```/{f=0}f' | sed 's/^   //')
   [ -n "$block" ]
+  # Stub what earlier phases would have set, and force the branch that does the work.
+  TEST_BUDGET_VERDICT=major ORIG_BRANCH=HEAD BRANCH=HEAD \
+    bash -c "$block" >/dev/null 2>&1 || true
 
-  # 1. The ONLY git subcommand allowed here is `diff`. One rule kills add, rm, commit,
-  #    checkout, restore and stash, including forms like `git add -- tests/x.py` that
-  #    a literal denylist of `git add tests/` misses.
-  while IFS= read -r sub; do
-    [ -z "$sub" ] && continue
-    if [ "$sub" != "diff" ]; then
-      echo "Phase 8.5 runs a mutating git subcommand: git $sub"
-      return 1
-    fi
-  done <<< "$(echo "$block" | grep -oE '\bgit +[a-z][a-z-]*' | awk '{print $2}')"
-
-  # 2. No file-mutating command at all.
-  for verb in rm mv cp truncate tee install chmod 'sed -i' shred unlink; do
-    if echo "$block" | grep -qE "(^|[|;&(]|[[:space:]])${verb}([[:space:]]|$)"; then
-      echo "Phase 8.5 runs a file-mutating command: $verb"
-      return 1
-    fi
-  done
-
-  # 3. Every redirect must target .ship/ or /dev/null. Truncating a test file with
-  #    `> tests/x.py` writes nothing recognisable as a command.
-  while IFS= read -r target; do
-    [ -z "$target" ] && continue
-    case "$target" in
-      .ship/*|/dev/null) ;;
-      *) echo "Phase 8.5 redirects outside .ship/: $target"; return 1 ;;
-    esac
-  done <<< "$(echo "$block" | grep -oE '>>?[[:space:]]*[^[:space:];|)]+' | sed -E 's/^>>?[[:space:]]*//')"
+  after=$(snapshot)
+  if [ "$before" != "$after" ]; then
+    echo "Phase 8.5 changed the tree:"
+    diff <(echo "$before") <(echo "$after") || true
+    return 1
+  fi
 }
 
 @test "Phase 8.5 states the candidates are proposals" {
@@ -130,4 +145,22 @@ setup() {
       fi
     done
   done
+}
+
+@test "Phase 8.5 candidate count cannot render as 00" {
+  # `grep -c` prints 0 AND exits 1 when it matches nothing, so `|| echo 0` appended a
+  # second zero and an empty report displayed as `00`.
+  run grep -F "|| echo 0)" "$CMD"
+  [ "$status" -ne 0 ]
+  run grep -F "grep -c '^CANDIDATE: ' .ship/prune-candidates.md 2>/dev/null || true" "$CMD"
+  [ "$status" -eq 0 ]
+}
+
+@test "spec prescribes a behavioural P8.5 check, not a rollback simulation" {
+  SPEC="$SHIP_SKILL_ROOT/../../docs/superpowers/specs/2026-09-28-ship-next-context-and-test-discipline-design.md"
+  [ -f "$SPEC" ]
+  run grep -F 'P8.5 destroys nothing' "$SPEC"
+  [ "$status" -eq 0 ]
+  run grep -F 'Simulate a prune that drops coverage' "$SPEC"
+  [ "$status" -ne 0 ]
 }

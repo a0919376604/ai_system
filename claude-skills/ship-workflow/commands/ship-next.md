@@ -779,8 +779,12 @@ inside the one command the operator actually runs.
    ```bash
      mkdir -p .ship
      # Written by Claude from the reading above, one CANDIDATE: line each.
-     CANDIDATES=$(grep -c '^CANDIDATE: ' .ship/prune-candidates.md 2>/dev/null || echo 0)
+     # `grep -c` PRINTS 0 and EXITS 1 when it finds nothing, so `|| echo 0` appended a
+     # second zero and an empty report displayed as `00`. `|| true` keeps grep's own
+     # count; the default only covers a missing file, where grep prints nothing.
+     CANDIDATES=$(grep -c '^CANDIDATE: ' .ship/prune-candidates.md 2>/dev/null || true)
      CANDIDATES=$(echo "$CANDIDATES" | tr -d '[:space:]')
+     [ -n "$CANDIDATES" ] || CANDIDATES=0
      PRUNE_STATUS="${CANDIDATES} prune candidate(s) — see .ship/prune-candidates.md (nothing deleted)"
      fi
    fi
