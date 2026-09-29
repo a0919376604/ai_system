@@ -96,17 +96,6 @@ tb_verdict() {
   echo pass
 }
 
-# tb_coverage_ok <after> <before> — exit 0 only when coverage is provably not lower.
-# FAIL CLOSED. `[ -lt ]` is integer-only, so a decimal total like 80.25 makes it error;
-# a non-zero exit from `[` would fall through to the caller's success branch and commit
-# a coverage drop. Anything non-numeric, empty, or lower counts as a drop.
-tb_coverage_ok() {
-  local after="$1" before="$2"
-  [ "$(awk -v a="$after" -v b="$before" 'BEGIN{
-    print ((a ~ /^[0-9]+(\.[0-9]+)?$/) && (b ~ /^[0-9]+(\.[0-9]+)?$/) && (a+0 >= b+0)) ? 1 : 0
-  }')" = "1" ]
-}
-
 # tb_shadow_active — exit 0 while fewer than TB_SHADOW_SHIPS prior ships
 # recorded a ratio in docs/learnings/_log.md.
 tb_shadow_active() {

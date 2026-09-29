@@ -729,14 +729,7 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
 
 1. **Trigger.** Reuses the number Phase 6 already computed; normal ships skip.
 
-   Phase 7 already `cd`-ed back to the main repo, so this phase does not inherit
-   Phase 6's shell. Source the helper again or `tb_coverage_ok` will be missing at
-   step 5 and every prune will silently roll back.
-
    ```bash
-   # shellcheck disable=SC1091
-   source ~/.claude/skills/ship-workflow/lib/test-budget.sh
-
    if [ "$TEST_BUDGET_VERDICT" != "major" ]; then
      PRUNE_STATUS="skipped (verdict=${TEST_BUDGET_VERDICT})"
    else
@@ -766,6 +759,7 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
      # case: 100% reported, 50% actual. With --source the module stays in scope and
      # its coverage correctly falls, which is what the gate needs to see.
      COV_SOURCE=$(echo "$MODULES" | tr '\n' ',' | sed 's/,$//')
+     mkdir -p .ship
 
      # Check pytest's exit code on its own. Chaining `run ...; report ...` with `;`
      # discarded it, so a RED baseline still produced a number and pruning away the
@@ -773,8 +767,8 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
      if ! coverage run --source="$COV_SOURCE" -m pytest $TEST_TARGETS -q >/dev/null 2>&1; then
        PRUNE_STATUS="skipped (baseline tests not green)"
      else
-     COV_BEFORE=$(coverage report --format=total 2>/dev/null || echo "")
-     if [ -z "$COV_BEFORE" ]; then
+     coverage json -q -o .ship/cov-before.json 2>/dev/null || true
+     if [ ! -s .ship/cov-before.json ]; then
        PRUNE_STATUS="skipped (no coverage baseline)"
      else
    ```
@@ -792,19 +786,21 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
          git checkout -- tests/
          PRUNE_STATUS="rolled back (tests failed)"
        else
-         COV_AFTER=$(coverage report --format=total 2>/dev/null || echo "")
-         # tb_coverage_ok fails closed on decimals, empties and non-numerics. Inlining
-         # `[ "$COV_AFTER" -lt "$COV_BEFORE" ]` here is what shipped a coverage drop:
-         # `[ -lt ]` is integer-only, so 80.25 makes it error and the error routes to
-         # the commit branch. The helper lives in lib/ so it is unit-testable.
-         if ! tb_coverage_ok "$COV_AFTER" "$COV_BEFORE"; then
+         coverage json -q -o .ship/cov-after.json 2>/dev/null || true
+         # Exact per-file integers plus a membership check. A percentage gate cannot
+         # do this job: it hid a 903 -> 902 statement loss behind a rounded `90`, and
+         # it could not see a file that vanished from the report entirely when its
+         # only test was deleted (namespace packages defeat --source). Exit 2 means
+         # "cannot decide" and is treated as a regression.
+         if ! python3 ~/.claude/skills/ship-workflow/lib/coverage-diff.py \
+              .ship/cov-before.json .ship/cov-after.json; then
            git checkout -- tests/
-           PRUNE_STATUS="rolled back (coverage dropped ${COV_BEFORE:-?} -> ${COV_AFTER:-?})"
+           PRUNE_STATUS="rolled back (coverage regression)"
          else
            PRUNED_LINES=$(git diff --numstat -- tests/ | awk '{s+=$2} END {print s+0}')
            git add tests/
            git commit -m "test: prune redundant tests in ${MODULES}"
-           PRUNE_STATUS="pruned -${PRUNED_LINES} lines, coverage ${COV_BEFORE} -> ${COV_AFTER}"
+           PRUNE_STATUS="pruned -${PRUNED_LINES} lines, per-file coverage verified"
          fi
        fi
      fi
@@ -816,8 +812,9 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
    This is a **separate commit** from the Phase 7 squash on purpose: folding it in
    would pollute the R-NNN diff and defocus review.
 
-   **Known limit:** flat coverage does not prove assertion strength was preserved.
-   This bounds the damage; it does not eliminate it.
+   **Known limit:** per-file coverage parity does not prove assertion *strength* was
+   preserved — a test can be weakened without touching which lines execute. This bounds
+   the damage; it does not eliminate it.
 
    **Auto-mode log:**
    ```bash

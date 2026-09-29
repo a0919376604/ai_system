@@ -1672,14 +1672,7 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
 
 1. **Trigger.** Reuses the number Phase 6 already computed; normal ships skip.
 
-   Phase 7 already `cd`-ed back to the main repo, so this phase does not inherit
-   Phase 6's shell. Source the helper again or `tb_coverage_ok` will be missing at
-   step 5 and every prune will silently roll back.
-
    ```bash
-   # shellcheck disable=SC1091
-   source ~/.claude/skills/ship-workflow/lib/test-budget.sh
-
    if [ "$TEST_BUDGET_VERDICT" != "major" ]; then
      PRUNE_STATUS="skipped (verdict=${TEST_BUDGET_VERDICT})"
    else
@@ -1709,6 +1702,7 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
      # case: 100% reported, 50% actual. With --source the module stays in scope and
      # its coverage correctly falls, which is what the gate needs to see.
      COV_SOURCE=$(echo "$MODULES" | tr '\n' ',' | sed 's/,$//')
+     mkdir -p .ship
 
      # Check pytest's exit code on its own. Chaining `run ...; report ...` with `;`
      # discarded it, so a RED baseline still produced a number and pruning away the
@@ -1716,8 +1710,8 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
      if ! coverage run --source="$COV_SOURCE" -m pytest $TEST_TARGETS -q >/dev/null 2>&1; then
        PRUNE_STATUS="skipped (baseline tests not green)"
      else
-     COV_BEFORE=$(coverage report --format=total 2>/dev/null || echo "")
-     if [ -z "$COV_BEFORE" ]; then
+     coverage json -q -o .ship/cov-before.json 2>/dev/null || true
+     if [ ! -s .ship/cov-before.json ]; then
        PRUNE_STATUS="skipped (no coverage baseline)"
      else
    ```
@@ -1735,19 +1729,21 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
          git checkout -- tests/
          PRUNE_STATUS="rolled back (tests failed)"
        else
-         COV_AFTER=$(coverage report --format=total 2>/dev/null || echo "")
-         # tb_coverage_ok fails closed on decimals, empties and non-numerics. Inlining
-         # `[ "$COV_AFTER" -lt "$COV_BEFORE" ]` here is what shipped a coverage drop:
-         # `[ -lt ]` is integer-only, so 80.25 makes it error and the error routes to
-         # the commit branch. The helper lives in lib/ so it is unit-testable.
-         if ! tb_coverage_ok "$COV_AFTER" "$COV_BEFORE"; then
+         coverage json -q -o .ship/cov-after.json 2>/dev/null || true
+         # Exact per-file integers plus a membership check. A percentage gate cannot
+         # do this job: it hid a 903 -> 902 statement loss behind a rounded `90`, and
+         # it could not see a file that vanished from the report entirely when its
+         # only test was deleted (namespace packages defeat --source). Exit 2 means
+         # "cannot decide" and is treated as a regression.
+         if ! python3 ~/.claude/skills/ship-workflow/lib/coverage-diff.py \
+              .ship/cov-before.json .ship/cov-after.json; then
            git checkout -- tests/
-           PRUNE_STATUS="rolled back (coverage dropped ${COV_BEFORE:-?} -> ${COV_AFTER:-?})"
+           PRUNE_STATUS="rolled back (coverage regression)"
          else
            PRUNED_LINES=$(git diff --numstat -- tests/ | awk '{s+=$2} END {print s+0}')
            git add tests/
            git commit -m "test: prune redundant tests in ${MODULES}"
-           PRUNE_STATUS="pruned -${PRUNED_LINES} lines, coverage ${COV_BEFORE} -> ${COV_AFTER}"
+           PRUNE_STATUS="pruned -${PRUNED_LINES} lines, per-file coverage verified"
          fi
        fi
      fi
@@ -1759,8 +1755,9 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
    This is a **separate commit** from the Phase 7 squash on purpose: folding it in
    would pollute the R-NNN diff and defocus review.
 
-   **Known limit:** flat coverage does not prove assertion strength was preserved.
-   This bounds the damage; it does not eliminate it.
+   **Known limit:** per-file coverage parity does not prove assertion *strength* was
+   preserved — a test can be weakened without touching which lines execute. This bounds
+   the damage; it does not eliminate it.
 
    **Auto-mode log:**
    ```bash
@@ -2272,6 +2269,61 @@ changing the pattern. Exit 1 still means a genuine no-match and still stops the 
   the baseline run and preserve its measurement scope; helper no-ops alone do
   not establish that their enclosing command is additive.
 
+### 2026-09-29 — Task 11 acceptance round 3 BLOCKED at 3e974f7
+
+- Reviewed the current Phase 8.5 and Phase 8 CONTEXT.md commit block, with an
+  independent read-only reviewer. Task 11's five existing uncommitted tests
+  were preserved unchanged. No Tasks 1–10 implementation or tests were edited.
+- Ran `cd claude-skills/ship-workflow && bats tests/` as its own command:
+  **237/237 passed, exit 0**. `git diff --check` also passed.
+- **A holds.** Executing the actual CONTEXT.md commit block with no file exits
+  0 and sets `CONTEXT_MD_STATUS="absent — no qualifying terms this ship"`.
+  Neither staging nor mirroring is invoked. The absent ponytail renderer is
+  silent and writes no file; the actual absent-UA P8.7 block exits 0 with
+  `UA_STATUS=n/a`. These absent paths did not produce a new blocker.
+- **C holds.** Executing the extracted gate against a failing baseline sets
+  `skipped (baseline tests not green)` and never enters pruning or commit.
+- **B is only partially repaired.** Both runs use the same `--source`, but
+  this does not guarantee the same measured file set. Two blocking measurement
+  defects were reproduced with real Coverage.py 7.14.0, pytest, and macOS
+  `/bin/bash` 3.2.57:
+  1. **Namespace-package files still disappear.** At
+     `commands/ship-next.md:768,773,791`, `--source=src` initially includes
+     imported `src/a.py` and `src/ns/b.py`. With no `src/ns/__init__.py`, deleting
+     only the test importing/calling `b` removes that source file from the
+     report. Both pytest runs are green; measured coverage goes from 4/4
+     statements to 2/2 and reports `100 -> 100`, although the original source
+     universe now has only 50% coverage. The independent review executed the
+     actual extracted gate and it committed the deletion in an isolated
+     fixture. This repeats the previous round's shrinking-measurement-set bug.
+  2. **Rounded totals hide actual coverage loss.** At
+     `commands/ship-next.md:776,795,800`, the default
+     `coverage report --format=total` rounds both 903/1004 statements
+     (89.940239%) and 902/1004 (89.840637%) to `90`. Removing one test loses an
+     executed source statement; both runs remain green and `tb_coverage_ok 90
+     90` succeeds. The extracted gate selects commit, not rollback. Numeric
+     validation cannot recover precision already discarded by the report.
+- Evidence is retained under `claude-skills/ship-workflow/tests/.tmp/`:
+  `task11-independent-pedx6xbc/` contains the namespace reproduction script,
+  actual gate result and before/after coverage JSON;
+  `task11-round3-omxc5j4f/` contains the rounding fixture and JSON, extracted
+  gate harness and `gate-results.txt`. The latter harness stubs git plumbing
+  only, uses real pytest/coverage, and proves both commit paths. Controls prove
+  a regular package with `__init__.py` rolls back at `100 -> 50` and a red
+  baseline skips. Isolated HOME directories stay inside the repository.
+- **Recommendation: make Phase 8.5 REPORT-ONLY.** List prune candidates in
+  the P9 summary and delete nothing. This round surfaces more defects of the
+  same measurement/safety-gate class despite 237 green tests; the concentration
+  in the destructive phase continues. The operator decides this scope change;
+  it has not been applied here.
+- Task 11 remains incomplete and uncommitted. No parent-repository commit,
+  push, branch switch, amend, hook bypass, live `$HOME/.claude/` access, or
+  `.claude-uploads/` changes occurred. Only this execution-log entry was edited.
+- Durable learning: a fixed source argument is not an enumerated, verified
+  source universe, and displayed percentages are lossy measurements. A
+  destructive gate must validate file membership and exact coverage evidence;
+  syntax checks and a correct numeric comparator prove neither.
+
 ## RESUME HERE — paused 2026-09-29 (codex workspace out of credits)
 
 **State: clean and green.** Branch `ship/ship-next-context-test-discipline`, HEAD
@@ -2413,3 +2465,51 @@ delete nothing — rather than patch instance after instance of the same class.
 Durable learning: a safety gate on a destructive operation must validate its own
 measurement, not just its comparison. Ask what the metric is computed over, and whether
 the destructive act changes that set.
+
+### 2026-09-29 — the percentage gate is replaced by a real coverage diff
+
+Fourth acceptance review. Two more defects of the same class, both reproduced in isolated
+fixtures by the executor:
+
+- **`--source` does not pin a namespace package.** With `--source=src`, deleting the only
+  test importing `src/ns/b.py` still drops that file from the report when `src/ns/` has no
+  `__init__.py`. Both runs reported 100 -> 100 while coverage over the original file set
+  was 50%. The extracted gate committed the deletion.
+- **Rounded totals hide real losses.** 903/1004 (89.940%) -> 902/1004 (89.840%). Both
+  render as `90`. The gate accepted the deletion.
+
+That is eight defects in Phase 8.5 across four rounds, against one in every other task
+combined. Rounds one through three each produced a fix that was correct and insufficient,
+and each passed a fully green suite. The executor recommended making Phase 8.5
+report-only. The operator chose instead to build the gate properly.
+
+**Root cause, finally stated correctly.** A coverage *percentage* is not a safety
+invariant for deletion. It is a lossy scalar computed over a file set that the destructive
+act itself can shrink. Every previous round fixed the comparison while leaving the
+measurement unsound.
+
+**The replacement: `lib/coverage-diff.py`.** It compares two `coverage json` documents and
+enforces three invariants per file, on exact integers:
+
+1. every file measured before is still measured after — catches the vanishing-file hole
+2. `covered_lines` never falls for any such file — catches 903 -> 902, and catches a
+   single file falling while the total rises
+3. `num_statements` is unchanged — a moving statement count means the comparison is not
+   like-for-like
+
+Exit 0 means no regression, 1 means regression, and 2 means *cannot decide* — missing
+input, malformed JSON, or an empty baseline. Callers treat 2 as a regression, so "cannot
+tell" is never confused with "safe". Ten behavioral tests cover all of it, including the
+two cases the executor reproduced.
+
+`tb_coverage_ok` and its eight tests were deleted rather than left beside the new gate.
+It was created two rounds ago for this call site and is now dead code; leaving a weaker
+gate in the library invites someone to reach for it. Phase 8.5's `source` of
+`lib/test-budget.sh` went with it, since no lib function is called there any more.
+
+Suite: 237 -> 238, 0 failures (ten added for the new gate, eight removed with the old one,
+four rewritten).
+
+Durable learning: before trusting a metric as a safety gate, ask what set it is computed
+over and whether the guarded operation can change that set. A correct comparison over an
+unsound measurement is still unsound.

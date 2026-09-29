@@ -25,17 +25,19 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "Phase 8.5 records coverage before and after" {
-  run grep -F 'COV_BEFORE' "$CMD"
+@test "Phase 8.5 records a machine-readable coverage report before and after" {
+  run grep -F 'coverage json -q -o .ship/cov-before.json' "$CMD"
   [ "$status" -eq 0 ]
-  run grep -F 'COV_AFTER' "$CMD"
+  run grep -F 'coverage json -q -o .ship/cov-after.json' "$CMD"
   [ "$status" -eq 0 ]
 }
 
-@test "Phase 8.5 rolls back when coverage drops or tests fail" {
+@test "Phase 8.5 rolls back on a coverage regression or a failing test run" {
   run grep -F 'git checkout -- tests/' "$CMD"
   [ "$status" -eq 0 ]
-  run grep -F 'coverage dropped' "$CMD"
+  run grep -F 'rolled back (coverage regression)' "$CMD"
+  [ "$status" -eq 0 ]
+  run grep -F 'rolled back (tests failed)' "$CMD"
   [ "$status" -eq 0 ]
 }
 
@@ -54,22 +56,6 @@ setup() {
   [ "$status" -ne 0 ]
   run grep -F 'skipped (no scoped test targets' "$CMD"
   [ "$status" -eq 0 ]
-}
-
-@test "Phase 8.5 uses the fail-closed coverage helper, not inline integer compare" {
-  run grep -F 'tb_coverage_ok "$COV_AFTER" "$COV_BEFORE"' "$CMD"
-  [ "$status" -eq 0 ]
-  run grep -F 'COV_AFTER:-0}" -lt' "$CMD"
-  [ "$status" -ne 0 ]
-}
-
-@test "Phase 8.5 sources test-budget.sh before calling tb_coverage_ok" {
-  block=$(awk '/^## Phase 8.5/,/^## Phase 8.7/' "$CMD")
-  src_line=$(echo "$block" | grep -n 'lib/test-budget.sh' | head -1 | cut -d: -f1)
-  call_line=$(echo "$block" | grep -n 'tb_coverage_ok "\$COV_AFTER"' | head -1 | cut -d: -f1)
-  [ -n "$src_line" ]
-  [ -n "$call_line" ]
-  [ "$src_line" -lt "$call_line" ]
 }
 
 @test "Phase 8.5 pins the coverage measurement scope with --source" {
@@ -96,4 +82,12 @@ setup() {
   echo "$block" > "$BATS_TEST_TMPDIR/p85.sh"
   run bash -n "$BATS_TEST_TMPDIR/p85.sh"
   [ "$status" -eq 0 ]
+}
+
+@test "Phase 8.5 gates on exact per-file coverage, not a rounded percentage" {
+  run grep -F 'lib/coverage-diff.py' "$CMD"
+  [ "$status" -eq 0 ]
+  # The percentage gate is gone: it hid a 903 -> 902 statement loss behind `90`.
+  run grep -F 'coverage report --format=total' "$CMD"
+  [ "$status" -ne 0 ]
 }
