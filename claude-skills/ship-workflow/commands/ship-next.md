@@ -792,6 +792,37 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
    [ "$AUTO" = "1" ] && ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P8.5" "$PRUNE_STATUS"
    ```
 
+## Phase 8.7 — UA knowledge graph rebuild
+
+Runs after Phase 8.5 so the rebuilt graph reflects the final tree, pruning commit
+included. Ordering is load-bearing.
+
+```bash
+# shellcheck disable=SC1091
+source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
+UA_STATUS="n/a"
+if ua_check_installed; then
+  # ua_check_drift already computes the count against the KG's baseline commit;
+  # re-deriving it here would risk the two disagreeing.
+  DRIFT_COUNT=$(ua_check_drift | grep -oE '[0-9]+ file' | grep -oE '[0-9]+' | head -1)
+  DRIFT_COUNT=${DRIFT_COUNT:-0}
+  if [ "$DRIFT_COUNT" -gt 50 ]; then
+    UA_STATUS="rebuilt (drift ${DRIFT_COUNT}/50)"
+  else
+    UA_STATUS="drift ${DRIFT_COUNT}/50"
+  fi
+fi
+```
+
+When `UA_STATUS` starts with `rebuilt`, **Invoke `/understand`** to do a full
+rebuild. There is no incremental refresh in the UA plugin: `understand-diff` reads
+the graph rather than writing it, so the options are a full rebuild or nothing.
+The `> 50` threshold is reused verbatim from `ua_check_drift`'s own severity
+boundary, not re-derived, and it doubles as the rate limiter.
+
+Rebuilding is non-destructive — it writes a new graph and touches no source — so it
+runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
+
 ## Phase 9 — Cleanup
 
 1. **Remove worktree:**
@@ -818,7 +849,7 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
 3. **Log + commit (repo side, on $ORIG_BRANCH):**
 
    ```bash
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}) | n |" >> docs/learnings/_log.md
+   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp) | n |" >> docs/learnings/_log.md
    git add docs/learnings/_log.md
    git commit -m "log: ship ${ID}"
    ```
@@ -833,7 +864,19 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
    • major: ${MAJOR_COUNT} → IDEA-NNN auto-logged
    • minor: ${MINOR_COUNT}
    • praise: ${PRAISE_COUNT}
+   • CONTEXT.md: ${CONTEXT_MD_STATUS}
+   • Test budget: ship ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp (${TEST_BUDGET_VERDICT})
+   • Test pruning: ${PRUNE_STATUS}
+   • UA: ${UA_STATUS}
    • decisions log: ${WORKTREE}/.claude/.ship-auto-decisions.md (kept in worktree pre-cleanup; copy if you want post-mortem)"
+
+     case "$UA_STATUS" in
+       rebuilt*) SUMMARY="${SUMMARY/• UA:/• 🔄 UA KG rebuilt UA:}" ;;
+     esac
+     if [ "$PONYTAIL_DRIFT" = "1" ]; then
+       SUMMARY="${SUMMARY}
+   ⚠ ponytail ${PONYTAIL_PINNED} -> ${PONYTAIL_CURRENT}, ruleset changed, this ship used the new version"
+     fi
 
      # Channel routing (per /run-plan skill convention):
      # - Discord session (incoming message tag has channel source="discord"): use Discord reply

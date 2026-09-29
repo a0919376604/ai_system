@@ -1754,7 +1754,7 @@ git commit -m "feat: add Phase 8.5 coverage-gated test pruning"
 - Consumes: `ua_check_installed`, `ua_check_drift` (existing); `CONTEXT_MD_STATUS` (Task 8), `PRUNE_STATUS` (Task 9), `SHIP_RATIO_BP` / `BASELINE_RATIO_BP` (Task 7), `ponytail_version` / `ponytail_ruleset_sha256` (Task 3).
 - Produces: nothing downstream.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `claude-skills/ship-workflow/tests/test_ship-next-ua-rebuild.bats`:
 
@@ -1806,12 +1806,12 @@ setup() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd claude-skills/ship-workflow && bats tests/test_ship-next-ua-rebuild.bats`
 Expected: FAIL — 6 tests fail.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Insert between Phase 8.5 and Phase 9 in `commands/ship-next.md`:
 
@@ -1872,12 +1872,12 @@ and, when the ponytail hash differed from the pin at Phase 5, one more line:
 
 Prefix the `UA: ` line with `🔄 UA KG rebuilt` when `UA_STATUS` starts with `rebuilt`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd claude-skills/ship-workflow && bats tests/test_ship-next-ua-rebuild.bats`
 Expected: PASS — 6 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add claude-skills/ship-workflow/commands/ship-next.md \
@@ -2160,6 +2160,15 @@ changing the pattern. Exit 1 still means a genuine no-match and still stops the 
 - Asserted Phase 8.5's literal heading before insertion and verified the stored region equals the plan's complete block.
 - Following the class (a) adjustment recorded above, targeted tests passed 7/7; separate `bats tests/` passed 211/211 (log: `claude-skills/ship-workflow/tests/.tmp/task-9-full-suite.log`).
 - Task 9 complete; next: Task 10. No implementation deviations.
+
+### 2026-09-29 — Task 10 complete
+
+- Task 9 committed as `147c17f`. Re-read all of ship-next.md before Task 10.
+- Prescribed red run: four failures; the UA-installation and ratio-substring checks already passed against earlier phases. No tests were changed. The missing-phase ordering assertion failed because its line number was empty, as expected before insertion.
+- Asserted the literal starts of the Phase 8.7 block, P9 log row, summary lines, and conditional additions before writing; re-read the inserted region. All prescribed text is present verbatim.
+- Implemented the prescribed conditional summary behavior with a case on `UA_STATUS` and an if on `PONYTAIL_DRIFT`; directly verified absent, below-threshold, and rebuilt/drift summary cases with `/bin/bash`.
+- Targeted tests passed 6/6; separate `bats tests/` passed 217/217 (log: `claude-skills/ship-workflow/tests/.tmp/task-10-full-suite.log`). No assertion adjustments.
+- Task 10 complete; next: Task 11 acceptance gate.
 
 ## RESUME HERE — paused 2026-09-29 (codex workspace out of credits)
 
