@@ -768,11 +768,18 @@ inside the one command the operator actually runs.
 
    Write the list to `.ship/prune-candidates.md`. **Propose only; change no test file.**
 
+   Use one line per candidate with a fixed prefix — NOT a Markdown table. A table's
+   header and separator rows are indistinguishable from data when counting, which made
+   one candidate read as two and an empty report read as one.
+
+   ```
+   CANDIDATE: <test file>::<test name> — <category> — <one line of reasoning>
+   ```
+
    ```bash
      mkdir -p .ship
-     # Written by Claude from the reading above; one row per candidate.
-     # | file | test | category | why |
-     CANDIDATES=$(grep -c '^| ' .ship/prune-candidates.md 2>/dev/null || echo 0)
+     # Written by Claude from the reading above, one CANDIDATE: line each.
+     CANDIDATES=$(grep -c '^CANDIDATE: ' .ship/prune-candidates.md 2>/dev/null || echo 0)
      CANDIDATES=$(echo "$CANDIDATES" | tr -d '[:space:]')
      PRUNE_STATUS="${CANDIDATES} prune candidate(s) — see .ship/prune-candidates.md (nothing deleted)"
      fi
@@ -788,8 +795,9 @@ inside the one command the operator actually runs.
 
 ## Phase 8.7 — UA knowledge graph rebuild
 
-Runs after Phase 8.5 so the rebuilt graph reflects the final tree, pruning commit
-included. Ordering is load-bearing.
+Runs after Phase 8.5. That phase is report-only and commits nothing, so this ordering is
+no longer load-bearing for correctness; it is kept so the rebuilt graph reflects the tree
+as Phase 9 will leave it.
 
 ```bash
 # shellcheck disable=SC1091
@@ -843,7 +851,7 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 3. **Log + commit (repo side, on $ORIG_BRANCH):**
 
    ```bash
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp) | n |" >> docs/learnings/_log.md
+   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}) | n |" >> docs/learnings/_log.md
    git add docs/learnings/_log.md
    git commit -m "log: ship ${ID}"
    ```

@@ -427,8 +427,9 @@ diff_count >  50  -> run /understand
 The threshold is itself the rate limiter; 50-file drift is uncommon.
 
 ### 9.4 Placement
-After P8.5, before P9. The pruning commit has already landed, so the rebuilt graph
-reflects the final tree rather than an intermediate one. Ordering is load-bearing.
+After P8.5, before P9. P8.5 no longer commits anything (§7.1), so ordering here is no
+longer load-bearing for correctness; it is kept so the rebuilt graph reflects the tree as
+P9 will leave it.
 
 ### 9.5 `--auto:yes`
 Runs. Rebuilding is non-destructive: it produces a new graph and touches no source.
@@ -447,7 +448,7 @@ Phase 5    executor          <- MOD: render .ship/tdd-rules.md + .ship/ponytail-
 Phase 6    code review       <- MOD: mechanical gates + semantic categories + budget (shadow)
 Phase 7    squash merge      <- MOD: commit message carries the test ratio line
 Phase 8    ship-compound     <- MOD: write CONTEXT.md, prune if over cap (not in auto)
-Phase 8.5  test pruning      <- NEW: scoped, coverage-gated, own commit, runs in auto
+Phase 8.5  test prune report  <- NEW: scoped, report-only, deletes nothing, runs in auto
 Phase 8.7  UA KG rebuild     <- NEW: only when drift > 50, runs in auto
 Phase 9    cleanup + notify  <- MOD: summary carries CONTEXT/test/ponytail/UA lines
 ```

@@ -25,26 +25,41 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "Phase 8.5 deletes nothing — no test edits, no rollback, no commit" {
-  # Scan the executable bash only. The prose deliberately says "there is no
-  # coverage run", and a scan of the whole section would match its own explanation.
+@test "Phase 8.5 deletes nothing — structural, not a denylist" {
+  # Scan the executable bash only. The prose deliberately says "there is no coverage
+  # run", and scanning the whole section would match its own explanation.
   block=$(awk '/^## Phase 8.5/,/^## Phase 8.7/' "$CMD" \
           | awk '/^   ```bash/{f=1;next}/^   ```/{f=0}f')
   [ -n "$block" ]
-  # A rollback path only exists if something was destroyed first. A coverage run
-  # only exists to gate a destruction. None of these may appear.
-  for forbidden in \
-    'git checkout -- tests/' \
-    'git add tests/' \
-    'test: prune redundant tests' \
-    'coverage run' \
-    'coverage json'
-  do
-    if echo "$block" | grep -qF -- "$forbidden"; then
-      echo "Phase 8.5 still contains destructive machinery: $forbidden"
+
+  # 1. The ONLY git subcommand allowed here is `diff`. One rule kills add, rm, commit,
+  #    checkout, restore and stash, including forms like `git add -- tests/x.py` that
+  #    a literal denylist of `git add tests/` misses.
+  while IFS= read -r sub; do
+    [ -z "$sub" ] && continue
+    if [ "$sub" != "diff" ]; then
+      echo "Phase 8.5 runs a mutating git subcommand: git $sub"
+      return 1
+    fi
+  done <<< "$(echo "$block" | grep -oE '\bgit +[a-z][a-z-]*' | awk '{print $2}')"
+
+  # 2. No file-mutating command at all.
+  for verb in rm mv cp truncate tee install chmod 'sed -i' shred unlink; do
+    if echo "$block" | grep -qE "(^|[|;&(]|[[:space:]])${verb}([[:space:]]|$)"; then
+      echo "Phase 8.5 runs a file-mutating command: $verb"
       return 1
     fi
   done
+
+  # 3. Every redirect must target .ship/ or /dev/null. Truncating a test file with
+  #    `> tests/x.py` writes nothing recognisable as a command.
+  while IFS= read -r target; do
+    [ -z "$target" ] && continue
+    case "$target" in
+      .ship/*|/dev/null) ;;
+      *) echo "Phase 8.5 redirects outside .ship/: $target"; return 1 ;;
+    esac
+  done <<< "$(echo "$block" | grep -oE '>>?[[:space:]]*[^[:space:];|)]+' | sed -E 's/^>>?[[:space:]]*//')"
 }
 
 @test "Phase 8.5 states the candidates are proposals" {
@@ -87,4 +102,32 @@ setup() {
   [ "$status" -ne 0 ]
   run grep -rlF 'tb_coverage_ok' "$SHIP_SKILL_ROOT/lib" "$SHIP_SKILL_ROOT/commands"
   [ "$status" -ne 0 ]
+}
+
+@test "Phase 8.5 counts candidates by a prefix a header cannot match" {
+  run grep -F "grep -c '^CANDIDATE: '" "$CMD"
+  [ "$status" -eq 0 ]
+  # A Markdown table's header and separator are indistinguishable from data when
+  # counting: one candidate read as two, an empty report read as one.
+  run grep -F "grep -c '^| '" "$CMD"
+  [ "$status" -ne 0 ]
+}
+
+@test "Phase 9 log row carries the prune status, not only the summary" {
+  row=$(grep -F '>> docs/learnings/_log.md' "$CMD")
+  [ -n "$row" ]
+  [[ "$row" == *'prune: ${PRUNE_STATUS}'* ]]
+}
+
+@test "no shipped document still claims Phase 8.5 deletes or commits" {
+  SPEC="$SHIP_SKILL_ROOT/../../docs/superpowers/specs/2026-09-28-ship-next-context-and-test-discipline-design.md"
+  for f in "$CMD" "$SPEC"; do
+    [ -f "$f" ] || continue
+    for claim in 'coverage-gated' 'pruning commit' 'test: prune'; do
+      if grep -qF -- "$claim" "$f"; then
+        echo "$f still claims: $claim"
+        return 1
+      fi
+    done
+  done
 }

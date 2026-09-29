@@ -2053,6 +2053,150 @@ document has no boundary and fails silently.
 
 ## Execution log
 
+### 2026-09-29 — Final Task 11 acceptance BLOCKED at 9f8c0bf
+
+- Applied the explicitly invoked ship skill and executing-plans review/verification
+  workflow within the user's repository-only acceptance scope. No release, global
+  bookkeeping, installation, or live HOME/.claude actions were performed. A fresh
+  in-host reviewer independently exercised the absent integrations.
+- Ran `cd claude-skills/ship-workflow && bats tests/` as its own command:
+  **226/226 passed, exit 0**. HEAD was `9f8c0bf`; initial working tree contained only
+  the pre-existing untracked `.claude-uploads/`. The Task 11 tests are already in HEAD
+  and were not rewritten. No implementation or committed tests were changed.
+
+**Acceptance failure 1: the documents still prescribe the withdrawn gate.**
+
+Spec §7 and the Task 9 SUPERSEDED banner correctly describe report-only operation,
+but other current, unmarked normative text disagrees:
+
+- Spec introduction, line 23: “a scoped prune at a new P8.5”.
+- Spec §3 P5, lines 106–108: guard deletion with coverage/green-test invariants
+  rather than refusing unattended operation.
+- Spec §9.4, lines 430–431: “The pruning commit has already landed”.
+- Spec §10, line 450: “test pruning ... scoped, coverage-gated, own commit, runs in auto”.
+- Spec §12.4, lines 507–508: the P8.5 coverage gate “bounds the damage”.
+- Spec §13, lines 523–524: simulate a coverage drop and assert rollback restores tests.
+- `commands/ship-next.md:791–792`: the rebuilt graph includes the “pruning commit”.
+
+Reproduce the inconsistency with:
+
+```bash
+rg -n 'coverage-gated|pruning commit|P8.5 coverage gate|P8.5 rollback|Guard deletion' \
+  docs/superpowers/specs/2026-09-28-ship-next-context-and-test-discipline-design.md \
+  claude-skills/ship-workflow/commands/ship-next.md
+```
+
+These are not the explicitly superseded Task 9 history. The authoritative current
+phase map and acceptance strategy still instruct a future executor to use the
+operation §7 withdrew. Acceptance item 4 therefore fails.
+
+**Acceptance failure 2: injected destructive commands still pass the guard.**
+
+Used a scratch copy of the real command file and the real
+`Phase 8.5 deletes nothing — no test edits, no rollback, no commit` Bats test.
+Only the test's CMD path was redirected to the copy. For each trial, inserted one
+line after Phase 8.5's `mkdir -p .ship` inside its existing Bash fence:
+
+| Injected line | Existing guard exit |
+|---|---:|
+| none (control) | 0 |
+| `git checkout -- tests/` | 1 |
+| `git add tests/` | 1 |
+| `rm -f tests/src/test_a.py` | 0 |
+| `: > tests/src/test_a.py` | 0 |
+| `git add -- tests/src/test_a.py` | 0 |
+| `git commit -m "remove tests"` | 0 |
+
+Reproduction command after setting the scratch copy's CMD:
+`bats --filter 'Phase 8.5 deletes nothing' <scratch>/guard.bats`.
+The guard catches its five exact strings, not the claimed no-edit/no-stage/no-delete
+property. The alternate staging syntax alone bypasses it.
+
+Executed the rm, truncation, and alternate-add mutants through the extracted actual
+Phase 8.5 Bash in an isolated Git repo. The fixture had `src/a.py` changed between
+two commits, a mapped `tests/src/test_a.py`, and distinct staged/unstaged sentinel
+comments in that test. With `TEST_BUDGET_VERDICT=major`, rm removed the test,
+truncation emptied it, and alternate-add changed the index. Each phase exited 0
+and still reported “(nothing deleted)”. Original test bytes and index were restored
+between trials, only inside the scratch fixture.
+
+This is a defect in the claimed regression guard, **not evidence that the unmodified
+phase currently contains those commands**. The original extracted Bash preserved
+all test bytes, the exact staged diff, and HEAD for pass, blocking, major, and
+unresolved-target paths. No present test-edit/stage/delete operation was found in
+that original Bash. The report-only scope decision remains sound.
+
+**Acceptance failure 3: candidate counts are wrong for ordinary Markdown tables.**
+
+`commands/ship-next.md:775–777` counts every line beginning `| `, including a header.
+For a valid report containing:
+
+```markdown
+| file | test | category | why |
+|---|---|---|---|
+| tests/src/test_a.py | test_a | duplicate coverage | same behavior |
+```
+
+the actual extracted phase reports **2 prune candidate(s)**, though there is one.
+A header-only table reports **1** with zero candidates. A zero-byte report reports
+**00**: `grep -c` prints 0 and exits 1, `echo 0` prints another 0, and whitespace
+removal concatenates them. These were executed with macOS `/bin/bash` 3.2.57, the
+real grep, and the actual phase blocks; no counter reimplementation was used.
+
+**Acceptance failure 4: the promised durable report summary is missing.**
+
+Spec §7.2 and `commands/ship-next.md:786–787` promise the count in both the P9 summary
+and `_log.md` row. Execute the real P9 log block (`:845–848`) with
+`PRUNE_STATUS="7 prune candidate(s)"`, `ID=R-TEST`, `MAJOR_COUNT=0`,
+`SHIP_RATIO_BP=2500`, `BASELINE_RATIO_BP=1000`, and a recording/no-op Git function
+so staging/committing are not performed. The appended row is:
+
+```text
+| <date/time> | ship-next | R-TEST | shipped (review: blocking=0, major=0, ratio 2500bp vs baseline 1000bp) | n |
+```
+
+It contains neither the count nor PRUNE_STATUS. The automatic notification does
+include PRUNE_STATUS; the durable row does not. This contradicts the new §7 contract,
+independently of the stale deletion text above.
+
+**Absent-integration checks and review limits.**
+
+The independent reviewer ran actual extracted P1.5, P3 UA/CONTEXT, P4, full P5,
+P6 UA/budget, ship-compound UA/context cap/commit/mirror, P8.7, and P9 summary blocks
+sequentially in isolated Git fixtures for AUTO=0 and AUTO=1. Installed-library
+paths were redirected to this repository. Controls omitted only the optional
+integration hooks, retaining the shared seam/TDD/budget behavior. Candidate and
+control file hashes/status matched; HEAD and index tree were unchanged; absent
+CONTEXT, UA and ponytail artifacts stayed absent; isolated HOME remained empty;
+binding/mirror sentinels were never called. Shared TDD/review-extra-checks files
+were generated equally in both runs. All blocks exited 0 except the pre-existing
+P1.5 trailing false string test (exit 1, silent); without unspecified errexit the
+sequence completed with exit 0. The AUTO=1 bell was common to both runs.
+
+This establishes additivity of the executed optional-hook cycle. It does **not**
+claim a complete external agent-driven brainstorm/review/worktree/merge conversation
+was executed. The existing eight Task 11 tests also remain helper/text checks,
+not that complete end-to-end cycle. No new absent-integration regression was found.
+
+**Verdict: BLOCKED. Task 11 remains uncommitted and incomplete.**
+
+Repair the stale normative documentation, count only candidate data rows and wire
+the count into the durable P9 log. Strengthen the no-destruction regression so the
+observed edit/stage/delete mutants actually fail, and then rerun acceptance. Do not
+restore the coverage gate. No source fix or test weakening was attempted here.
+
+Scratch copies, fixtures and injection scripts under
+`tests/.tmp/final-prune-review/` and `tests/.tmp/final-absent-review/` were removed
+after recording this evidence. Only this Execution log was edited. No commit, push,
+branch switch, amend, hook bypass, or live HOME/.claude modification occurred;
+`.claude-uploads/` was left untouched.
+
+Durable learning: testing a blacklist with one known spelling proves that spelling
+is blocked, not the property in the test name. Inject independent edit, delete and
+stage operations. A report-only conversion must also update current phase maps,
+residual-risk sections and acceptance instructions, not just its primary section.
+
+
 ### 2026-09-28 — Tasks 4–5 complete; Task 6 BLOCKED at Step 4
 
 - Resume began at `65b6175` on `ship/ship-next-context-test-discipline`.
@@ -2918,3 +3062,45 @@ Durable learning: before building a gate, ask what question the metric answers, 
 how accurately it answers it. Six rounds were spent improving the accuracy of an answer
 to the wrong question. And verify a guard by injecting the defect it claims to catch —
 a guard that has never gone red has not been tested, it has only been run.
+
+### 2026-09-29 — report-only finishing defects closed
+
+Seventh review. Four findings, all valid and all different in kind from the fourteen
+before them: these are finishing defects in the report-only change, not another instance
+of the measurement class.
+
+**1. Documents still claimed deletion.** §7 of the spec was amended but its §10 phase map
+still read "coverage-gated, own commit", and Phase 8.7 in both the spec and the command
+file still spoke of "the pruning commit". Documentation drift is the exact disease this
+change set exists to cure, and it was introduced while curing it. Fixed in all three
+places, with a guard asserting no shipped document contains `coverage-gated`,
+`pruning commit` or `test: prune`.
+
+**2. The no-destruction guard was a leaky denylist.** It listed `git add tests/` and
+missed `git add -- tests/src/test_a.py`; it had no entry for `rm` or for `> tests/x.py`
+truncation. A denylist of literal strings cannot be complete.
+
+Replaced with three structural rules over the extracted bash:
+  - the only permitted `git` subcommand is `diff`, which kills add, rm, commit, checkout,
+    restore and stash in one rule regardless of argument form
+  - no file-mutating command at all (`rm`, `mv`, `cp`, `truncate`, `tee`, `sed -i`, …)
+  - every redirect must target `.ship/` or `/dev/null`, so truncation has nowhere to go
+
+Verified by injecting ten separate destructive statements, including all three the
+reviewer used. All ten turn the guard red; reverting turns it green.
+
+**3. Candidate counting collided with its own table header.** `grep -c '^| '` over a
+Markdown table counts the header and separator rows: one candidate read as two, and a
+header-only file read as one. The format is now one `CANDIDATE: ` line per row, a prefix
+no header can produce.
+
+**4. The `_log.md` row omitted the count.** Phase 8.5's text promised Phase 9 would carry
+the status into both the summary and the log row; only the summary was wired. Fixed, with
+a guard on the row's content.
+
+Suite: 226 -> 229, 0 failures.
+
+Durable learning: a denylist guard is only as good as the author's imagination, and the
+author is the same person who wrote the thing being guarded. Prefer a structural rule
+that admits a small allowed set over a list of forbidden strings — and prove it by
+injecting the defects it claims to catch, one at a time.
