@@ -1710,9 +1710,13 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
      if ! coverage run --source="$COV_SOURCE" -m pytest $TEST_TARGETS -q >/dev/null 2>&1; then
        PRUNE_STATUS="skipped (baseline tests not green)"
      else
-     coverage json -q -o .ship/cov-before.json 2>/dev/null || true
-     if [ ! -s .ship/cov-before.json ]; then
-       PRUNE_STATUS="skipped (no coverage baseline)"
+     # Delete first, then CHECK THE EXIT CODE. `|| true` swallowed an export failure,
+     # and a stale cov-after.json left over from an earlier run then satisfied the
+     # -s test and got compared: measured coverage fell 4 -> 3 and the gate committed.
+     # Freshness is part of the evidence, not a detail.
+     rm -f .ship/cov-before.json
+     if ! coverage json -q -o .ship/cov-before.json 2>/dev/null || [ ! -s .ship/cov-before.json ]; then
+       PRUNE_STATUS="skipped (coverage export failed)"
      else
    ```
 
@@ -1729,13 +1733,16 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
          git checkout -- tests/
          PRUNE_STATUS="rolled back (tests failed)"
        else
-         coverage json -q -o .ship/cov-after.json 2>/dev/null || true
-         # Exact per-file integers plus a membership check. A percentage gate cannot
-         # do this job: it hid a 903 -> 902 statement loss behind a rounded `90`, and
-         # it could not see a file that vanished from the report entirely when its
-         # only test was deleted (namespace packages defeat --source). Exit 2 means
-         # "cannot decide" and is treated as a regression.
-         if ! python3 ~/.claude/skills/ship-workflow/lib/coverage-diff.py \
+         rm -f .ship/cov-after.json
+         # The gate compares executed-line SETS, not counts and not percentages.
+         # A percentage hid a 903 -> 902 loss behind a rounded `90`. Exact counts
+         # then hid [1,3,4,5] -> [1,3,4,6], where the count stays 4 while line 5
+         # loses its only test: counts preserve cardinality, not membership.
+         # Exit 2 means "cannot decide" and is treated as a regression.
+         if ! coverage json -q -o .ship/cov-after.json 2>/dev/null || [ ! -s .ship/cov-after.json ]; then
+           git checkout -- tests/
+           PRUNE_STATUS="rolled back (coverage export failed after pruning)"
+         elif ! python3 ~/.claude/skills/ship-workflow/lib/coverage-diff.py \
               .ship/cov-before.json .ship/cov-after.json; then
            git checkout -- tests/
            PRUNE_STATUS="rolled back (coverage regression)"
@@ -2324,6 +2331,148 @@ changing the pattern. Exit 1 still means a genuine no-match and still stops the 
   destructive gate must validate file membership and exact coverage evidence;
   syntax checks and a correct numeric comparator prove neither.
 
+### 2026-09-29 — Acceptance round 4 BLOCKED at 8da8bed
+
+- Reviewed the current `lib/coverage-diff.py`, Phase 8.5, and absent-dependency
+  command paths. Applied the ship skill's review/verification intent within the
+  explicit review-only, repository-only scope; release actions and global skill
+  bookkeeping are excluded. No implementation or committed tests were changed.
+- Ran `cd claude-skills/ship-workflow && bats tests/` as its own command:
+  **238/238 passed, exit 0**. The five Task 11 tests are already committed and
+  were left unchanged. `git diff --check` passed.
+- Behavioral harness: extracted Phase 8.5's actual Bash fences through the
+  verification step, inserted a test-file replacement at its documented prune
+  step, and redirected only the installed comparator path to this repository.
+  Ran with macOS `/bin/bash` 3.2.57, Coverage.py 7.14.0 and pytest 8.4.2.
+  Git scope/diff results were supplied by a shell function; checkout/add/commit
+  were recorded, never executed. Consequently “selected commit” below means
+  the actual command branch invoked the recording stub, not a repository commit.
+
+**P1 — failed exports can reuse stale coverage evidence.**
+
+- `commands/ship-next.md:770` and `:789` discard `coverage json` failures with
+  `|| true`. The fixed output paths are neither invalidated nor tied to the
+  successful test run. The comparator cannot determine that an old document
+  describes a different run.
+- Reproduction: `src/a.py` contains `left()` and `right()`, each with a single
+  return statement. Two initial tests call both functions, measuring 4/4 source
+  statements. First seed `.ship/cov-after.json` with that successful report,
+  as a previous pruning invocation would leave it. Run the extracted phase
+  and delete only `test_right` at the prune step.
+- Both current pytest runs returned 0. Immediately before the after-export,
+  the harness injected `COVERAGE_RCFILE="$PWD/missing-coveragerc"` into the
+  coverage wrapper. This is an explicit report-failure injection; the report
+  command itself and its failure are real. Coverage printed
+  `Couldn't read '.../missing-coveragerc' as a config file` and exited 1
+  before touching the old JSON. The phase then compared 4/4 against stale
+  4/4, invoked `git add tests/` and `git commit`, and reported
+  `per-file coverage verified`.
+- Saved the actual after-run coverage database before fault injection and
+  exported it with the normal configuration: **3/4**, executed lines
+  `[1, 2, 4]` versus baseline `[1, 2, 4, 5]`. Comparing this fresh JSON
+  returned 1: `src/a.py: covered statements fell 4 -> 3`.
+- This does not claim every export failure preserves old output: a separate
+  no-data failure removed the output and correctly rolled back. The reproduced
+  configuration-read failure preserves it and fails open. Both baseline and
+  after-export commands need success/freshness checks if this gate is retained.
+
+**P1 — exact per-file counts still lose statement identity.**
+
+- `lib/coverage-diff.py:39–41,69–78` retains only summary counts, discarding
+  `executed_lines`. Equal counts can hide one previously covered statement
+  becoming uncovered while another statement in the same file becomes covered.
+  All three implemented invariants hold in this case.
+- Minimal real source (`src/a.py`, line numbers derive from these blank lines):
+
+  ```python
+  import os
+
+  def choose():
+      if os.environ.get("MODE") == "left":
+          return "left"
+      return "right"
+  ```
+
+  Initial `tests/src/test_a.py`:
+
+  ```python
+  import os
+  from src.a import choose
+
+  def test_config():
+      os.environ["MODE"] = "left"
+      assert os.environ["MODE"] == "left"
+
+  def test_choose():
+      assert choose() == os.environ.get("MODE", "right")
+  ```
+
+- Start with `MODE` unset; delete only `test_config`, leaving the other test
+  and all product source unchanged. Before and after, execute
+  `coverage run --source=src -m pytest tests/src/test_a.py -q` followed by
+  `coverage json -q -o <report>`. Both runs are green. Coverage changes from
+  executed lines **[1, 3, 4, 5]** to **[1, 3, 4, 6]**, while both summaries
+  remain **4/5**. The comparator returns 0 and the extracted phase selects
+  commit. This fixture uses test-order state interaction; the gate does not
+  establish test isolation and cannot assume deleting tests only subtracts
+  executed lines.
+- This is source execution loss, distinct from the documented assertion-strength
+  limitation, which explicitly concerns weakening without changing executed
+  lines. If retained, the gate needs statement-identity preservation, not just
+  cardinality preservation.
+
+**P2 — malformed coverage summaries are accepted as valid evidence.**
+
+- `lib/coverage-diff.py:41` calls `int()` instead of validating integer type
+  and range. For the JSON shape
+  `{"files":{"src/a.py":{"summary":{"covered_lines":C,"num_statements":S}}}}`,
+  before `(C,S)=(1.9,2)` and after `(1.1,2)` both truncate to `(1,2)` and
+  exit **0**. Identical reports containing `(-1,-2)`, `(true,true)`,
+  `(999,2)`, or `("1","2")` also exit **0**. These are not valid exact
+  Coverage.py summary integers; malformed measurement evidence should return 2.
+- A top-level JSON array instead raises uncaught `AttributeError` and exits 1,
+  rather than the documented 2. That case still fails closed at the caller;
+  it is not an additional fail-open finding.
+
+**Controls and additive integrations verified:**
+
+- Real namespace fixture: deleting the only test importing `src/ns/b.py`
+  removed that file from the report; the comparator identified it and the
+  extracted phase selected rollback.
+- Real 1004-statement fixture: deleting one test changed **903/1004 to
+  902/1004**; the comparator identified the exact loss and selected rollback.
+- Ordinary **4/4 to 3/4** loss with fresh exports selected rollback. A red
+  baseline skipped without pruning or Git actions. An unresolved module
+  mapping skipped without expanding to the whole suite. Empty baseline
+  documents returned 2.
+- In an isolated empty Git repo with an isolated HOME, executed the actual
+  ship-compound CONTEXT.md cap/commit block and Phase 8.7 block (library paths
+  redirected locally). No CONTEXT.md yielded exit 0 and
+  `absent — no qualifying terms this ship`, with no staging or mirror attempt.
+  No UA yielded exit 0 and `UA_STATUS=n/a`. The absent ponytail renderer
+  produced no stdout/stderr and no output file. Combined libraries loaded
+  without collision; absent context counts and empty test budget were zero,
+  shadow mode was active, and Git status remained empty. These paths produced
+  no new additive-integration blocker.
+
+**Verdict: BLOCKED. Recommendation: make Phase 8.5 REPORT-ONLY.**
+
+The latest repairs do catch the prior reproduced cases, but another round has
+again exposed the same measurement/safety class. A per-file integer remains
+a lossy scalar over executed statements, and a valid report need not be fresh
+evidence of the current run. Four rounds of patching this phase weigh against
+continuing automatic deletion. List prune candidates in Phase 9 and delete
+nothing automatically. This recommendation is recorded, not implemented.
+
+All round-4 scratch fixtures under `tests/.tmp/round4-review/` were removed
+after recording these reproductions. Only this Execution log was edited;
+HEAD remained `8da8bed`. No commit, push, branch switch, amend, hook bypass,
+live `$HOME/.claude/` access, or `.claude-uploads/` change occurred.
+
+Durable learning: exact counts preserve cardinality, not membership. A
+destructive gate must preserve the identities it claims to protect and prove
+that every input document was successfully produced by the current run.
+
 ## RESUME HERE — paused 2026-09-29 (codex workspace out of credits)
 
 **State: clean and green.** Branch `ship/ship-next-context-test-discipline`, HEAD
@@ -2513,3 +2662,50 @@ four rewritten).
 Durable learning: before trusting a metric as a safety gate, ask what set it is computed
 over and whether the guarded operation can change that set. A correct comparison over an
 unsound measurement is still unsound.
+
+### 2026-09-29 — the gate now compares line sets, not counts
+
+Fifth acceptance review, three more defects, all reproduced by the executor:
+
+- **Equal counts hid lost lines.** Executed lines went `[1,3,4,5]` -> `[1,3,4,6]`.
+  `covered_lines` stayed 4 and the gate committed, while line 5 lost its only test.
+- **A stale report could pass.** `coverage json ... || true` swallowed an export failure,
+  so a leftover `cov-after.json` from an earlier run was compared. Measured coverage fell
+  4 -> 3 and the gate committed.
+- **Malformed summaries passed.** `int(1.9)` truncates to 1, and `isinstance(True, int)`
+  is true in Python, so fractional, negative and boolean counts all sailed through.
+
+The executor restated its report-only recommendation. The operator chose one more round.
+
+**The conceptual error, finally named.** Round four moved from a rounded percentage to
+exact integer counts and called that ground truth. It is not. *Counts preserve
+cardinality, not membership.* The only representation with nothing left to summarise is
+the set of executed line numbers, which is what `coverage json` already records per file.
+
+The gate now enforces, per file present in the baseline:
+
+  a. the file is still measured after                       — membership
+  b. `set(executed_lines_before) ⊆ set(executed_lines_after)` — identity
+  c. `num_statements` unchanged                              — like-for-like
+
+(b) subsumes the old count check: a superset cannot have a smaller count. Values are
+validated strictly — a plain non-negative `int`, with `bool` rejected explicitly — so a
+malformed report cannot pass. A missing `executed_lines` is exit 2, never a guess.
+
+Export freshness is now part of the evidence: each report is deleted before the run, the
+`coverage json` exit code is checked, and an empty or failed export rolls back rather
+than comparing whatever was on disk.
+
+**One defect found by the operator, not the reviewer.** Probing the new gate with
+hand-built inputs before handing it back, a top-level JSON array returned exit 1 with an
+uncaught `AttributeError` traceback instead of exit 2. Fail-closed in direction, wrong in
+signal. The document type is now validated and `AttributeError` is caught. This is the
+first defect in Phase 8.5 caught before review rather than by it, and it was caught by
+running adversarial inputs rather than by reading the code — the same method the reviewer
+has been using for five rounds.
+
+Suite: 238 -> 247, 0 failures.
+
+Durable learning: when a gate guards a destructive act, keep asking what the compared
+value is a summary *of*. Percentage summarises count, count summarises line identity,
+line identity summarises nothing. Stop only when there is no summary left.

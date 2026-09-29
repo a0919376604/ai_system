@@ -91,3 +91,15 @@ setup() {
   run grep -F 'coverage report --format=total' "$CMD"
   [ "$status" -ne 0 ]
 }
+
+@test "Phase 8.5 requires fresh coverage exports, not leftovers from an earlier run" {
+  run grep -F 'rm -f .ship/cov-before.json' "$CMD"
+  [ "$status" -eq 0 ]
+  run grep -F 'rm -f .ship/cov-after.json' "$CMD"
+  [ "$status" -eq 0 ]
+  run grep -F 'rolled back (coverage export failed after pruning)' "$CMD"
+  [ "$status" -eq 0 ]
+  # `|| true` swallowed the export failure and let a stale report be compared.
+  run grep -F 'coverage json -q -o .ship/cov-after.json 2>/dev/null || true' "$CMD"
+  [ "$status" -ne 0 ]
+}

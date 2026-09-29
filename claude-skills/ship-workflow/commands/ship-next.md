@@ -767,9 +767,13 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
      if ! coverage run --source="$COV_SOURCE" -m pytest $TEST_TARGETS -q >/dev/null 2>&1; then
        PRUNE_STATUS="skipped (baseline tests not green)"
      else
-     coverage json -q -o .ship/cov-before.json 2>/dev/null || true
-     if [ ! -s .ship/cov-before.json ]; then
-       PRUNE_STATUS="skipped (no coverage baseline)"
+     # Delete first, then CHECK THE EXIT CODE. `|| true` swallowed an export failure,
+     # and a stale cov-after.json left over from an earlier run then satisfied the
+     # -s test and got compared: measured coverage fell 4 -> 3 and the gate committed.
+     # Freshness is part of the evidence, not a detail.
+     rm -f .ship/cov-before.json
+     if ! coverage json -q -o .ship/cov-before.json 2>/dev/null || [ ! -s .ship/cov-before.json ]; then
+       PRUNE_STATUS="skipped (coverage export failed)"
      else
    ```
 
@@ -786,13 +790,16 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
          git checkout -- tests/
          PRUNE_STATUS="rolled back (tests failed)"
        else
-         coverage json -q -o .ship/cov-after.json 2>/dev/null || true
-         # Exact per-file integers plus a membership check. A percentage gate cannot
-         # do this job: it hid a 903 -> 902 statement loss behind a rounded `90`, and
-         # it could not see a file that vanished from the report entirely when its
-         # only test was deleted (namespace packages defeat --source). Exit 2 means
-         # "cannot decide" and is treated as a regression.
-         if ! python3 ~/.claude/skills/ship-workflow/lib/coverage-diff.py \
+         rm -f .ship/cov-after.json
+         # The gate compares executed-line SETS, not counts and not percentages.
+         # A percentage hid a 903 -> 902 loss behind a rounded `90`. Exact counts
+         # then hid [1,3,4,5] -> [1,3,4,6], where the count stays 4 while line 5
+         # loses its only test: counts preserve cardinality, not membership.
+         # Exit 2 means "cannot decide" and is treated as a regression.
+         if ! coverage json -q -o .ship/cov-after.json 2>/dev/null || [ ! -s .ship/cov-after.json ]; then
+           git checkout -- tests/
+           PRUNE_STATUS="rolled back (coverage export failed after pruning)"
+         elif ! python3 ~/.claude/skills/ship-workflow/lib/coverage-diff.py \
               .ship/cov-before.json .ship/cov-after.json; then
            git checkout -- tests/
            PRUNE_STATUS="rolled back (coverage regression)"
