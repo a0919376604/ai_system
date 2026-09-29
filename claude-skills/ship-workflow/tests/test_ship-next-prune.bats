@@ -71,3 +71,29 @@ setup() {
   [ -n "$call_line" ]
   [ "$src_line" -lt "$call_line" ]
 }
+
+@test "Phase 8.5 pins the coverage measurement scope with --source" {
+  run grep -cF 'coverage run --source="$COV_SOURCE" -m pytest' "$CMD"
+  [ "$status" -eq 0 ]
+  [ "$output" -eq 2 ]
+  # A bare run would let a deleted module fall out of the report and the average rise.
+  run grep -F 'coverage run -m pytest' "$CMD"
+  [ "$status" -ne 0 ]
+}
+
+@test "Phase 8.5 checks the baseline pytest exit code before trusting coverage" {
+  run grep -F 'skipped (baseline tests not green)' "$CMD"
+  [ "$status" -eq 0 ]
+  # The `;` form discarded pytest's exit status.
+  run grep -F '>/dev/null 2>&1; coverage report' "$CMD"
+  [ "$status" -ne 0 ]
+}
+
+@test "Phase 8.5 bash blocks parse as valid shell" {
+  block=$(awk '/^## Phase 8.5/,/^## Phase 8.7/' "$CMD" \
+          | awk '/^   ```bash/{f=1;next}/^   ```/{f=0}f' | sed 's/^   //')
+  [ -n "$block" ]
+  echo "$block" > "$BATS_TEST_TMPDIR/p85.sh"
+  run bash -n "$BATS_TEST_TMPDIR/p85.sh"
+  [ "$status" -eq 0 ]
+}

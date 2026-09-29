@@ -36,3 +36,10 @@ setup() {
   run grep -F 'CONTEXT_MD_STATUS=' "$CMD"
   [ "$status" -eq 0 ]
 }
+
+@test "ship-compound guards the CONTEXT.md commit and mirror on file existence" {
+  run grep -F 'if [ -f CONTEXT.md ]; then' "$CMD"
+  [ "$status" -eq 0 ]
+  run grep -F 'absent — no qualifying terms this ship' "$CMD"
+  [ "$status" -eq 0 ]
+}

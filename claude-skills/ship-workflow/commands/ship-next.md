@@ -760,7 +760,20 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
 3. **Record the baseline.**
 
    ```bash
-     COV_BEFORE=$(coverage run -m pytest $TEST_TARGETS -q >/dev/null 2>&1; coverage report --format=total 2>/dev/null || echo "")
+     # Pin the measurement scope. Without --source, coverage reports only files that
+     # were IMPORTED, so deleting a module's only test drops that module out of the
+     # report entirely and the remaining average can RISE. Measured on exactly that
+     # case: 100% reported, 50% actual. With --source the module stays in scope and
+     # its coverage correctly falls, which is what the gate needs to see.
+     COV_SOURCE=$(echo "$MODULES" | tr '\n' ',' | sed 's/,$//')
+
+     # Check pytest's exit code on its own. Chaining `run ...; report ...` with `;`
+     # discarded it, so a RED baseline still produced a number and pruning away the
+     # failing test then passed the gate.
+     if ! coverage run --source="$COV_SOURCE" -m pytest $TEST_TARGETS -q >/dev/null 2>&1; then
+       PRUNE_STATUS="skipped (baseline tests not green)"
+     else
+     COV_BEFORE=$(coverage report --format=total 2>/dev/null || echo "")
      if [ -z "$COV_BEFORE" ]; then
        PRUNE_STATUS="skipped (no coverage baseline)"
      else
@@ -774,7 +787,8 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
 5. **Verify both invariants, or roll back.**
 
    ```bash
-       if ! coverage run -m pytest $TEST_TARGETS -q >/dev/null 2>&1; then
+       # Same --source as the baseline, or the two numbers are not comparable.
+       if ! coverage run --source="$COV_SOURCE" -m pytest $TEST_TARGETS -q >/dev/null 2>&1; then
          git checkout -- tests/
          PRUNE_STATUS="rolled back (tests failed)"
        else
@@ -793,6 +807,7 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
            PRUNE_STATUS="pruned -${PRUNED_LINES} lines, coverage ${COV_BEFORE} -> ${COV_AFTER}"
          fi
        fi
+     fi
      fi
      fi
    fi

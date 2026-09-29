@@ -123,9 +123,16 @@ source ~/.claude/skills/ship-workflow/lib/context-md.sh
 4. **Commit and mirror.**
 
    ```bash
-   git add CONTEXT.md && git commit -m "context: update vocabulary from ${ID}"
-   VAULT_DIR="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)"
-   ~/.claude/skills/ship-workflow/lib/spec-mirror.sh CONTEXT.md "$VAULT_DIR/CONTEXT.md"
+   # Guard: a ship that surfaced no qualifying terms leaves no CONTEXT.md. Without
+   # this, `git add` exits 128 (pathspec did not match) and spec-mirror.sh exits 2,
+   # breaking the purely-additive property every integration in this design holds to.
+   if [ -f CONTEXT.md ]; then
+     git add CONTEXT.md && git commit -m "context: update vocabulary from ${ID}"
+     VAULT_DIR="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)"
+     ~/.claude/skills/ship-workflow/lib/spec-mirror.sh CONTEXT.md "$VAULT_DIR/CONTEXT.md"
+   else
+     CONTEXT_MD_STATUS="absent — no qualifying terms this ship"
+   fi
    ```
 
 6. **Delegate to `compound-engineering:ce-promote`** to look at the "Reusable Patterns" section. For each pattern, ask the user:

@@ -1557,9 +1557,16 @@ source ~/.claude/skills/ship-workflow/lib/context-md.sh
 4. **Commit and mirror.**
 
    ```bash
-   git add CONTEXT.md && git commit -m "context: update vocabulary from ${ID}"
-   VAULT_DIR="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)"
-   ~/.claude/skills/ship-workflow/lib/spec-mirror.sh CONTEXT.md "$VAULT_DIR/CONTEXT.md"
+   # Guard: a ship that surfaced no qualifying terms leaves no CONTEXT.md. Without
+   # this, `git add` exits 128 (pathspec did not match) and spec-mirror.sh exits 2,
+   # breaking the purely-additive property every integration in this design holds to.
+   if [ -f CONTEXT.md ]; then
+     git add CONTEXT.md && git commit -m "context: update vocabulary from ${ID}"
+     VAULT_DIR="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)"
+     ~/.claude/skills/ship-workflow/lib/spec-mirror.sh CONTEXT.md "$VAULT_DIR/CONTEXT.md"
+   else
+     CONTEXT_MD_STATUS="absent — no qualifying terms this ship"
+   fi
    ```
 ````
 
@@ -1696,7 +1703,20 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
 3. **Record the baseline.**
 
    ```bash
-     COV_BEFORE=$(coverage run -m pytest $TEST_TARGETS -q >/dev/null 2>&1; coverage report --format=total 2>/dev/null || echo "")
+     # Pin the measurement scope. Without --source, coverage reports only files that
+     # were IMPORTED, so deleting a module's only test drops that module out of the
+     # report entirely and the remaining average can RISE. Measured on exactly that
+     # case: 100% reported, 50% actual. With --source the module stays in scope and
+     # its coverage correctly falls, which is what the gate needs to see.
+     COV_SOURCE=$(echo "$MODULES" | tr '\n' ',' | sed 's/,$//')
+
+     # Check pytest's exit code on its own. Chaining `run ...; report ...` with `;`
+     # discarded it, so a RED baseline still produced a number and pruning away the
+     # failing test then passed the gate.
+     if ! coverage run --source="$COV_SOURCE" -m pytest $TEST_TARGETS -q >/dev/null 2>&1; then
+       PRUNE_STATUS="skipped (baseline tests not green)"
+     else
+     COV_BEFORE=$(coverage report --format=total 2>/dev/null || echo "")
      if [ -z "$COV_BEFORE" ]; then
        PRUNE_STATUS="skipped (no coverage baseline)"
      else
@@ -1710,7 +1730,8 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
 5. **Verify both invariants, or roll back.**
 
    ```bash
-       if ! coverage run -m pytest $TEST_TARGETS -q >/dev/null 2>&1; then
+       # Same --source as the baseline, or the two numbers are not comparable.
+       if ! coverage run --source="$COV_SOURCE" -m pytest $TEST_TARGETS -q >/dev/null 2>&1; then
          git checkout -- tests/
          PRUNE_STATUS="rolled back (tests failed)"
        else
@@ -1729,6 +1750,7 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
            PRUNE_STATUS="pruned -${PRUNED_LINES} lines, coverage ${COV_BEFORE} -> ${COV_AFTER}"
          fi
        fi
+     fi
      fi
      fi
    fi
@@ -2199,6 +2221,57 @@ changing the pattern. Exit 1 still means a genuine no-match and still stops the 
 - Required next action: operator repair/authorization for Task 9's scope resolution and numeric coverage gate, with behavioral regression coverage, before re-running Task 11 acceptance. No push, branch switch, amend, hook bypass, or live HOME/.claude access occurred. Existing `.claude-uploads/` remains untouched.
 - Durable learning: green Markdown grep assertions prove text presence, not safety invariants. A destructive pruning gate needs behavioral checks for unresolved test mappings and non-integer coverage totals; a comparison error must never route to the commit branch.
 
+### 2026-09-29 — Task 11 acceptance re-review BLOCKED at 44891f8
+
+- Resumed Task 11 only. Its five existing uncommitted tests were left unchanged.
+  Used executing-plans and ship within the explicit repo-only scope, including
+  an independent read-only reviewer. No global bookkeeping or release actions.
+- Read Phase 8.5, `tb_coverage_ok`, the eight behavioral tests, and the three
+  wiring guards. All three repairs hold: unresolved mappings skip without a
+  suite-wide fallback; decimal decreases, empty values, and nonnumeric values
+  are rejected by the helper; Phase 8.5 sources the helper before calling it.
+- Ran `cd claude-skills/ship-workflow && bats tests/` as its own command:
+  **233/233 passed, exit 0**. This includes all eight tests in the Task 11 file.
+  `git diff --check` also passed.
+- Acceptance remains BLOCKED on three independently verified defects in
+  committed implementation, not on the existing Task 11 assertions:
+  1. **Absent CONTEXT.md is not a no-op in ship-compound.** A ship introducing
+     no qualifying domain terms can leave the file absent. Nevertheless,
+     `commands/ship-compound.md:126–128` unconditionally stages and mirrors it.
+     In an isolated repo, `git add CONTEXT.md` exited 128 with
+     `fatal: pathspec 'CONTEXT.md' did not match any files`; the actual mirror
+     helper exited 2 with `ERROR: source spec not found: CONTEXT.md`.
+     The helper-only absent-dependency tests do not exercise this command path.
+  2. **Coverage can lose an entire source module while the gate passes.**
+     `commands/ship-next.md:763,777–786` measures whatever files execute, with
+     no fixed source-file universe. In a real coverage/pytest fixture with
+     `src/a.py`, `src/b.py`, and `tests/src/test_modules.py`, both tests passed
+     and the total was 100. Removing only the test that imports/calls `b`
+     left one green test and total 100; `src/b.py` disappeared from the report
+     and `tb_coverage_ok 100 100` returned 0. Measuring the unchanged source
+     universe with `coverage run --source=src` exposed 50% coverage, with
+     `src/b.py` at 0%. This is loss of measured source coverage, distinct from
+     the documented residual risk about assertion strength.
+  3. **The baseline test exit status is discarded.** At line 763 the semicolon
+     runs `coverage report` even if baseline pytest fails. The same fixture
+     with one deliberately failing assertion produced pytest exit 1 but
+     `COV_BEFORE=100` and assignment exit 0. Removing the failing test then
+     yielded pytest exit 0, `COV_AFTER=100`, and helper exit 0. The phase can
+     therefore treat deletion of a failing test as a verified prune.
+- Reproductions used the installed coverage/pytest and `/bin/bash`, with all
+  fixture files and an isolated HOME under
+  `claude-skills/ship-workflow/tests/.tmp/task11-acceptance-f57exfpg/`.
+  No live `$HOME/.claude/` access, source fixes, test rewrites, commits, push,
+  branch switch, amend, or hook bypass occurred. `.claude-uploads/` was untouched.
+- Required repair before acceptance: skip absent/unchanged vocabulary writes
+  cleanly; compare coverage over a stable source scope that includes unexecuted
+  modules; require a successful baseline test run before any pruning. Add
+  behavioral integration regressions for these cases, then rerun Task 11.
+- Durable learning: a valid numeric comparison cannot prove coverage safety
+  when the measured file set changes. A destructive refactor gate must validate
+  the baseline run and preserve its measurement scope; helper no-ops alone do
+  not establish that their enclosing command is additive.
+
 ## RESUME HERE — paused 2026-09-29 (codex workspace out of credits)
 
 **State: clean and green.** Branch `ship/ship-next-context-test-discipline`, HEAD
@@ -2295,3 +2368,48 @@ Durable learning, adopted from the executor verbatim: **green Markdown grep asse
 prove text presence, not safety invariants.** Logic that gates a destructive operation
 belongs in a lib where it can be unit-tested, not inline in a command file where the only
 available assertion is that the text exists.
+
+### 2026-09-29 — third acceptance review: three more defects repaired
+
+The executor ran the acceptance gate again, confirmed the previous three repairs hold at
+233/233, and refused to commit Task 11 a second time. It found three more defects, one of
+which invalidated the previous round's fix.
+
+**Defect A — `CONTEXT.md` commit was not additive.** A ship that surfaces no qualifying
+terms leaves no file, so `git add CONTEXT.md` exits 128 and `spec-mirror.sh` exits 2.
+Guarded on `[ -f CONTEXT.md ]`, with `CONTEXT_MD_STATUS="absent — no qualifying terms
+this ship"` on the other branch.
+
+**Defect B — the coverage measurement scope shrank with the deletion.** This is the
+important one. `coverage run -m pytest` without `--source` reports only files that were
+IMPORTED. Deleting a module's only test removes that module from the report entirely, so
+the remaining average can RISE and the gate passes. The executor measured the case
+directly: 100% reported, 50% under fixed-source measurement.
+
+Last round's `tb_coverage_ok` repair was correct and irrelevant. The comparison was never
+the problem; the two numbers being compared were not measuring the same thing. Both runs
+now pass `--source="$COV_SOURCE"`, derived from the touched modules, so a module stays in
+scope after its test is deleted and its coverage correctly falls.
+
+**Defect C — a red baseline still produced a number.** `coverage run ... >/dev/null 2>&1;
+coverage report ...` discards pytest's exit status through the `;`. A failing baseline
+yielded a usable COV_BEFORE, so pruning away the failing test passed the gate. The run's
+exit code is now checked on its own, and a non-green baseline skips pruning.
+
+Verification went beyond counting this time: the Phase 8.5 bash blocks are extracted and
+parsed with `bash -n`, and that check is now a bats test so it cannot regress. Three more
+grep guards pin `--source` on both runs, the absence of the bare `coverage run -m pytest`
+form, the baseline exit check, and the absence of the `; coverage report` form.
+
+Suite: 233 -> 237, 0 failures.
+
+**Defect concentration, recorded deliberately.** Phase 8.5 has now produced six defects
+across three review rounds. Every other task combined has produced one. It is the only
+destructive operation in the design, and each round's fix looked complete at the time.
+Rounds one and two both passed a green suite. If a fourth round surfaces more, the right
+move is to make Phase 8.5 report-only — list prune candidates in the P9 summary and
+delete nothing — rather than patch instance after instance of the same class.
+
+Durable learning: a safety gate on a destructive operation must validate its own
+measurement, not just its comparison. Ask what the metric is computed over, and whether
+the destructive act changes that set.
