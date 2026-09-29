@@ -1444,6 +1444,10 @@ git commit -m "feat: add P6 mechanical test gates and P7 ratio line"
 - Modify: `claude-skills/ship-workflow/commands/ship-next.md` (Phase 8 note)
 - Test: `claude-skills/ship-workflow/tests/test_ship-compound-context.bats`
 
+**Invocation note:** any `grep` whose pattern begins with `-` needs `--` before the
+pattern, or the shell tool parses it as an option and exits 2 (usage error) rather than
+1 (no match). `- **<term>** — <definition>` is such a pattern.
+
 **Interfaces:**
 - Consumes: `context_md_over_cap`, `context_md_orphan_terms`, `context_md_line_count`, `context_md_entry_count` (Task 1); `spec-mirror.sh` (existing).
 - Produces: `CONTEXT_MD_STATUS` for Task 10's P9 summary.
@@ -1466,7 +1470,7 @@ setup() {
 }
 
 @test "ship-compound documents the CONTEXT.md entry format" {
-  run grep -F '- **<term>** — <definition>' "$CMD"
+  run grep -F -- '- **<term>** — <definition>' "$CMD"
   [ "$status" -eq 0 ]
 }
 
@@ -2089,3 +2093,49 @@ Codex's durable learning is adopted as a standing rule for Tasks 8-10: when inse
 block into `ship-next.md`, assert the extracted content starts with the expected literal
 before writing. An untyped Markdown fence regex can mistake a preceding block's closing
 fence for an opening one, and a match count alone will not catch it.
+
+
+### 2026-09-29 — Task 8 BLOCKED at Step 2 (grep option parsing)
+
+- Resumed at `1d99026` on `ship/ship-next-context-test-discipline`. Fresh
+  baseline: `bats tests/` passed 198/198. Tasks 1–7 were not modified or redone.
+- Re-read both command files. Extracted Task 8's six prescribed tests from its
+  uniquely anchored Step 1 block, asserted the expected shebang and test count,
+  and wrote them verbatim to `tests/test_ship-compound-context.bats`.
+- Targeted red run: 0/6 pass. Five assertions fail because the implementation
+  is absent. The entry-format assertion has a different defect:
+  `grep -F '- **<term>** — <definition>'` interprets the leading hyphen as an
+  option and exits 2 with `grep: invalid option --  `.
+- Confirmed independently using stdin containing exactly the expected entry:
+  the prescribed invocation still exits 2; adding `--` before the unchanged
+  pattern exits 0 and prints the entry. This is option parsing, not an
+  escaping/literal mismatch, so it falls outside the authorized exception.
+- Stopped before implementation. No assertion adjustment was made, no task
+  was marked complete, and no commit was created. Tasks 9–11 were not started.
+- Recommended plan repair: authorize `grep -F -- '- **<term>** — <definition>'`
+  for this assertion. It preserves the entire expected string and the strength
+  of the test. Then resume Task 8's red check and implementation.
+- Durable learning: fixed-string grep still parses options; patterns beginning
+  with a hyphen need `--` or `-e`. Verify red failures are absent behavior,
+  rather than invocation errors, before writing implementation.
+- Repo-only scope overrides global skill bookkeeping and release steps. No
+  push, branch switch, amend, hook bypass, or live HOME/.claude access occurred.
+  The pre-existing untracked `.claude-uploads/` directory was left untouched.
+- Ran the full suite separately after the targeted failure: 204 tests,
+  198 pass and the six new Task 8 tests fail; all pre-existing tests remain
+  green. Full output: `claude-skills/ship-workflow/tests/.tmp/task-8-full-suite.log`.
+
+### 2026-09-29 — Task 8 grep invocation fixed, resuming
+
+Codex stopped again and was right to: `grep -F '- **<term>** — <definition>'` exits 2
+because the pattern's leading hyphen is parsed as an option. That is a malformed
+invocation, not the escaping mismatch its authorization covered, so it proposed the
+repair rather than applying it.
+
+Verified empirically before patching: without `--` exit 2, with `--` exit 0. Swept the
+whole plan for the same hazard; this was the only occurrence. Added `--` and a standing
+invocation note in Task 8.
+
+The executor's authorization is widened for the remaining tasks: a grep exiting 2
+(usage error) means the invocation is malformed and may be minimally repaired without
+changing the pattern. Exit 1 still means a genuine no-match and still stops the run.
