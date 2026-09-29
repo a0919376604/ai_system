@@ -1592,7 +1592,7 @@ git commit -m "feat: write and cap CONTEXT.md in ship-compound"
 - Consumes: `TEST_BUDGET_VERDICT` (Task 7).
 - Produces: `PRUNE_STATUS` for Task 10's P9 summary.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `claude-skills/ship-workflow/tests/test_ship-next-prune.bats`:
 
@@ -1649,12 +1649,12 @@ setup() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd claude-skills/ship-workflow && bats tests/test_ship-next-prune.bats`
 Expected: FAIL — 7 tests fail; Phase 8.5 does not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Insert a new section in `commands/ship-next.md` between Phase 8 and Phase 9:
 
@@ -1729,12 +1729,12 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
    ```
 ````
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd claude-skills/ship-workflow && bats tests/test_ship-next-prune.bats`
 Expected: PASS — 7 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add claude-skills/ship-workflow/commands/ship-next.md \
@@ -2147,6 +2147,19 @@ changing the pattern. Exit 1 still means a genuine no-match and still stops the 
 - Asserted extracted implementation starts with its literal heading before writing; re-read both inserted regions. Task 8 block matches the plan verbatim.
 - Targeted tests passed 6/6; separate `bats tests/` passed 204/204. No assertion adjustments.
 - Task 8 complete; next: Task 9. Existing `.claude-uploads/` left untouched.
+
+### 2026-09-29 — Task 9 authorized assertion adjustment (a)
+
+- Initial red run: 7/7 fail. After inserting the exact plan block: 6/7 pass.
+- The sole remaining failure searched `runs in --auto:yes because its invariants are machine-checked`; the implementation contains Markdown backticks around `--auto:yes`. Verified the entire inserted phase equals the plan block, including the explicit auto-mode statement.
+- Under authorized class (a), narrowed only the grep pattern to `because its invariants are machine-checked`. This uniquely identifies the auto-mode rationale; removing the Phase 8.5 wiring removes the match. Implementation was not changed to satisfy the assertion.
+
+### 2026-09-29 — Task 9 complete
+
+- Task 8 committed as `81230eb`. Re-read all of ship-next.md before Task 9.
+- Asserted Phase 8.5's literal heading before insertion and verified the stored region equals the plan's complete block.
+- Following the class (a) adjustment recorded above, targeted tests passed 7/7; separate `bats tests/` passed 211/211 (log: `claude-skills/ship-workflow/tests/.tmp/task-9-full-suite.log`).
+- Task 9 complete; next: Task 10. No implementation deviations.
 
 ## RESUME HERE — paused 2026-09-29 (codex workspace out of credits)
 

@@ -723,6 +723,75 @@ CHECKS
 
    `/ship-compound` now also updates `CONTEXT.md` and exports `CONTEXT_MD_STATUS`.
 
+## Phase 8.5 — Test pruning
+
+Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants are machine-checked**: coverage must not drop and tests must stay green, and a failure rolls back for free since nothing is committed yet.
+
+1. **Trigger.** Reuses the number Phase 6 already computed; normal ships skip.
+
+   ```bash
+   if [ "$TEST_BUDGET_VERDICT" != "major" ]; then
+     PRUNE_STATUS="skipped (verdict=${TEST_BUDGET_VERDICT})"
+   else
+   ```
+
+2. **Scope.** Only tests covering modules this ship touched. Bounded blast radius,
+   and the judgment is at its most accurate while the context is hot.
+
+   ```bash
+     TOUCHED=$(git diff --name-only "${ORIG_BRANCH}...${BRANCH}" | grep -v '^tests/' || true)
+     MODULES=$(echo "$TOUCHED" | sed 's|/[^/]*$||' | sort -u)
+     TEST_TARGETS=$(for m in $MODULES; do ls tests/${m##*/}/*.py 2>/dev/null; done | sort -u)
+     [ -z "$TEST_TARGETS" ] && TEST_TARGETS="tests/"
+   ```
+
+3. **Record the baseline.**
+
+   ```bash
+     COV_BEFORE=$(coverage run -m pytest $TEST_TARGETS -q >/dev/null 2>&1; coverage report --format=total 2>/dev/null || echo "")
+     if [ -z "$COV_BEFORE" ]; then
+       PRUNE_STATUS="skipped (no coverage baseline)"
+     else
+   ```
+
+4. **Prune.** Edit only files under `$TEST_TARGETS`, in this order:
+   1. duplicate coverage — two tests asserting the same behavior, keep one
+   2. seam violations — tests asserting inside a seam, lift to seam level or delete
+   3. never-failing tests — assertions too weak to discriminate, strengthen or delete
+
+5. **Verify both invariants, or roll back.**
+
+   ```bash
+       if ! coverage run -m pytest $TEST_TARGETS -q >/dev/null 2>&1; then
+         git checkout -- tests/
+         PRUNE_STATUS="rolled back (tests failed)"
+       else
+         COV_AFTER=$(coverage report --format=total 2>/dev/null || echo 0)
+         if [ "${COV_AFTER:-0}" -lt "${COV_BEFORE:-0}" ]; then
+           git checkout -- tests/
+           PRUNE_STATUS="rolled back (coverage dropped ${COV_BEFORE} -> ${COV_AFTER})"
+         else
+           PRUNED_LINES=$(git diff --numstat -- tests/ | awk '{s+=$2} END {print s+0}')
+           git add tests/
+           git commit -m "test: prune redundant tests in ${MODULES}"
+           PRUNE_STATUS="pruned -${PRUNED_LINES} lines, coverage ${COV_BEFORE} -> ${COV_AFTER}"
+         fi
+       fi
+     fi
+   fi
+   ```
+
+   This is a **separate commit** from the Phase 7 squash on purpose: folding it in
+   would pollute the R-NNN diff and defocus review.
+
+   **Known limit:** flat coverage does not prove assertion strength was preserved.
+   This bounds the damage; it does not eliminate it.
+
+   **Auto-mode log:**
+   ```bash
+   [ "$AUTO" = "1" ] && ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P8.5" "$PRUNE_STATUS"
+   ```
+
 ## Phase 9 — Cleanup
 
 1. **Remove worktree:**
