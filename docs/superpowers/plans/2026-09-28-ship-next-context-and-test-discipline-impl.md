@@ -1665,7 +1665,14 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
 
 1. **Trigger.** Reuses the number Phase 6 already computed; normal ships skip.
 
+   Phase 7 already `cd`-ed back to the main repo, so this phase does not inherit
+   Phase 6's shell. Source the helper again or `tb_coverage_ok` will be missing at
+   step 5 and every prune will silently roll back.
+
    ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/test-budget.sh
+
    if [ "$TEST_BUDGET_VERDICT" != "major" ]; then
      PRUNE_STATUS="skipped (verdict=${TEST_BUDGET_VERDICT})"
    else
@@ -1678,7 +1685,12 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
      TOUCHED=$(git diff --name-only "${ORIG_BRANCH}...${BRANCH}" | grep -v '^tests/' || true)
      MODULES=$(echo "$TOUCHED" | sed 's|/[^/]*$||' | sort -u)
      TEST_TARGETS=$(for m in $MODULES; do ls tests/${m##*/}/*.py 2>/dev/null; done | sort -u)
-     [ -z "$TEST_TARGETS" ] && TEST_TARGETS="tests/"
+     # NO fallback to tests/. Spec 7.3 bounds the blast radius to modules this ship
+     # touched; widening to the whole suite would turn this into an unscoped LLM prune
+     # pass over unrelated tests, and that bound is what justifies running in auto mode.
+     if [ -z "$TEST_TARGETS" ]; then
+       PRUNE_STATUS="skipped (no scoped test targets for ${MODULES})"
+     else
    ```
 
 3. **Record the baseline.**
@@ -1702,10 +1714,14 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
          git checkout -- tests/
          PRUNE_STATUS="rolled back (tests failed)"
        else
-         COV_AFTER=$(coverage report --format=total 2>/dev/null || echo 0)
-         if [ "${COV_AFTER:-0}" -lt "${COV_BEFORE:-0}" ]; then
+         COV_AFTER=$(coverage report --format=total 2>/dev/null || echo "")
+         # tb_coverage_ok fails closed on decimals, empties and non-numerics. Inlining
+         # `[ "$COV_AFTER" -lt "$COV_BEFORE" ]` here is what shipped a coverage drop:
+         # `[ -lt ]` is integer-only, so 80.25 makes it error and the error routes to
+         # the commit branch. The helper lives in lib/ so it is unit-testable.
+         if ! tb_coverage_ok "$COV_AFTER" "$COV_BEFORE"; then
            git checkout -- tests/
-           PRUNE_STATUS="rolled back (coverage dropped ${COV_BEFORE} -> ${COV_AFTER})"
+           PRUNE_STATUS="rolled back (coverage dropped ${COV_BEFORE:-?} -> ${COV_AFTER:-?})"
          else
            PRUNED_LINES=$(git diff --numstat -- tests/ | awk '{s+=$2} END {print s+0}')
            git add tests/
@@ -1713,6 +1729,7 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
            PRUNE_STATUS="pruned -${PRUNED_LINES} lines, coverage ${COV_BEFORE} -> ${COV_AFTER}"
          fi
        fi
+     fi
      fi
    fi
    ```
@@ -2170,6 +2187,18 @@ changing the pattern. Exit 1 still means a genuine no-match and still stops the 
 - Targeted tests passed 6/6; separate `bats tests/` passed 217/217 (log: `claude-skills/ship-workflow/tests/.tmp/task-10-full-suite.log`). No assertion adjustments.
 - Task 10 complete; next: Task 11 acceptance gate.
 
+### 2026-09-29 — Task 11 acceptance BLOCKED after green tests
+
+- Commits completed this run: Task 8 `81230eb`, Task 9 `147c17f`, Task 10 `57d264d`, using the plan's exact commit messages. Tasks 1–7 remain unchanged.
+- Appended Task 11's five prescribed tests verbatim. Targeted file passed 8/8 immediately; separate `bats tests/` passed 222/222, exit 0 (log: `claude-skills/ship-workflow/tests/.tmp/task-11-full-suite.log`).
+- Confirmed phase order 8 < 8.5 < 8.7 < 9, exact prescribed implementation blocks, and unchanged P1–P7 text. No further assertion adjustments.
+- Independent read-only acceptance review found two important defects in the prescribed Task 9 implementation, not transcription deviations:
+  1. `commands/ship-next.md:744–745` maps only `tests/<module-basename>/*.py`, then falls back to the entire `tests/` tree. For `src/a.py` with conventional `tests/test_a.py`, that includes unrelated tests and violates spec §7.3's touched-module scope.
+  2. `commands/ship-next.md:770` uses integer-only `-lt` for coverage totals. A direct `/bin/bash` reproduction of the exact comparison with before `80.25` and after `79.75` printed `integer expression expected`, entered the commit branch, and exited 0. This fails open instead of enforcing spec §7.5's no-coverage-drop invariant when decimal totals occur.
+- Stopped under the user's stop-on-other-failures rule. These are outside authorized grep exception classes (a)/(b); no implementation fix or test weakening was attempted. Task 11 remains incomplete and uncommitted despite its green tests. The acceptance tests exercise helpers and text, not an end-to-end dependency-absent ship cycle or actual pruning rollback.
+- Required next action: operator repair/authorization for Task 9's scope resolution and numeric coverage gate, with behavioral regression coverage, before re-running Task 11 acceptance. No push, branch switch, amend, hook bypass, or live HOME/.claude access occurred. Existing `.claude-uploads/` remains untouched.
+- Durable learning: green Markdown grep assertions prove text presence, not safety invariants. A destructive pruning gate needs behavioral checks for unresolved test mappings and non-integer coverage totals; a comparison error must never route to the commit branch.
+
 ## RESUME HERE — paused 2026-09-29 (codex workspace out of credits)
 
 **State: clean and green.** Branch `ship/ship-next-context-test-discipline`, HEAD
@@ -2227,3 +2256,42 @@ self-review in `writing-plans` checked cross-task variable definitions and caugh
 gaps, but it cannot catch a string that only fails at runtime. A future plan touching
 markdown-embedded shell should dry-run its grep assertions against the real file before
 the plan is handed to an executor.
+
+### 2026-09-29 — Task 9 safety defects repaired, Task 11 handed back
+
+Tasks 8, 9 and 10 committed (`81230eb`, `147c17f`, `57d264d`) at 222/222. Task 11's five
+prescribed tests were applied and passed, and the executor still refused to commit the
+task. It was right to: the acceptance gate's job is to establish safety invariants, and
+its own review found two defects in Task 9's prescribed code that green grep assertions
+could never have caught.
+
+**Defect 1 — unscoped fallback.** `[ -z "$TEST_TARGETS" ] && TEST_TARGETS="tests/"` widened
+an unresolved module mapping into an LLM prune pass over the entire suite, contradicting
+§7.3 and destroying the bounded-blast-radius property that justifies running this in
+`--auto:yes`. Removed; an unresolved mapping now skips pruning.
+
+**Defect 2 — the coverage gate failed open.** `[ "$COV_AFTER" -lt "$COV_BEFORE" ]` is
+integer-only. `coverage report --format=total` can emit `80.25`, which makes `[` error;
+a non-zero exit from `[` routed to the **commit** branch, so a coverage drop shipped.
+Testing the repair surfaced two more fail-open cases the review had not named: an empty
+`COV_BEFORE`, and any non-numeric total. All three now roll back.
+
+**Repair shape, per the executor's own request for behavioral coverage.** Rather than
+patching the inline comparison, the logic moved out of untestable Markdown into
+`lib/test-budget.sh` as `tb_coverage_ok <after> <before>`, which fails closed. Eight
+behavioral tests pin it, including the decimal-drop case `[ -lt ]` got wrong. Three grep
+guards pin the wiring: no `tests/` fallback, the helper is used instead of an inline
+integer compare, and the helper is sourced before it is called.
+
+**Defect 3, found while verifying the repair.** Phase 8.5 called `tb_coverage_ok` but
+never sourced `lib/test-budget.sh`. Phase 7 `cd`s back to the main repo, so Phase 8.5
+does not inherit Phase 6's shell. This failed closed (missing command exits non-zero, so
+every prune would have rolled back) but silently disabled the feature. Source line added,
+with an assertion that it precedes the call.
+
+Suite: 222 -> 233, 0 failures.
+
+Durable learning, adopted from the executor verbatim: **green Markdown grep assertions
+prove text presence, not safety invariants.** Logic that gates a destructive operation
+belongs in a lib where it can be unit-tested, not inline in a command file where the only
+available assertion is that the text exists.

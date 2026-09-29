@@ -143,3 +143,43 @@ seed() {
   run tb_shadow_active
   [ "$status" -eq 0 ]
 }
+
+@test "tb_coverage_ok: equal coverage passes" {
+  run tb_coverage_ok 80 80
+  [ "$status" -eq 0 ]
+}
+
+@test "tb_coverage_ok: higher coverage passes" {
+  run tb_coverage_ok 85 80
+  [ "$status" -eq 0 ]
+}
+
+@test "tb_coverage_ok: integer drop fails" {
+  run tb_coverage_ok 75 80
+  [ "$status" -ne 0 ]
+}
+
+@test "tb_coverage_ok: decimal rise passes" {
+  run tb_coverage_ok 80.25 79.75
+  [ "$status" -eq 0 ]
+}
+
+@test "tb_coverage_ok: decimal drop fails — the case [ -lt ] got wrong" {
+  run tb_coverage_ok 79.75 80.25
+  [ "$status" -ne 0 ]
+}
+
+@test "tb_coverage_ok: empty after fails closed" {
+  run tb_coverage_ok "" 80
+  [ "$status" -ne 0 ]
+}
+
+@test "tb_coverage_ok: empty before fails closed" {
+  run tb_coverage_ok 80 ""
+  [ "$status" -ne 0 ]
+}
+
+@test "tb_coverage_ok: non-numeric fails closed" {
+  run tb_coverage_ok "N/A" 80
+  [ "$status" -ne 0 ]
+}

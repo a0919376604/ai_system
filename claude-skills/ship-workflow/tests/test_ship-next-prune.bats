@@ -48,3 +48,26 @@ setup() {
   run grep -F 'because its invariants are machine-checked' "$CMD"
   [ "$status" -eq 0 ]
 }
+
+@test "Phase 8.5 never falls back to pruning the whole tests/ directory" {
+  run grep -F 'TEST_TARGETS="tests/"' "$CMD"
+  [ "$status" -ne 0 ]
+  run grep -F 'skipped (no scoped test targets' "$CMD"
+  [ "$status" -eq 0 ]
+}
+
+@test "Phase 8.5 uses the fail-closed coverage helper, not inline integer compare" {
+  run grep -F 'tb_coverage_ok "$COV_AFTER" "$COV_BEFORE"' "$CMD"
+  [ "$status" -eq 0 ]
+  run grep -F 'COV_AFTER:-0}" -lt' "$CMD"
+  [ "$status" -ne 0 ]
+}
+
+@test "Phase 8.5 sources test-budget.sh before calling tb_coverage_ok" {
+  block=$(awk '/^## Phase 8.5/,/^## Phase 8.7/' "$CMD")
+  src_line=$(echo "$block" | grep -n 'lib/test-budget.sh' | head -1 | cut -d: -f1)
+  call_line=$(echo "$block" | grep -n 'tb_coverage_ok "\$COV_AFTER"' | head -1 | cut -d: -f1)
+  [ -n "$src_line" ]
+  [ -n "$call_line" ]
+  [ "$src_line" -lt "$call_line" ]
+}

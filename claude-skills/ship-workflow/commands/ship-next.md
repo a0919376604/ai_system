@@ -729,7 +729,14 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
 
 1. **Trigger.** Reuses the number Phase 6 already computed; normal ships skip.
 
+   Phase 7 already `cd`-ed back to the main repo, so this phase does not inherit
+   Phase 6's shell. Source the helper again or `tb_coverage_ok` will be missing at
+   step 5 and every prune will silently roll back.
+
    ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/test-budget.sh
+
    if [ "$TEST_BUDGET_VERDICT" != "major" ]; then
      PRUNE_STATUS="skipped (verdict=${TEST_BUDGET_VERDICT})"
    else
@@ -742,7 +749,12 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
      TOUCHED=$(git diff --name-only "${ORIG_BRANCH}...${BRANCH}" | grep -v '^tests/' || true)
      MODULES=$(echo "$TOUCHED" | sed 's|/[^/]*$||' | sort -u)
      TEST_TARGETS=$(for m in $MODULES; do ls tests/${m##*/}/*.py 2>/dev/null; done | sort -u)
-     [ -z "$TEST_TARGETS" ] && TEST_TARGETS="tests/"
+     # NO fallback to tests/. Spec 7.3 bounds the blast radius to modules this ship
+     # touched; widening to the whole suite would turn this into an unscoped LLM prune
+     # pass over unrelated tests, and that bound is what justifies running in auto mode.
+     if [ -z "$TEST_TARGETS" ]; then
+       PRUNE_STATUS="skipped (no scoped test targets for ${MODULES})"
+     else
    ```
 
 3. **Record the baseline.**
@@ -766,10 +778,14 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
          git checkout -- tests/
          PRUNE_STATUS="rolled back (tests failed)"
        else
-         COV_AFTER=$(coverage report --format=total 2>/dev/null || echo 0)
-         if [ "${COV_AFTER:-0}" -lt "${COV_BEFORE:-0}" ]; then
+         COV_AFTER=$(coverage report --format=total 2>/dev/null || echo "")
+         # tb_coverage_ok fails closed on decimals, empties and non-numerics. Inlining
+         # `[ "$COV_AFTER" -lt "$COV_BEFORE" ]` here is what shipped a coverage drop:
+         # `[ -lt ]` is integer-only, so 80.25 makes it error and the error routes to
+         # the commit branch. The helper lives in lib/ so it is unit-testable.
+         if ! tb_coverage_ok "$COV_AFTER" "$COV_BEFORE"; then
            git checkout -- tests/
-           PRUNE_STATUS="rolled back (coverage dropped ${COV_BEFORE} -> ${COV_AFTER})"
+           PRUNE_STATUS="rolled back (coverage dropped ${COV_BEFORE:-?} -> ${COV_AFTER:-?})"
          else
            PRUNED_LINES=$(git diff --numstat -- tests/ | awk '{s+=$2} END {print s+0}')
            git add tests/
@@ -777,6 +793,7 @@ Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants 
            PRUNE_STATUS="pruned -${PRUNED_LINES} lines, coverage ${COV_BEFORE} -> ${COV_AFTER}"
          fi
        fi
+     fi
      fi
    fi
    ```
