@@ -721,6 +721,8 @@ CHECKS
 
    `/ship-compound` runs from the original repo cwd (Phase 7 already cd'd back), so it touches the canonical ROADMAP in the vault directly.
 
+   `/ship-compound` now also updates `CONTEXT.md` and exports `CONTEXT_MD_STATUS`.
+
 ## Phase 9 — Cleanup
 
 1. **Remove worktree:**

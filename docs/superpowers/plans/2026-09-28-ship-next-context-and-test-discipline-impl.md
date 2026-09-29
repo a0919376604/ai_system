@@ -1452,7 +1452,7 @@ pattern, or the shell tool parses it as an option and exits 2 (usage error) rath
 - Consumes: `context_md_over_cap`, `context_md_orphan_terms`, `context_md_line_count`, `context_md_entry_count` (Task 1); `spec-mirror.sh` (existing).
 - Produces: `CONTEXT_MD_STATUS` for Task 10's P9 summary.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `claude-skills/ship-workflow/tests/test_ship-compound-context.bats`:
 
@@ -1497,12 +1497,12 @@ setup() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd claude-skills/ship-workflow && bats tests/test_ship-compound-context.bats`
 Expected: FAIL — 6 tests fail.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Add a new step to `commands/ship-compound.md`, after the learning is written:
 
@@ -1566,12 +1566,12 @@ source ~/.claude/skills/ship-workflow/lib/context-md.sh
 In `commands/ship-next.md` **Phase 8**, add one sentence noting that
 `/ship-compound` now also updates `CONTEXT.md` and exports `CONTEXT_MD_STATUS`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd claude-skills/ship-workflow && bats tests/test_ship-compound-context.bats`
 Expected: PASS — 6 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add claude-skills/ship-workflow/commands/ship-compound.md \
@@ -2139,6 +2139,14 @@ invocation note in Task 8.
 The executor's authorization is widened for the remaining tasks: a grep exiting 2
 (usage error) means the invocation is malformed and may be minimally repaired without
 changing the pattern. Exit 1 still means a genuine no-match and still stops the run.
+
+### 2026-09-29 — Task 8 complete
+
+- Resumed at `d6a5a43`; Tasks 1–7 were left untouched. Used executing-plans and ship within the user's repo-only scope; global bookkeeping and release steps are excluded.
+- Copied the six prescribed tests verbatim; red run failed 6/6 because wiring was absent.
+- Asserted extracted implementation starts with its literal heading before writing; re-read both inserted regions. Task 8 block matches the plan verbatim.
+- Targeted tests passed 6/6; separate `bats tests/` passed 204/204. No assertion adjustments.
+- Task 8 complete; next: Task 9. Existing `.claude-uploads/` left untouched.
 
 ## RESUME HERE — paused 2026-09-29 (codex workspace out of credits)
 

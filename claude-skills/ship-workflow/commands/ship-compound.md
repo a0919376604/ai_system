@@ -73,6 +73,61 @@ You are wrapping up a Roadmap item.
 
    REMINDERS is imperative shape (rules); UA output is declarative (facts). Rather than auto-draft rules (which would hallucinate), just prompt the human.
 
+### Step 6 — Update CONTEXT.md (project vocabulary)
+
+```bash
+# shellcheck disable=SC1091
+source ~/.claude/skills/ship-workflow/lib/context-md.sh
+```
+
+1. **Extract terms.** From this ship's diff and `docs/specs/${ID}-${SLUG}.md`,
+   identify domain terms this work **introduced or clarified**. A term qualifies
+   only if it is project-specific and a newcomer could not infer it from the code
+   alone. Class names, file names, and generic programming vocabulary do not qualify.
+
+2. **Write entries.** Append to (or refine in) `<repo>/CONTEXT.md`, one bullet per
+   entry, in exactly this format:
+
+   ```
+   - **<term>** — <definition>
+   ```
+
+   Continuation lines are indented and are not separate entries.
+
+3. **Cap check.**
+
+   ```bash
+   if context_md_over_cap; then
+     if [ "$AUTO" = "1" ]; then
+       # Deletion is destructive and has no machine-checkable invariant here,
+       # so pruning is skipped in --auto:yes. Surface it instead.
+       echo "WARN: CONTEXT.md over cap ($(context_md_line_count) lines / $(context_md_entry_count) entries)" >&2
+       CONTEXT_MD_STATUS="over cap — prune pending"
+     else
+       CONTEXT_MD_STATUS="pruned"
+     fi
+   else
+     CONTEXT_MD_STATUS="$(context_md_entry_count) entries / $(context_md_line_count) lines"
+   fi
+   ```
+
+   In interactive mode when over cap, **prune to <= 150 lines** in this order:
+   merge semantically duplicate entries; delete terms reported by
+   `context_md_orphan_terms`; if still over, delete the entries least recently
+   cited by any file under `docs/specs/` or `docs/plans/`.
+
+   **There is no archive section.** `CONTEXT.md` is read in full every Phase 3, so
+   an archive heading would keep paying the token cost. Deleted terms are recovered
+   with `git log -p --follow CONTEXT.md`.
+
+4. **Commit and mirror.**
+
+   ```bash
+   git add CONTEXT.md && git commit -m "context: update vocabulary from ${ID}"
+   VAULT_DIR="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)"
+   ~/.claude/skills/ship-workflow/lib/spec-mirror.sh CONTEXT.md "$VAULT_DIR/CONTEXT.md"
+   ```
+
 6. **Delegate to `compound-engineering:ce-promote`** to look at the "Reusable Patterns" section. For each pattern, ask the user:
    - "Promote `<pattern title>` to AIR-OS `40 Knowledge/Concepts/<slug>.md` or `30 Engineering/<slug>.md`?"
    - On confirm, write the promoted note with AIR-OS frontmatter (`type: concept` or `type: engineering`, ai-first preamble, related-projects wikilink back to current project).
