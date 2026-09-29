@@ -723,110 +723,68 @@ CHECKS
 
    `/ship-compound` now also updates `CONTEXT.md` and exports `CONTEXT_MD_STATUS`.
 
-## Phase 8.5 — Test pruning
+## Phase 8.5 — Test prune report
 
-Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants are machine-checked**: coverage must not drop and tests must stay green, and a failure rolls back for free since nothing is committed yet.
+**Report-only. This phase deletes nothing.**
 
-1. **Trigger.** Reuses the number Phase 6 already computed; normal ships skip.
+It was designed to prune redundant tests behind a coverage gate. Six acceptance-review
+rounds found fourteen defects in that gate, and the last three established why: coverage
+records which lines and branches *executed*, not whether an assertion *observed* them. A
+test stripped of its assertions produces coverage identical to one that checks
+everything, so no coverage-derived value can establish that deleting a test is safe.
+Proving assertion strength needs mutation testing, which is out of scope here and is
+tracked as its own roadmap item. See the plan's Execution log for the full history.
+
+What remains is the part that was always sound: making the debt visible, every ship,
+inside the one command the operator actually runs.
+
+1. **Trigger.** Same number Phase 6 computed; normal ships skip.
 
    ```bash
    if [ "$TEST_BUDGET_VERDICT" != "major" ]; then
-     PRUNE_STATUS="skipped (verdict=${TEST_BUDGET_VERDICT})"
+     PRUNE_STATUS="no report (verdict=${TEST_BUDGET_VERDICT})"
    else
    ```
 
-2. **Scope.** Only tests covering modules this ship touched. Bounded blast radius,
-   and the judgment is at its most accurate while the context is hot.
+2. **Scope.** Only tests covering modules this ship touched — the context is hot, so the
+   judgement is at its most accurate.
 
    ```bash
      TOUCHED=$(git diff --name-only "${ORIG_BRANCH}...${BRANCH}" | grep -v '^tests/' || true)
      MODULES=$(echo "$TOUCHED" | sed 's|/[^/]*$||' | sort -u)
      TEST_TARGETS=$(for m in $MODULES; do ls tests/${m##*/}/*.py 2>/dev/null; done | sort -u)
-     # NO fallback to tests/. Spec 7.3 bounds the blast radius to modules this ship
-     # touched; widening to the whole suite would turn this into an unscoped LLM prune
-     # pass over unrelated tests, and that bound is what justifies running in auto mode.
      if [ -z "$TEST_TARGETS" ]; then
-       PRUNE_STATUS="skipped (no scoped test targets for ${MODULES})"
+       PRUNE_STATUS="no report (no scoped test targets for ${MODULES})"
      else
    ```
 
-3. **Record the baseline.**
+3. **Identify candidates.** Read the tests under `$TEST_TARGETS` and list, for each one
+   you would propose removing, the file, the test name, and one line of reasoning. Three
+   categories:
+
+   1. duplicate coverage — two tests asserting the same behavior
+   2. seam violations — a test asserting inside a seam rather than at it
+   3. never-failing tests — an assertion too weak to discriminate any input
+
+   Write the list to `.ship/prune-candidates.md`. **Propose only; change no test file.**
 
    ```bash
-     # Pin the measurement scope. Without --source, coverage reports only files that
-     # were IMPORTED, so deleting a module's only test drops that module out of the
-     # report entirely and the remaining average can RISE. Measured on exactly that
-     # case: 100% reported, 50% actual. With --source the module stays in scope and
-     # its coverage correctly falls, which is what the gate needs to see.
-     COV_SOURCE=$(echo "$MODULES" | tr '\n' ',' | sed 's/,$//')
      mkdir -p .ship
-
-     # Check pytest's exit code on its own. Chaining `run ...; report ...` with `;`
-     # discarded it, so a RED baseline still produced a number and pruning away the
-     # failing test then passed the gate.
-     if ! coverage run --source="$COV_SOURCE" -m pytest $TEST_TARGETS -q >/dev/null 2>&1; then
-       PRUNE_STATUS="skipped (baseline tests not green)"
-     else
-     # Delete first, then CHECK THE EXIT CODE. `|| true` swallowed an export failure,
-     # and a stale cov-after.json left over from an earlier run then satisfied the
-     # -s test and got compared: measured coverage fell 4 -> 3 and the gate committed.
-     # Freshness is part of the evidence, not a detail.
-     rm -f .ship/cov-before.json
-     if ! coverage json -q -o .ship/cov-before.json 2>/dev/null || [ ! -s .ship/cov-before.json ]; then
-       PRUNE_STATUS="skipped (coverage export failed)"
-     else
-   ```
-
-4. **Prune.** Edit only files under `$TEST_TARGETS`, in this order:
-   1. duplicate coverage — two tests asserting the same behavior, keep one
-   2. seam violations — tests asserting inside a seam, lift to seam level or delete
-   3. never-failing tests — assertions too weak to discriminate, strengthen or delete
-
-5. **Verify both invariants, or roll back.**
-
-   ```bash
-       # Same --source as the baseline, or the two numbers are not comparable.
-       if ! coverage run --source="$COV_SOURCE" -m pytest $TEST_TARGETS -q >/dev/null 2>&1; then
-         git checkout -- tests/
-         PRUNE_STATUS="rolled back (tests failed)"
-       else
-         rm -f .ship/cov-after.json
-         # The gate compares executed-line SETS, not counts and not percentages.
-         # A percentage hid a 903 -> 902 loss behind a rounded `90`. Exact counts
-         # then hid [1,3,4,5] -> [1,3,4,6], where the count stays 4 while line 5
-         # loses its only test: counts preserve cardinality, not membership.
-         # Exit 2 means "cannot decide" and is treated as a regression.
-         if ! coverage json -q -o .ship/cov-after.json 2>/dev/null || [ ! -s .ship/cov-after.json ]; then
-           git checkout -- tests/
-           PRUNE_STATUS="rolled back (coverage export failed after pruning)"
-         elif ! python3 ~/.claude/skills/ship-workflow/lib/coverage-diff.py \
-              .ship/cov-before.json .ship/cov-after.json; then
-           git checkout -- tests/
-           PRUNE_STATUS="rolled back (coverage regression)"
-         else
-           PRUNED_LINES=$(git diff --numstat -- tests/ | awk '{s+=$2} END {print s+0}')
-           git add tests/
-           git commit -m "test: prune redundant tests in ${MODULES}"
-           PRUNE_STATUS="pruned -${PRUNED_LINES} lines, per-file coverage verified"
-         fi
-       fi
-     fi
-     fi
+     # Written by Claude from the reading above; one row per candidate.
+     # | file | test | category | why |
+     CANDIDATES=$(grep -c '^| ' .ship/prune-candidates.md 2>/dev/null || echo 0)
+     CANDIDATES=$(echo "$CANDIDATES" | tr -d '[:space:]')
+     PRUNE_STATUS="${CANDIDATES} prune candidate(s) — see .ship/prune-candidates.md (nothing deleted)"
      fi
    fi
    ```
 
-   This is a **separate commit** from the Phase 7 squash on purpose: folding it in
-   would pollute the R-NNN diff and defocus review.
+   There is no coverage run, no rollback path and no commit here, because nothing
+   changes. The `--auto:yes` question disappears with the destructive act: a report is
+   safe to produce unattended.
 
-   **Known limit:** per-file coverage parity does not prove assertion *strength* was
-   preserved — a test can be weakened without touching which lines execute. This bounds
-   the damage; it does not eliminate it.
-
-   **Auto-mode log:**
-   ```bash
-   [ "$AUTO" = "1" ] && ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P8.5" "$PRUNE_STATUS"
-   ```
+4. **Surface it.** Phase 9 puts `PRUNE_STATUS` in the summary and the `_log.md` row, so
+   the count shows up whether or not you open the file. Acting on the list is yours.
 
 ## Phase 8.7 — UA knowledge graph rebuild
 

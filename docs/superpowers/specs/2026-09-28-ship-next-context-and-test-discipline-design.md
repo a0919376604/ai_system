@@ -76,7 +76,10 @@ A design that routes work to a command the operator does not run is a no-op.
 - G3. Tests attach to declared seams, so refactors do not break them.
 - G4. Refactor-only tasks add zero tests.
 - G5. Test volume growth is measured and visible on every ship.
-- G6. Redundant tests are actually deleted, inside `/ship-next`, with a mechanical safety gate.
+- G6. Redundant tests are identified and surfaced, inside `/ship-next`, every qualifying
+  ship. **Amended 2026-09-29:** this originally read "actually deleted ... with a
+  mechanical safety gate". No coverage-derived gate can establish deletion safety; see
+  §7. Automatic deletion moves to its own roadmap item.
 - G7. `ponytail` reaches the P5 executor despite its documented subagent limitation.
 - G8. The UA knowledge graph is rebuilt before its staleness makes P3/P6 output misleading.
 
@@ -154,9 +157,10 @@ which additionally carries when and why the term was dropped.
 - Pruning: **does not run.** Consistent with the existing `--discard` / `--auto` mutex
   ("deletion is destructive — never auto"). Over-cap in auto mode emits a WARN, a
   `.ship-auto-decisions.md` entry, and a line in the P9 summary.
-- Note the deliberate asymmetry with §7: test pruning *does* run in auto because it
-  has a mechanical rollback gate (coverage + green). `CONTEXT.md` pruning has no
-  equivalent machine-checkable invariant, so it stays human-gated.
+- **Amended 2026-09-29:** this originally justified running test pruning in auto on the
+  strength of a coverage rollback gate. That gate does not exist any more (§7), so there
+  is no asymmetry left: `CONTEXT.md` pruning is human-gated, and §7 deletes nothing at
+  all. Both destructive acts are the operator's.
 
 ## §5 Seam declaration and TDD discipline (Gap 2, parts 1 and 3)
 
@@ -269,17 +273,38 @@ there would be shared across every repo. The multipliers themselves (`2x` / `4x`
 safe to keep global, because §6.1.2's baseline is computed per-repo from the working
 tree; the multiplier is a portable ratio, not a repo-specific constant.
 
-## §7 Phase 8.5: test pruning (new phase)
+## §7 Phase 8.5: test prune report (new phase)
 
-### 7.1 Placement
-After P8 (`/ship-compound`), before P9 (cleanup). P7 has already `cd`-ed back to
-`ORIG_BRANCH`, so this runs on the main line, and it produces **its own commit**
-(`test: prune redundant tests in <modules>`). It must not be folded into the R-NNN
-squash commit, which would pollute the feature's diff and defocus review.
+**Amended 2026-09-29 after six acceptance-review rounds. This phase deletes nothing.**
 
-### 7.2 Trigger
-Reuses the number P6 already computed. Runs only when this ship's test ratio landed in
-the major band (2x .. 4x baseline). Normal ships skip it.
+### 7.1 Why the original design was withdrawn
+It was specified as a scoped prune behind a gate that required coverage not to fall.
+Six rounds of adversarial review found fourteen defects in that gate. The first eleven
+were fixable — an unscoped fallback, a fail-open integer comparison, a rounded
+percentage, counts that preserve cardinality but not membership, stale reports, missing
+validation. Each fix was correct and each was insufficient.
+
+The last three made the reason plain. Coverage records which lines and branches
+*executed*; it does not record whether an assertion *observed* them. A test stripped of
+its assertions produces coverage identical to one that checks everything. So no value
+derived from coverage can establish that deleting a test is safe, and the "known limit"
+this spec originally accepted in §7.5 was not a limit but the whole problem.
+
+Establishing assertion strength needs mutation testing — inject a defect, confirm a test
+catches it. That is a different tool at a different cost, and it belongs in its own
+roadmap item with its own spec and acceptance, not bolted onto this one.
+
+### 7.2 What the phase does now
+Identifies prune candidates and records them. Same trigger (the major band P6 already
+computed) and same scope (§7.3). It writes `.ship/prune-candidates.md` with one row per
+candidate — file, test, category, reason — and P9 surfaces the count in the summary and
+the `_log.md` row.
+
+No coverage run, no rollback path, no commit, because nothing changes. The `--auto:yes`
+question disappears with the destructive act: a report is safe to produce unattended.
+
+The operator acts on the list. That is a real cost against the original goal, and it is
+the honest one: the mechanism that made "delete it for you" safe never existed.
 
 ### 7.3 Scope
 **Only tests covering modules this ship touched**, derived from
@@ -289,27 +314,28 @@ Three reasons: scope stays bounded; the context is hot, so judging "these two te
 assert the same thing" is at its most accurate; and across many ships the repo gets
 covered incrementally without ever needing a big-bang cleanup.
 
-### 7.4 What is pruned
-1. duplicate coverage: two tests asserting the same behavior, keep one
-2. seam violations: legacy tests asserting inside a seam, lift to seam level or delete
-3. never-failing tests: assertions too weak to discriminate, strengthen or delete
+### 7.4 What is proposed
+One row per candidate in `.ship/prune-candidates.md`, in three categories:
 
-### 7.5 Safety gate (mechanical, both conditions required)
-```bash
-coverage run -m pytest <touched modules>   # before -> COV_BEFORE
-# ... pruning edits ...
-coverage run -m pytest <touched modules>   # after  -> COV_AFTER
+1. duplicate coverage: two tests asserting the same behavior
+2. seam violations: a test asserting inside a seam rather than at it
+3. never-failing tests: an assertion too weak to discriminate any input
 
-if tests not all green:        rollback, no commit
-if COV_AFTER < COV_BEFORE:     rollback, no commit
-```
-Rollback is `git checkout -- tests/`; P8.5 has not committed yet, so it is free.
+Each row carries the file, the test name and one line of reasoning. Nothing is edited.
+
+### 7.5 Safety gate
+None, because nothing is destroyed. The gate this section used to specify — tests green
+plus coverage not lower — is withdrawn; see §7.1.
 
 ### 7.6 `--auto:yes` behavior
-**Runs.** The operator's normal mode is fire-and-forget; gating this on human presence
-would reproduce the §1.3 failure where a mechanism exists but never fires. The coverage
-and green-test invariants make this a verifiable refactor rather than an unrecoverable
-deletion, which is the distinction that separates it from `--discard` (principle P5).
+**Runs**, and needs no exception now that it destroys nothing.
+
+The original text argued the opposite way round: that the operator's normal mode is
+fire-and-forget, so gating pruning on human presence would reproduce the §1.3 failure
+where a mechanism exists but never fires, and that the coverage and green-test invariants
+made deletion a verifiable refactor rather than an unrecoverable act — the distinction
+separating it from `--discard` (principle P5). The first half still holds and is why the
+report runs unattended. The second half was wrong, and §7.1 is why.
 
 ## §8 ponytail integration
 

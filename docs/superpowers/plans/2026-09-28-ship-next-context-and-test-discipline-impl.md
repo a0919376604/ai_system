@@ -1591,6 +1591,15 @@ git commit -m "feat: write and cap CONTEXT.md in ship-compound"
 
 ### Task 9: Phase 8.5 test pruning
 
+> **SUPERSEDED 2026-09-29 — do not implement the steps below as written.**
+> This task specified a scoped prune behind a coverage gate. Six acceptance-review
+> rounds found fourteen defects in that gate, and the last three showed why it cannot
+> work: coverage records which lines executed, not whether an assertion observed them.
+> Phase 8.5 shipped as **report-only** — it lists candidates in
+> `.ship/prune-candidates.md` and deletes nothing. See spec §7.1 and the Execution log
+> entry for 2026-09-29. The steps below are kept as the record of what was attempted.
+
+
 **Files:**
 - Modify: `claude-skills/ship-workflow/commands/ship-next.md` (new Phase 8.5)
 - Test: `claude-skills/ship-workflow/tests/test_ship-next-prune.bats`
@@ -2473,6 +2482,155 @@ Durable learning: exact counts preserve cardinality, not membership. A
 destructive gate must preserve the identities it claims to protect and prove
 that every input document was successfully produced by the current run.
 
+### 2026-09-29 — Acceptance round 5 BLOCKED at 63e8d1e
+
+- Ran `cd claude-skills/ship-workflow && bats tests/` as its own command:
+  **247/247 passed, exit 0**. No implementation or committed tests were edited.
+- Applied the ship skill's adversarial review and verification intent within the
+  explicit repository-only acceptance scope. Global bookkeeping, release actions,
+  nested Codex invocations, and implementation changes were excluded.
+- Constructed and ran fixtures with Coverage.py **7.14.0**, pytest **8.4.2**,
+  and macOS `/bin/bash` **3.2.57**. Extracted the actual Phase 8.5 Bash fences
+  through its verification step, inserted a test-file replacement at the prune
+  step, and redirected the comparator path to this repository. A Git function
+  supplied `src/a.py` as the touched path and recorded checkout/add/commit calls.
+  Thus "selected commit" below means the actual phase invoked the recording
+  stub, not that a repository commit was made. Product source and coverage
+  configuration stayed unchanged during each pruning run. HOME was isolated
+  inside each scratch fixture; no live HOME/.claude access was needed.
+
+**P1 — preserved line sets can lose measured branch coverage.**
+
+- `lib/coverage-diff.py:67–73,102–113` reads line sets and statement counts
+  but discards `executed_branches`, even when the reports contain branch data.
+  This is another measurement defect, distinct from assertion strength.
+- Minimal `src/a.py` (line numbers start at the first line below):
+
+  ```python
+  def choose(flag):
+      if flag:
+          value = 1
+      return 1
+  ```
+
+  `.coveragerc`:
+
+  ```ini
+  [run]
+  branch = True
+  ```
+
+  Initial `tests/src/test_a.py`:
+
+  ```python
+  from src.a import choose
+
+  def test_true():
+      assert choose(True) == 1
+
+  def test_false():
+      assert choose(False) == 1
+  ```
+
+- Run `coverage run --source=src -m pytest tests/src/test_a.py -q`, then
+  `coverage json -q -o before.json`. Delete only `test_false`, repeat the same
+  commands with `after.json`, and run the repository's `coverage-diff.py` on
+  the two reports. Both tests runs and exports exit 0; the comparator exits 0.
+- Both reports have executed lines **[1,2,3,4]**, 4 covered statements, and
+  `num_statements=4`. Executed branches change from **[[2,3],[2,4]]** to
+  **[[2,3]]**; `[2,4]` becomes missing. Branch coverage falls **100% -> 50%**;
+  the report's combined coverage falls **100% -> 83.333333%**.
+- The extracted Phase 8.5 selects `git add tests/` and `git commit` and reports
+  `per-file coverage verified`. This requires no malformed input, failed
+  exporter, source modification, or assertion weakening. A distinct executed
+  control-flow edge lost its only test.
+
+**P1 — fresh JSON can combine baseline data into the after measurement.**
+
+- `commands/ship-next.md:767–775,789–803` invalidates JSON outputs but does
+  not isolate or reset Coverage.py's underlying data between measurements.
+  With `[run] parallel = True`, the after export can include baseline data.
+- Minimal `src/a.py`:
+
+  ```python
+  def left():
+      return "left"
+
+  def right():
+      return "right"
+  ```
+
+  `.coveragerc` contains `[run]` followed by `parallel = True`. Initial tests:
+
+  ```python
+  from src.a import left, right
+
+  def test_left():
+      assert left() == "left"
+
+  def test_right():
+      assert right() == "right"
+  ```
+
+- Start in a **clean fixture with no pre-existing coverage database or JSON**.
+  Run the same run/export commands as above, delete only `test_right`, and
+  repeat for the after report. All four commands exit 0. Both freshly written
+  JSON documents report executed lines **[1,2,4,5]**, **4/4** statements.
+  The comparator returns 0 and the extracted phase selects commit.
+- Copied each `.coverage.*` shard immediately after its test run and before
+  its export. Exporting the copies separately using `COVERAGE_FILE=<copy>`
+  proves the current runs actually recorded **[1,2,4,5] -> [1,2,4]**,
+  **4/4 -> 3/4**. Comparing those isolated reports returns 1 and names line 5.
+- Verified the mechanism against the installed Coverage.py command code:
+  reporting calls `load()` and then `combine(strict=False, keep=False)`.
+  The after export merges the new parallel shard with the retained baseline
+  database. JSON deletion and a successful fresh export do not remove that
+  contamination. An additional run seeded with an earlier combined database
+  also selected commit, but the clean-fixture reproduction needs no such seed.
+- This repeats the previous round's evidence-freshness class at the database
+  layer. **Fresh serialization does not establish fresh measurement.**
+
+**Controls and additive integrations:**
+
+- The same left/right fixture in normal serial mode reports 4/4 -> 3/4,
+  names line 5, and selects rollback. A real dynamic import of `src/ns/b.py`
+  without `src/ns/__init__.py` disappears after deleting its only test;
+  the comparator names the vanished file and the phase selects rollback.
+- Hand-built top-level array/null/bool, invalid `files`, missing
+  `executed_lines`, and bool/fractional/negative/string/null line values all
+  return 2. A report-key change from `src/a.py` to `./src/a.py` returns 1,
+  conservatively rejecting the changed spelling. An unchanged real
+  `# pragma: no cover` fixture passes; its excluded line stays outside the
+  executed-line evidence in both reports.
+- An independent in-host reviewer ran the actual CONTEXT cap/commit and P3
+  announcement blocks, actual P8.7 UA block, and P5 ponytail render/drift
+  portion in an isolated empty Git repo. Absent CONTEXT exits 0 with the
+  absent status and no stage/mirror attempt. Absent UA exits 0 with `n/a`.
+  Absent ponytail is silent, writes no rules file, and yields empty version
+  and hash with drift 0. Four libraries load without collision; empty counts
+  and budget ratios are zero, shadow mode is active, and Git status stays
+  empty. These concrete absent paths remain additive. This does not claim
+  execution of an entire agent-driven ship conversation.
+
+**Verdict: BLOCKED. Third recommendation: make Phase 8.5 REPORT-ONLY.**
+
+Two fresh reproductions expose the same measurement/safety-gate class despite
+247 green tests. List prune candidates in Phase 9 and delete nothing
+automatically. This recommendation is recorded, not implemented.
+
+The statement "line identity summarises nothing" is false: an executed-line
+set discards control-flow edge identity and execution context. Even a richer
+set cannot distinguish current execution from historical data merged into it.
+The gate needs evidence of both what was executed and which run produced it;
+preserving line membership alone establishes neither complete coverage parity
+nor measurement isolation.
+
+All round-5 fixtures in `tests/.tmp/round5-review/` and
+`tests/.tmp/round5-additive/` were removed after recording the reproductions.
+Only this Execution log was edited; `git diff --check` passed and HEAD
+remained `63e8d1e`. No commit, push, branch switch, amend, hook bypass,
+live HOME/.claude change, or `.claude-uploads/` change occurred.
+
 ## RESUME HERE — paused 2026-09-29 (codex workspace out of credits)
 
 **State: clean and green.** Branch `ship/ship-next-context-test-discipline`, HEAD
@@ -2709,3 +2867,54 @@ Suite: 238 -> 247, 0 failures.
 Durable learning: when a gate guards a destructive act, keep asking what the compared
 value is a summary *of*. Percentage summarises count, count summarises line identity,
 line identity summarises nothing. Stop only when there is no summary left.
+
+### 2026-09-29 — Phase 8.5 becomes report-only
+
+Sixth acceptance review, two more reproduced defects:
+
+- **Branch loss with identical line sets.** Executed lines unchanged while branch
+  coverage fell 100% -> 50%. A line set cannot see control-flow edges.
+- **Coverage data accumulation.** The previous round made the JSON *export* fresh by
+  deleting it first, but `.coverage` itself accumulates across runs, so a faithfully
+  fresh export reported stale combined data and hid a real 4/4 -> 3/4 loss.
+
+That is fourteen defects in one phase across six rounds, against one in every other task
+combined. The executor recommended report-only three times; the operator accepted on the
+third, after the underlying reason was finally stated correctly.
+
+**Why the gate could never have worked.** Three separate rounds each declared the root
+cause found — first the comparison, then the percentage, then the count — and each was
+wrong in the same direction: still comparing a summary. But even a perfect coverage
+comparison answers the wrong question. Coverage records which lines and branches
+*executed*. It does not record whether an assertion *observed* them. Delete a test and
+replace it with one that walks the identical path and asserts nothing, and every
+coverage-derived gate passes. §7.5 of the spec listed this as a "known limit" from the
+start; it was not a limit, it was the whole problem, and it took six rounds to see that
+the accepted residual risk was in fact fatal to the design.
+
+The tool that answers the real question is mutation testing: inject a defect, confirm a
+test catches it. Different cost, different scope, its own roadmap item.
+
+**What shipped.** Phase 8.5 keeps its trigger and scope and writes
+`.ship/prune-candidates.md` — file, test, category, one line of reasoning per row. P9
+surfaces the count. There is no coverage run, no rollback path and no commit, so the
+`--auto:yes` question disappears with the destructive act. The operator deletes.
+
+Deleted rather than left beside it: `lib/coverage-diff.py`, its 18 tests, the fixture
+helper, and every reference. A superseded gate left in `lib/` is an invitation to reach
+for it.
+
+**One test defect found by injection, not by reading.** The new "Phase 8.5 deletes
+nothing" guard passed while scanning the whole section — and would have kept passing with
+destructive code present, because the section's own prose says "there is no coverage run"
+and the scan matched its own explanation. Caught by injecting `git checkout -- tests/`
+into the phase and confirming the guard went red, then confirming it went green again on
+revert. The guard now scans only the extracted bash.
+
+Suite: 247 -> 226 (18 gate tests removed with the gate, prune guards consolidated 13 -> 10).
+0 failures.
+
+Durable learning: before building a gate, ask what question the metric answers, not just
+how accurately it answers it. Six rounds were spent improving the accuracy of an answer
+to the wrong question. And verify a guard by injecting the defect it claims to catch —
+a guard that has never gone red has not been tested, it has only been run.
