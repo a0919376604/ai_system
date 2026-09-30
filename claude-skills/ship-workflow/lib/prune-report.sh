@@ -17,7 +17,10 @@
 # every other function here is tested, and those holes cannot exist.
 #
 # Usage:  prune_report <orig_ref> <head_ref> <verdict>
-# Echoes the status; always exits 0.
+# Echoes a status. Exit 0 when a decision was reached — a report, or a legitimate
+# skip. Exit 2 when the input or the environment made the answer unknowable. Those
+# two must never be conflated: a status that reads as a normal outcome when nothing
+# could actually be evaluated is worse than an error, because it looks like health.
 
 # prune_report_ref_ok <ref>
 # Exit 0 only for a string that resolves to a commit and cannot be read as an option.
@@ -36,11 +39,18 @@ prune_report_ref_ok() {
 
 # prune_report_targets <orig_ref> <head_ref>
 # Echo the test files in scope: those covering non-test modules the ship touched.
+# Returns 2 when the diff itself could not be computed, so a broken repository or a
+# bad git config is not reported as "nothing in scope".
 prune_report_targets() {
   local orig="$1" head="$2" touched modules m
-  prune_report_ref_ok "$orig" || return 0
-  prune_report_ref_ok "$head" || return 0
-  touched=$(git diff --name-only "${orig}...${head}" 2>/dev/null | grep -v '^tests/' || true)
+  prune_report_ref_ok "$orig" || return 2
+  prune_report_ref_ok "$head" || return 2
+  # The trailing `--` separates revisions from paths. Without it a file literally
+  # named `base...HEAD` makes the range ambiguous and git refuses, which previously
+  # surfaced as an empty scope. Keep the diff out of a pipeline so $? is git's, not
+  # grep's — a piped `|| true` hid every diff failure.
+  touched=$(git diff --name-only "${orig}...${head}" -- 2>/dev/null) || return 2
+  touched=$(echo "$touched" | grep -v '^tests/' || true)
   [ -n "$touched" ] || return 0
   modules=$(echo "$touched" | sed 's|/[^/]*$||' | sort -u)
   for m in $modules; do
@@ -51,8 +61,13 @@ prune_report_targets() {
 # prune_report_count [file]
 # Echo the number of CANDIDATE: lines. `grep -c` prints 0 AND exits 1 on no match,
 # so `|| echo 0` would append a second zero and render as `00`.
+# Returns 2 when the path exists but cannot be read as a report — a directory, for
+# instance — so an unusable report is not indistinguishable from an empty one.
 prune_report_count() {
   local f="${1:-.ship/prune-candidates.md}" n
+  if [ -e "$f" ] && [ ! -f "$f" ]; then
+    return 2
+  fi
   n=$(grep -c '^CANDIDATE: ' "$f" 2>/dev/null || true)
   n=$(echo "$n" | tr -d '[:space:]')
   [ -n "$n" ] || n=0
@@ -86,12 +101,15 @@ prune_report() {
     echo "invalid ref: '${head}' does not resolve to a commit"; return 2; }
   git merge-base "$orig" "$head" >/dev/null 2>&1 || {
     echo "error: '${orig}' and '${head}' have no merge base"; return 2; }
-  targets=$(prune_report_targets "$orig" "$head")
+  targets=$(prune_report_targets "$orig" "$head") || {
+    echo "error: could not compute the diff between '${orig}' and '${head}'"; return 2; }
   if [ -z "$targets" ]; then
     echo "no report (no scoped test targets)"
     return 0
   fi
-  mkdir -p .ship
-  n=$(prune_report_count)
+  mkdir -p .ship 2>/dev/null || {
+    echo "error: could not create .ship/ (is it a file?)"; return 2; }
+  n=$(prune_report_count) || {
+    echo "error: .ship/prune-candidates.md exists but is not a readable file"; return 2; }
   echo "${n} prune candidate(s) — see .ship/prune-candidates.md (nothing deleted)"
 }

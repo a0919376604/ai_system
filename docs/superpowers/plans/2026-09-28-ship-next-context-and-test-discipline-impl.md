@@ -1714,7 +1714,7 @@ In **Phase 9 step 3**, change the log append so the row carries the ratio field
 that `tb_shadow_active` counts:
 
 ```bash
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp) | n |" >> docs/learnings/_log.md
+   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}) | n |" >> docs/learnings/_log.md
 ```
 
 In **Phase 9 step 4**, extend the `SUMMARY` heredoc with:
@@ -1862,6 +1862,113 @@ boundaries and assert the structure survived. A textual index slice on a 1900-li
 document has no boundary and fails silently.
 
 ## Execution log
+
+### 2026-10-01 — Task 11 acceptance BLOCKED at 843c308
+
+- Applied the supplied ship skill's review and verification intent within the
+  explicit repository-only acceptance scope. No global skill/bootstrap/config
+  access or release operations. Initial HEAD was `843c308`; initial status contained
+  only the pre-existing untracked `.claude-uploads/`, which was left untouched.
+- Ran `cd claude-skills/ship-workflow && bats tests/` as its own command:
+  **259/259 passed, exit 0**. The fifteen retained acceptance tests are unchanged.
+- Added four ordinary direct-call tests in
+  `claude-skills/ship-workflow/tests/test_prune-report-boundary.bats`.
+  Targeted result: **0/4 pass, exit 1**. No implementation or committed test was
+  modified. These tests remain uncommitted as reproducible review evidence.
+
+**P2: downstream diff failures still become successful empty scope.**
+
+`lib/prune-report.sh:43` discards `git diff` failures through its pipeline and
+`|| true`. Validating refs and checking a merge base does not establish that the
+subsequent diff succeeded. Lines 89–92 then turn empty output into exit 0 and
+`no report (no scoped test targets)`.
+
+Two real-Git reproductions, without command stubs:
+
+1. Set fixture-local `git config diff.renames invalid`. Both commit resolution and
+   `git merge-base base HEAD` succeed. `git diff --name-only base...HEAD` exits
+   **128** with `bad boolean config value 'invalid' for 'diff.renames'`.
+   `prune_report base HEAD major` instead returns **0**, claiming empty scope.
+   The first new test requires exit 2 for that evaluation failure.
+2. Create an untracked file literally named `base...HEAD` in the fixture.
+   The library's diff exits **128** with `both revision and filename`, while
+   `git diff --name-only base...HEAD --` succeeds and lists `src/a.py`.
+   `prune_report base HEAD major` returns **0** and the same empty-scope message,
+   despite a mapped test and a one-candidate report. The second new test requires
+   the legitimate report to remain reachable in this repository state.
+
+Preserve the actual diff's failure status through both helpers and distinguish it
+from a successful diff with no targets. Separate revision arguments from paths so
+ordinary filenames cannot make the intended range ambiguous. The existing positive
+cases (identical refs, tags, relative revisions, selectors containing whitespace,
+pass/blocking skips) still pass; no newly introduced false error was found there.
+
+**P2: report filesystem failures also return a successful count.**
+
+- Make `.ship/prune-candidates.md` a directory. The grep at line 56 cannot read a
+  report, but its error is discarded and normalized to zero. Public result:
+  **exit 0**, `0 prune candidate(s) ... (nothing deleted)`.
+- Make `.ship` an ordinary file. `mkdir -p .ship` at line 94 fails with
+  `File exists`, yet the function continues and again returns **exit 0** with the
+  zero-candidate status. In the phase's command substitution, the captured status
+  contains the successful report text, not the mkdir error on stderr.
+
+The third and fourth new tests require exit 2. Keep missing/empty/header-only
+reports as the existing legitimate zero cases; an actual read or directory-creation
+failure must not be reported as a measured zero.
+
+Reproduce all four cases:
+
+```bash
+bats claude-skills/ship-workflow/tests/test_prune-report-boundary.bats
+```
+
+**Read-only and absent integrations hold.**
+
+The retained acceptance suite exercises every defined verdict with distinct and
+identical refs, including a reached one-candidate reporting branch. Independently
+rechecked major/pass/blocking and two invalid verdicts against a fixture with two
+commits, an unstaged test edit, a separately staged test, an untracked sentinel,
+an existing candidate report and an existing stash. All working-tree file hashes,
+raw index bytes, staged entries, status, stash list and HEAD stayed unchanged.
+
+Executed eight actual optional Bash blocks from the command files individually
+and sequentially: P1.5 drift, P3 UA, P3 CONTEXT, P5 ponytail render/drift, P6 UA,
+ship-compound UA, ship-compound CONTEXT cap/commit, and P8.7. AUTO=0/1 crossed with
+UA absent/plugin present without graph gives **32 executions and four cycles**.
+CONTEXT and ponytail were absent throughout. Library paths were redirected to
+repository files and HOME was isolated under tests/.tmp/. All snapshots stayed
+unchanged, optional artifacts remained absent, and stdout/stderr stayed empty.
+Cycles ended with absent CONTEXT status, ponytail drift 0 and UA n/a. P1.5 retains
+its pre-existing silent exit 1 from the trailing false predicate; other blocks and
+all cycles exit 0. This verifies optional hooks, not a full external agent-driven
+ship conversation.
+
+**Documentation agreement is incomplete.**
+
+Spec §7, withdrawn Task 9 and the command agree that Phase 8.5 only reports and
+never deletes tests or commits. The command correctly carries PRUNE_STATUS to
+both P9 outputs. Task 10's P9 log-row example still omits `prune: ${PRUNE_STATUS}`,
+although spec §7.2 and the actual command require it. The library's usage header
+at line 20 still says `always exits 0`, contradicting its own lines 64–65 and the
+command's new contract. These are current text discrepancies, not superseded
+historical accounts. The Git subcommand list now correctly names all three used.
+
+**Verdict: BLOCKED. Task 11 remains incomplete; no acceptance commit created.**
+
+The separate full-suite rerun enumerated **263 tests and exited 1**, including
+these four added failures. `git diff --check` passed. All scratch fixtures under
+`tests/.tmp/`, including leftover fixtures from earlier reviews, were removed as
+requested after the tests finished. Only this Execution log and the new boundary
+test file were written. HEAD remains `843c308`; no commit, push, branch switch,
+amend, hook bypass, or live HOME/.claude access occurred.
+
+
+Durable learning: preflight validation cannot substitute for checking the operation
+it precedes. A valid ref pair and merge base do not prove a diff ran; a missing
+report and a failed report read are different states. Preserve failure status at
+every boundary until the public function can make a truthful decision.
+
 
 ### 2026-09-30 — Task 11 acceptance BLOCKED at 6b035e1
 
@@ -3778,3 +3885,47 @@ Durable learning: a status that cannot distinguish "nothing to do" from "could n
 is worse than an error, because it looks like health. The principle was already written
 down in this repo when the same helper was rewritten — principles do not transfer between
 call sites on their own; only tests do.
+
+### 2026-10-01 — boundary errors, and a stopping rule for the acceptance gate
+
+Four boundary defects, all real, all the same shape as the previous round: a failure
+being reported as a normal outcome.
+
+- `git diff` sat inside a pipeline, so `$?` was grep's and `|| true` swallowed every diff
+  failure. A bad `diff.renames` config reported "no scoped test targets". The diff is now
+  its own command and a non-zero exit returns 2.
+- A file literally named `base...HEAD` made the revision range ambiguous and git refused;
+  that also surfaced as an empty scope. A trailing `--` now separates revisions from
+  paths.
+- A report path that is a directory, and a `.ship` that already exists as a file, both
+  returned "0 prune candidates". Both now return 2 with a reason.
+
+Also corrected: the plan's Task 10 `_log.md` snippet had not gained `prune:
+${PRUNE_STATUS}` when the command file did, so plan and code disagreed about what a ship
+records. A test now asserts the two rows are identical.
+
+**On the length of this review cycle.** Task 11 has now blocked thirteen times. The first
+six rounds found a genuine design flaw and changed the design; that was worth the cost.
+Rounds seven onward have been about the machinery proving the design holds, and the
+findings have shrunk steadily — from "the safety gate cannot work" to "a failed mkdir
+reports zero candidates".
+
+Two causes, and both are mine. The gate was given no stopping rule: the instruction was
+"keep looking for anything else", and an adversarial reviewer told to keep looking will
+always find something in non-trivial code. And several rounds were spent repairing drift
+introduced by the previous round's fix — the `merge-base` header claim, the `00` count,
+the "always exits 0" comment.
+
+From here the gate has an explicit exit criterion, replacing "find anything else":
+
+> Does this finding describe a way a developer loses work, or is misled about the
+> outcome of a ship? If yes, it blocks. If no, it is recorded as a follow-up and the
+> gate passes.
+
+That is the standard the first six rounds would have met and the last several would not.
+
+Suite: 259 -> 264, 0 failures.
+
+Durable learning: an acceptance gate needs a definition of done as much as the work does.
+Without one, "be rigorous" and "never stop" are the same instruction, and the reviewer
+cannot tell which one it was given.

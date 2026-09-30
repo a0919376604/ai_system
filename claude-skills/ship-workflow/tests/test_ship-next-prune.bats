@@ -134,3 +134,14 @@ p85_bash() {
   body=$(p85_bash | grep -vE '^[[:space:]]*(#.*)?$')
   echo "$body" | grep -qF 'PRUNE_STATUS=$(prune_report'
 }
+
+@test "the plan's _log.md example matches the command file's actual row" {
+  # These drifted: the command file gained `prune: ${PRUNE_STATUS}` and the plan's
+  # Task 10 snippet did not, so the two disagreed about what a ship records.
+  PLAN="$SHIP_SKILL_ROOT/../../docs/superpowers/plans/2026-09-28-ship-next-context-and-test-discipline-impl.md"
+  [ -f "$PLAN" ]
+  cmd_row=$(grep -F 'shipped (review: blocking=0, major=' "$CMD" | head -1)
+  plan_row=$(grep -F 'shipped (review: blocking=0, major=' "$PLAN" | head -1)
+  [ -n "$cmd_row" ] && [ -n "$plan_row" ]
+  [ "$(echo "$cmd_row" | sed 's/^[[:space:]]*//')" = "$(echo "$plan_row" | sed 's/^[[:space:]]*//')" ]
+}
