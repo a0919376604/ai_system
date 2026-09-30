@@ -125,7 +125,7 @@ teardown() { rm -rf "$SCRATCH"; }
   while IFS= read -r sub; do
     [ -z "$sub" ] && continue
     case "$sub" in
-      diff|rev-parse) ;;
+      diff|rev-parse|merge-base) ;;
       *) echo "mutating git subcommand: git $sub"; return 1 ;;
     esac
   done <<< "$(echo "$body" | grep -oE '\bgit +[a-z][a-z-]*' | awk '{print $2}')"
@@ -145,10 +145,12 @@ teardown() { rm -rf "$SCRATCH"; }
   before=$(find . -path ./.git -prune -o -type f -print | sort)
   for payload in '--output=tests/pwned' '--output=tests/src/test_a.py' '-o tests/x' \
                  '--output-indicator-new=X'; do
-    run prune_report "$payload" "" major
-    [ "$status" -eq 0 ]
-    run prune_report "" "$payload" major
-    [ "$status" -eq 0 ]
+    run prune_report "$payload" "$BASE" major
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"invalid ref"* ]]
+    run prune_report "$BASE" "$payload" major
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"invalid ref"* ]]
   done
   after=$(find . -path ./.git -prune -o -type f -print | sort)
   [ "$before" = "$after" ]
@@ -162,8 +164,30 @@ teardown() { rm -rf "$SCRATCH"; }
   run prune_report_ref_ok "$BASE";      [ "$status" -eq 0 ]
 }
 
-@test "prune_report: an unresolvable ref reports no targets rather than erroring" {
+@test "prune_report: an unresolvable ref is an error, not a quiet skip" {
+  # This test previously asserted exit 0 and "no scoped test targets" — it encoded the
+  # defect. A ship with a broken ref then looked identical to a healthy quiet one.
   run prune_report deadbeef "$HEAD_REF" major
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"invalid ref"* ]]
+}
+
+@test "prune_report: a legitimate empty scope is still exit 0, not an error" {
+  # The other half of the distinction: nothing to do must stay distinguishable from
+  # could not tell.
+  run prune_report "$HEAD_REF" "$HEAD_REF" major
   [ "$status" -eq 0 ]
   [[ "$output" == "no report (no scoped test targets)" ]]
+}
+
+@test "prune-report.sh's header names exactly the subcommands it uses" {
+  src="$SHIP_LIB/prune-report.sh"
+  used=$(grep -v '^[[:space:]]*#' "$src" | grep -oE '\bgit +[a-z][a-z-]*' \
+         | awk '{print $2}' | sort -u)
+  header=$(sed -n '1,20p' "$src")
+  while IFS= read -r sub; do
+    [ -z "$sub" ] && continue
+    echo "$header" | grep -qF -- "\`$sub\`" || {
+      echo "header does not mention git $sub"; return 1; }
+  done <<< "$used"
 }

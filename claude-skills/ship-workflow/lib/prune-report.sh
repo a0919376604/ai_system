@@ -3,8 +3,11 @@
 # Phase 8.5's mechanical half: decide whether a prune report is due, resolve its
 # scope, count the candidates Claude wrote, and echo a status line.
 #
-# READ-ONLY BY CONSTRUCTION. The only filesystem write is `mkdir -p .ship`; the only
-# git subcommand is `diff`. Nothing here edits, stages, deletes or commits a test.
+# READ-ONLY BY CONSTRUCTION. The only filesystem write is `mkdir -p .ship`. The git
+# subcommands are `diff`, `rev-parse` and `merge-base` — all of them read. Nothing here
+# edits, stages, deletes or commits a test. The audit in tests/test_prune-report.bats
+# enforces that list as an allowlist, so adding a fourth subcommand fails until it is
+# reviewed and added deliberately.
 #
 # This logic used to live as bash inside commands/ship-next.md, and proving it
 # destroyed nothing meant extracting the fenced blocks and executing them. Four
@@ -57,12 +60,32 @@ prune_report_count() {
 }
 
 # prune_report <orig_ref> <head_ref> <verdict>
+#
+# Exit 0  a decision was reached: either a report, or a legitimate skip.
+# Exit 2  the input could not be evaluated. NEVER conflated with a skip.
+#
+# The earlier version returned 0 and "no report (no scoped test targets)" for a
+# malformed ref, an unknown verdict, and two commits with no merge base. That reads
+# identically to "there was genuinely nothing in scope", so a ship whose refs were
+# wrong looked exactly like a quiet, healthy one. This is the same distinction
+# coverage-diff.py draws between "clean" and "cannot decide", which was built there
+# and then not carried over to here.
 prune_report() {
   local orig="$1" head="$2" verdict="$3" targets n
+  case "$verdict" in
+    major|pass|blocking) ;;
+    *) echo "invalid verdict: '${verdict}' (expected major, pass or blocking)"; return 2 ;;
+  esac
   if [ "$verdict" != "major" ]; then
     echo "no report (verdict=${verdict})"
     return 0
   fi
+  prune_report_ref_ok "$orig" || {
+    echo "invalid ref: '${orig}' does not resolve to a commit"; return 2; }
+  prune_report_ref_ok "$head" || {
+    echo "invalid ref: '${head}' does not resolve to a commit"; return 2; }
+  git merge-base "$orig" "$head" >/dev/null 2>&1 || {
+    echo "error: '${orig}' and '${head}' have no merge base"; return 2; }
   targets=$(prune_report_targets "$orig" "$head")
   if [ -z "$targets" ]; then
     echo "no report (no scoped test targets)"

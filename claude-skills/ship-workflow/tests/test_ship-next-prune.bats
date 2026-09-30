@@ -69,10 +69,19 @@ p85_bash() {
 }
 
 @test "no coverage-gate machinery survives anywhere in the skill" {
-  run grep -rlF 'coverage-diff.py' "$SHIP_SKILL_ROOT/lib" "$SHIP_SKILL_ROOT/commands"
-  [ "$status" -ne 0 ]
-  run grep -rlF 'tb_coverage_ok' "$SHIP_SKILL_ROOT/lib" "$SHIP_SKILL_ROOT/commands"
-  [ "$status" -ne 0 ]
+  # Executable lines only. A comment may name the withdrawn gate while explaining why
+  # it is gone — that is documentation, not machinery, and forbidding the words would
+  # make the code harder to understand for no safety gain.
+  for f in "$SHIP_SKILL_ROOT"/lib/*.sh "$SHIP_SKILL_ROOT"/commands/*.md; do
+    [ -f "$f" ] || continue
+    code=$(grep -v '^[[:space:]]*#' "$f")
+    for dead in 'coverage-diff.py' 'tb_coverage_ok'; do
+      if echo "$code" | grep -qF -- "$dead"; then
+        echo "$f still calls $dead"
+        return 1
+      fi
+    done
+  done
 }
 
 @test "no shipped document still claims Phase 8.5 deletes or commits" {
@@ -115,4 +124,13 @@ p85_bash() {
     echo "Phase 8.5 contains a four-backtick fence, which the extractor cannot see"
     return 1
   fi
+}
+
+@test "Phase 8.5 captures the status by substitution, so an input error surfaces" {
+  # prune_report exits 2 when it cannot evaluate its input. The phase assigns from a
+  # command substitution, which does not abort on a non-zero exit, so the error text
+  # lands in PRUNE_STATUS and reaches the P9 summary and the _log.md row instead of
+  # being swallowed or killing the ship.
+  body=$(p85_bash | grep -vE '^[[:space:]]*(#.*)?$')
+  echo "$body" | grep -qF 'PRUNE_STATUS=$(prune_report'
 }

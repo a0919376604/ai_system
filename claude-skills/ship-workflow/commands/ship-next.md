@@ -765,7 +765,11 @@ strength needs mutation testing, which is its own roadmap item. See spec §7.1.
    previously inline bash in this file, and proving it destroyed nothing meant extracting
    these fences and executing them; four review rounds then found holes in that
    *extraction harness* rather than in the code. `prune_report` is read-only by
-   construction: its only write is `mkdir -p .ship` and its only git subcommand is `diff`.
+   construction: its only write is `mkdir -p .ship`, and its git subcommands are `diff`,
+   `rev-parse` and `merge-base`, all of which read. It returns exit 2 when it cannot
+   evaluate its input — a malformed ref, an unknown verdict, two commits with no merge
+   base — so "could not tell" never reads as "nothing to do". The command substitution
+   below does not abort on that, so the reason lands in the Phase 9 summary.
 
 3. **Surface it.** Phase 9 puts `PRUNE_STATUS` in the summary and in the `_log.md` row,
    so the count appears whether or not you open the file. Acting on the list is yours.

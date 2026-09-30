@@ -1863,6 +1863,116 @@ document has no boundary and fails silently.
 
 ## Execution log
 
+### 2026-09-30 — Task 11 acceptance BLOCKED at 6b035e1
+
+- Ran `cd claude-skills/ship-workflow && bats tests/` as its own command before
+  changes: **241/241 passed, exit 0**. Initial HEAD was `6b035e1`; initial status
+  contained only pre-existing untracked `.claude-uploads/`.
+- Applied ship review/verification and executing-plans within the explicit
+  acceptance-only scope. No release or global bookkeeping operations. An independent
+  reviewer checked absent integrations and document agreement. No live HOME/.claude
+  access, implementation fixes, or edits to existing tests.
+- Added ordinary direct-call tests in
+  `claude-skills/ship-workflow/tests/test_prune-report-review.bats` and retained
+  them uncommitted as reproducible acceptance evidence. Targeted result:
+  **15 tests, 3 pass, 12 fail, exit 1**. A separate full-suite run after adding
+  them gives **256 tests, 244 pass, 12 fail, exit 1**; all original 241 still pass.
+
+**P2: invalid input and failed scope resolution are reported as successful skips.**
+
+`prune_report_ref_ok` correctly rejects the malformed references. However,
+`prune_report_targets` at lines 38–39 converts rejection into exit 0 with no
+output, and `prune_report` at lines 66–69 converts that into the same successful
+status as a valid diff with no targets. At line 40, a real Git diff error is also
+hidden by stderr redirection and the successful pipeline fallback. At lines
+62–64, every verdict other than the exact string `major` is accepted as a skip,
+including values outside the defined pass/major/blocking vocabulary.
+
+Minimal reproduction from any repository with a commit, sourcing the repository
+library:
+
+```bash
+source claude-skills/ship-workflow/lib/prune-report.sh
+prune_report no-such-ref HEAD major
+# stdout: no report (no scoped test targets)
+# exit: 0
+prune_report HEAD HEAD unknown
+# stdout: no report (verdict=unknown)
+# exit: 0
+```
+
+Run the retained regression tests from the repository root:
+
+```bash
+bats claude-skills/ship-workflow/tests/test_prune-report-review.bats
+```
+
+- Ten invalid-ref cases run in **both** argument positions: empty, option-like,
+  whitespace-only, embedded space, embedded newline, tree object, tag naming a
+  tree, nonexistent ref, parent traversal string, and blob object. Each verifies
+  the validator rejects it, then demonstrates the public function returns 0 and
+  `no report (no scoped test targets)` with no error diagnostic.
+- Six invalid verdicts (empty, unknown, uppercase, whitespace-padded, option-like,
+  newline-containing) also return 0. The empty verdict remains non-mutating, but
+  is not a recognized decision from the preceding phase.
+- Two individually valid commits with no common ancestor cause real
+  `git diff --name-only A...B` to fail with `no merge base`. The public function
+  still returns 0 with the no-targets status. This is not just malformed spelling.
+- Lightweight and annotated tags pointing to commits work. Relative revisions,
+  a reflog selector, and `HEAD^{/base source}` (valid revision syntax containing
+  whitespace) work and produce the expected one-candidate report.
+
+The old option-triggered write is fixed: the malformed calls created or changed
+nothing. This finding is about error signaling, not a renewed deletion claim.
+The current library header explicitly promises always-exit-0, and an existing
+unit test explicitly expects a missing ref to succeed; those implement the old
+contract but conflict with this review's explicit requirement to never report
+success on input it could not understand. No existing assertion was weakened.
+Required repair: distinguish invalid inputs and failed diff resolution from a
+valid empty scope, and propagate a clear failure through the public function.
+
+**Read-only checks hold.**
+
+Every new call compared all working-tree file hashes (including untracked files
+and the existing candidate report), raw index-file hash, staged entries, status,
+existing stash list and HEAD. The fixture had two distinct commits, an unstaged
+test edit, a separately staged test, an untracked sentinel and an existing stash.
+All snapshots remained equal, including after invalid inputs. Each defined
+verdict was also exercised with distinct and identical refs; the major/distinct
+case asserted the exact one-candidate prefix to prove reporting was reached.
+
+**Optional integrations hold; minor document drift remains.**
+
+The independent reviewer ran 32 actual optional Bash blocks plus four sequential
+cycles and 60 public-helper checks with /bin/bash 3.2.57. AUTO=0/1 crossed with
+UA absent/installed without a graph; CONTEXT and ponytail were absent throughout.
+Repository library paths and an isolated fixture HOME were used. Worktree hashes,
+exact index bytes/tree, status, stash and HEAD were unchanged; output stayed
+silent and optional artifacts stayed absent. CONTEXT status was absent, ponytail
+drift 0 and UA n/a. P1.5 retains its pre-existing silent exit 1 from a trailing
+false test; other blocks/cycles exit 0. Binding/mirror sentinels were not called.
+This verifies optional hooks, not an entire external agent-driven ship cycle.
+
+Spec §7 and §13, withdrawn Task 9, and the command agree on report-only operation;
+the existing fence-style and wiring checks pass. Two small current discrepancies
+remain: Task 10's P9 row snippet omits `prune: ${PRUNE_STATUS}`, which the actual
+command and spec include; the command and library header still say `diff` is the
+only Git subcommand, although validation now uses `rev-parse`. These do not undo
+the read-only design. Historical log entries are superseded history.
+
+**Verdict: BLOCKED. Task 11 remains incomplete; no acceptance commit created.**
+
+Only this execution-log entry and the new failing acceptance-test file were
+written. Test teardowns removed this run's `prune-report-review-*` fixtures;
+the independent review's `review-6b035e1-absent` scratch was also removed.
+No push, branch switch, amend, hook bypass, or `.claude-uploads/` change occurred.
+
+Durable learning: rejecting a value in a private validator is insufficient if
+its caller translates rejection into successful absence. Valid individual refs
+also do not guarantee that a three-dot diff has a merge base. Preserve both
+validation and downstream-command failures at the public boundary.
+
+
 ### 2026-09-30 — Task 11 acceptance BLOCKED at c3f889e
 
 - Ran `cd claude-skills/ship-workflow && bats tests/` as its own command:
@@ -3619,3 +3729,52 @@ extracted to `lib/` precisely so it could be tested properly, and the extraction
 an injection the inline version never had, because "read-only by construction" was
 asserted about the *subcommands* and never about the *arguments*. Validate what crosses
 the boundary, not just what the code intends to do with it.
+
+### 2026-10-01 — "could not evaluate" stops reading as "nothing to do"
+
+The previous run never produced a review: it wandered into `$HOME/.claude/skills/gstack/`,
+tripped a content filter twice, and crashed. The cause was the prompt, not the reviewer —
+it was written in offensive-security vocabulary ("attack it", "payloads", "try to make it
+delete") for what is ordinary input-validation review of a helper in this repo. Reframed
+in engineering terms with the same coverage requested, it ran clean.
+
+**The finding.** `prune_report` returned exit 0 and `no report (no scoped test targets)`
+for a malformed ref, an unknown verdict, and two commits with no merge base. That is
+indistinguishable from a legitimate empty scope, so a ship whose refs were wrong looked
+exactly like a healthy quiet one.
+
+This is the `exit 2 = cannot decide` distinction that was built into `coverage-diff.py`
+several rounds ago — with a comment explaining that "cannot tell" must never be confused
+with "safe" — and then not carried into the helper that replaced it. Writing the principle
+down did not transfer it.
+
+`prune_report` now exits 2 with an explanatory message for an unknown verdict, a ref that
+does not resolve to a commit, and commits with no merge base; and still exits 0 for both
+legitimate skips and a real report. Verified end to end: the phase assigns from a command
+substitution, so exit 2 does not abort the ship, and the reason reaches the P9 summary and
+the `_log.md` row — `prune: invalid ref: '--output=evil' does not resolve to a commit`.
+
+**Four existing tests failed and deserved to.** Three encoded the old contract, including
+one that asserted exit 0 and "no scoped test targets" for an unresolvable ref — a test
+that pinned the defect in place. Rewritten, with a companion asserting a legitimate empty
+scope is still exit 0, so the two halves of the distinction are both held.
+
+The fourth was the "no coverage-gate machinery survives" guard matching a *comment* that
+names `coverage-diff.py` while explaining why it is gone. It now reads executable lines
+only: forbidding the words would make the code harder to understand for no safety gain.
+
+**Documentation drift, introduced in this same change.** The lib header and the command
+file both said the only git subcommand was `diff`, which stopped being true the moment
+`merge-base` was added. Corrected, and a test now asserts the header names every
+subcommand the file actually uses — so the claim cannot go stale silently again.
+
+The reviewer's fifteen acceptance tests are kept as `tests/test_prune-report-review.bats`
+rather than absorbed and paraphrased. They were written against the contract by someone
+who did not write the implementation, and that is worth preserving as-is.
+
+Suite: 241 -> 259, 0 failures.
+
+Durable learning: a status that cannot distinguish "nothing to do" from "could not tell"
+is worse than an error, because it looks like health. The principle was already written
+down in this repo when the same helper was rewritten — principles do not transfer between
+call sites on their own; only tests do.
