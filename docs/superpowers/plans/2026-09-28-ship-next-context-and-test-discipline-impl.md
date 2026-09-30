@@ -1863,6 +1863,149 @@ document has no boundary and fails silently.
 
 ## Execution log
 
+### 2026-09-30 — Task 11 acceptance BLOCKED at 54028b2
+
+- Ran `cd claude-skills/ship-workflow && bats tests/` as its own command:
+  **231/231 passed, exit 0**. Initial HEAD was `54028b2`; initial status contained
+  only the pre-existing untracked `.claude-uploads/`.
+- Applied the invoked ship and executing-plans review/verification workflow within
+  the explicit acceptance-only, repository-only scope. No release operations,
+  global bookkeeping, nested Codex invocation, or live HOME/.claude access.
+  Implementation and committed tests were left unchanged.
+
+**The reported repairs hold, but the guard still has three reproducible gaps.**
+
+Used a scratch copy of the real command and real Bats file, redirecting only the
+copied test's `load helpers` and `CMD` paths. Every insertion was scoped between
+`## Phase 8.5` and `## Phase 8.7`, with assertions on the insertion anchor. Ran:
+
+```bash
+bats --filter 'Phase 8.5 bash mutates nothing' \
+  claude-skills/ship-workflow/tests/.tmp/acceptance-54028b2/guard.bats
+```
+
+Control exits 0. Twelve separate statements immediately after the report branch's
+`mkdir -p .ship` all fail the guard (exit 1): `rm`, absolute `/bin/rm`, direct
+truncation, `.ship/../tests/` truncation, `git add --`, `git -C . add --`,
+`git restore`, `git checkout`, `git stash push`, `git commit`, reordered
+`sed -e ... -i ''`, and Python `Path.write_text`. Three top-level injections
+inside the first existing Bash fence (`rm`, `git -C . add`, `git restore`) also
+fail. Restoring HEAD/HEAD in the copied fixture fails with `guard is vacuous`.
+Restoring the original command and test returns exit 0.
+
+**1. The non-major execution path is untested.**
+
+`tests/test_ship-next-prune.bats:73` always sets `TEST_BUDGET_VERDICT=major`.
+Insert this statement immediately before the existing non-major status assignment
+in the first Phase 8.5 Bash fence:
+
+```bash
+if [ "$TEST_BUDGET_VERDICT" != "major" ]; then
+  /bin/rm -f tests/src/test_a.py
+  PRUNE_STATUS="no report (verdict=${TEST_BUDGET_VERDICT})"
+else
+```
+
+The behavioral guard exits **0**, and the complete copied prune test file passes
+**15/15**. Independently execute the actual mutated Bash with verdict `pass`:
+`tests/src/test_a.py` is deleted, exit **0**, status
+`no report (verdict=pass)`. HEAD and exact index tree stay unchanged, while Git
+status changes from modified to deleted. The original phase on the same pass
+fixture preserves all snapshots. This is another reachable branch omitted by the
+fixture, rather than an escape inside the now-covered candidate branch.
+
+**2. Valid Bash fences can be omitted from execution entirely.**
+
+`tests/test_ship-next-prune.bats:71` only extracts fences with exactly three
+leading spaces. Append the following ordinary top-level Markdown fence immediately
+before the Phase 8.7 heading (still inside Phase 8.5):
+
+````markdown
+```bash
+/bin/rm -f tests/src/test_a.py
+```
+````
+
+The behavioral guard exits **0**, and the complete copied prune file passes
+**15/15**, including its shell-parse check, which uses the same extractor.
+An independent extractor recognizing Bash fences with optional indentation runs
+all four phase fences. With verdict `major` and real mapped targets it deletes
+`test_a.py`, exits **0**, and retains the status
+`0 prune candidate(s) — see .ship/prune-candidates.md (nothing deleted)`.
+The unindented fence is the same syntax the adjacent Phase 8.7 already uses.
+
+**3. The reachability assertion can be vacuous again.**
+
+Make these two replacements only in Phase 8.5:
+
+```bash
+# Replace the TEST_TARGETS=$(for ... ) assignment with:
+TEST_TARGETS=""
+# Replace the existing empty-target status with:
+PRUNE_STATUS="no prune candidates (unresolved scope for ${MODULES})"
+```
+
+The behavioral guard exits **0**, and the complete copied prune file passes
+**15/15**. Independent execution reports
+`STATUS=<no prune candidates (unresolved scope for src)> TARGETS=<>`.
+A temporary `echo REPORT_BRANCH_REACHED` immediately before the report branch's
+`mkdir` never appears. The negative check at line 78 depends on the exact old
+skip-message spelling; the positive substring at line 83 also matches
+**no prune candidates**. Therefore the new assertions do not prove the branch ran.
+
+Independent runtime fixtures for these cases used real Git and `/bin/bash`, two
+commits changing `src/a.py`, an unstaged edit in `tests/src/test_a.py`, separately
+staged `tests/src/test_b.py`, existing `.ship/`, distinct refs, and an isolated HOME.
+Compared file contents/existence, HEAD, `git write-tree`, and status. No Git stubs
+were used. These findings concern the regression guard; no destructive command
+was found in the original Phase 8.5, and report-only remains the settled design.
+
+**Absent integrations and document review.**
+
+- Independent in-host reviewer executed eight actual optional Bash blocks for
+  AUTO=0/1 crossed with UA absent/installed without KG: **32 executions plus four
+  sequential cycles**. CONTEXT and ponytail were absent throughout. Dirty worktree
+  bytes, exact index tree, HEAD, status and stash stayed unchanged; optional
+  artifacts stayed absent and stdout/stderr stayed empty. CONTEXT status was
+  absent, ponytail drift 0, UA n/a. Eighteen public-helper checks with all four
+  libraries sourced together also passed. Bash was 3.2.57. P1.5 retains the
+  previously documented silent exit 1 from its trailing false string test; all
+  other blocks and cycles exit 0. This verifies actual optional hooks, not an
+  entire external agent-driven ship conversation.
+- Current spec §7, §9.4, §10, §12.4 and §13 agree with the command's report-only
+  implementation. Task 9's old steps are deleted and Task 10's replacement snippet
+  now agrees. The current P9 row includes `prune: ${PRUNE_STATUS}`.
+- Manually inspected the excluded historical text instead of trusting the doc
+  guard. Its coverage-gate prescriptions are records of successive withdrawn
+  implementations, superseded by the later dated report-only decision. No current
+  deletion instruction was found. One documentation caveat remains: the awk guard
+  discards *everything* after `## Execution log`, including the peer heading
+  `## RESUME HERE — paused 2026-09-29` and its imperative “relaunch from Task 8.”
+  That dated checkpoint names obsolete HEAD `fea7807` and 198 tests; it is historical,
+  not a valid current resume instruction. Explicitly labeling that checkpoint
+  historical would avoid confusing a future reader. It does not authorize
+  restoring the withdrawn gate.
+
+**Verdict: BLOCKED. Task 11 remains incomplete; no acceptance commit created.**
+
+Required guard repair: exercise skip paths separately from the reporting path;
+extract every executable Bash fence or explicitly reject unsupported fence forms;
+and assert actual resolved targets/report-branch state rather than a loose substring
+of human-readable output. Re-run these mutations, retaining the fifteen successful
+mutation controls. No implementation fix or test weakening was attempted here.
+
+Scratch fixtures under `tests/.tmp/acceptance-54028b2/` and
+`tests/.tmp/acceptance-54028b2-absent/` were removed after recording the evidence.
+Only this Execution log was edited. `git diff --check` passed. No push, branch
+switch, amend, hook bypass, live HOME/.claude change, or `.claude-uploads/` change.
+
+Durable learning: branch reachability and extraction completeness are independent
+obligations. Exercising one real branch cannot establish a whole-phase invariant,
+and a shared incomplete extractor can make execution and syntax checks agree while
+both omit executable code. A substring of a status message is not branch evidence
+when a skip message can naturally contain the same words.
+
+
 ### 2026-09-30 — Task 11 acceptance BLOCKED at 78be616
 
 - Ran `cd claude-skills/ship-workflow && bats tests/` as its own command:
@@ -3246,3 +3389,59 @@ It must exercise the code, and it must *prove* it exercised the code. Assert on 
 that only the intended path produces, or the test degrades into a green no-op the first
 time the fixture drifts. The same applies to the harness that tests the test: verify an
 injection actually landed where it was aimed before believing it escaped.
+
+### 2026-09-30 — Phase 8.5's logic moves to lib/, and the harness disappears with it
+
+Tenth review. Three more bypasses, all in the *guard* rather than the code:
+
+- the non-major branch was never executed, so destruction there went untested;
+- a bash fence at column 0 was skipped by an extractor that required three leading
+  spaces, so its contents were never run or checked;
+- the reachability assertion accepted a run with empty targets.
+
+Reading the shape of the last four rounds rather than the three findings: rounds 1-6
+found defects in Phase 8.5's design, which report-only resolved. Rounds 7-10 found
+defects in the *guard that proves report-only holds*. Four rounds were spent on a guard
+for a phase that, by design, does almost nothing — and the guard had become more complex
+and more defect-prone than the thing it guarded. Every one of those defects was in the
+extract-fences-from-markdown-and-execute-them harness, not in the twenty lines it was
+extracting.
+
+The lesson was already written down two rounds earlier, about a different call site:
+*logic that gates a destructive operation belongs in a lib where it can be unit-tested,
+not inline in a command file.* It was not applied here.
+
+**`lib/prune-report.sh`.** The mechanical half — trigger, scope resolution, candidate
+counting — is now a function. `prune_report <orig_ref> <head_ref> <verdict>` echoes the
+status and is read-only by construction: its only write is `mkdir -p .ship`, its only git
+subcommand is `diff`. Phase 8.5's bash is three lines: source it, call it.
+
+All three findings dissolve rather than get patched:
+
+- every branch is reachable by calling the function with each verdict, so the non-major
+  path is covered by a normal test;
+- there is no fence extraction, so fence indentation cannot matter;
+- there is no reachability question, because each branch is invoked directly.
+
+Twelve unit tests cover every branch and every counting case, plus a no-destruction test
+that runs all four verdicts against a dirty fixture and compares worktree, index, stash
+list, file hashes and HEAD.
+
+The command file keeps one assertion, and three lines can carry it exhaustively: every
+non-comment statement in Phase 8.5's bash must be exactly the source or exactly the call,
+and anything else fails. The extractor is now indentation-agnostic, so an unindented
+fence is checked like any other. Injection-tested in three positions — inside the
+existing fence, in a new indented fence, in an unindented fence — with both a deletion
+and a staging mutant. All six caught.
+
+**One assertion failed for a reason worth recording.** `grep -F 'mutation testing'` found
+nothing, because the prose had wrapped between `mutation` and `testing`. The prose was
+rewrapped rather than the assertion weakened: the phrase is what matters, and an assertion
+that tolerates arbitrary wrapping asserts less than it appears to.
+
+Suite: 231 -> 237, 0 failures.
+
+Durable learning: when a guard needs its own guard, the thing being guarded is in the
+wrong place. Four rounds of harness defects were four signals that twenty lines of bash
+did not belong inside a markdown document. Moving them cost less than the last round of
+patching did.

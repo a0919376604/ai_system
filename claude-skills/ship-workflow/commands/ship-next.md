@@ -727,75 +727,51 @@ CHECKS
 
 **Report-only. This phase deletes nothing.**
 
-It was designed to prune redundant tests behind a coverage gate. Six acceptance-review
-rounds found fourteen defects in that gate, and the last three established why: coverage
-records which lines and branches *executed*, not whether an assertion *observed* them. A
-test stripped of its assertions produces coverage identical to one that checks
-everything, so no coverage-derived value can establish that deleting a test is safe.
-Proving assertion strength needs mutation testing, which is out of scope here and is
-tracked as its own roadmap item. See the plan's Execution log for the full history.
+It was designed to prune redundant tests behind a coverage gate. Six review rounds found
+fourteen defects in that gate, and the last three established why: coverage records which
+lines and branches *executed*, not whether an assertion *observed* them. A test stripped
+of its assertions produces coverage identical to one that checks everything, so no
+coverage-derived value can establish that deleting a test is safe. Proving assertion
+strength needs mutation testing, which is its own roadmap item. See spec §7.1.
 
-What remains is the part that was always sound: making the debt visible, every ship,
-inside the one command the operator actually runs.
-
-1. **Trigger.** Same number Phase 6 computed; normal ships skip.
-
-   ```bash
-   if [ "$TEST_BUDGET_VERDICT" != "major" ]; then
-     PRUNE_STATUS="no report (verdict=${TEST_BUDGET_VERDICT})"
-   else
-   ```
-
-2. **Scope.** Only tests covering modules this ship touched — the context is hot, so the
-   judgement is at its most accurate.
-
-   ```bash
-     TOUCHED=$(git diff --name-only "${ORIG_BRANCH}...${BRANCH}" | grep -v '^tests/' || true)
-     MODULES=$(echo "$TOUCHED" | sed 's|/[^/]*$||' | sort -u)
-     TEST_TARGETS=$(for m in $MODULES; do ls tests/${m##*/}/*.py 2>/dev/null; done | sort -u)
-     if [ -z "$TEST_TARGETS" ]; then
-       PRUNE_STATUS="no report (no scoped test targets for ${MODULES})"
-     else
-   ```
-
-3. **Identify candidates.** Read the tests under `$TEST_TARGETS` and list, for each one
-   you would propose removing, the file, the test name, and one line of reasoning. Three
+1. **Identify candidates.** When `TEST_BUDGET_VERDICT` is `major`, read the tests
+   covering the modules this ship touched and list, for each one you would propose
+   removing, the file, the test name, the category and one line of reasoning. Three
    categories:
 
    1. duplicate coverage — two tests asserting the same behavior
    2. seam violations — a test asserting inside a seam rather than at it
    3. never-failing tests — an assertion too weak to discriminate any input
 
-   Write the list to `.ship/prune-candidates.md`. **Propose only; change no test file.**
-
-   Use one line per candidate with a fixed prefix — NOT a Markdown table. A table's
-   header and separator rows are indistinguishable from data when counting, which made
-   one candidate read as two and an empty report read as one.
+   Write them to `.ship/prune-candidates.md`, one line each, in exactly this form:
 
    ```
    CANDIDATE: <test file>::<test name> — <category> — <one line of reasoning>
    ```
 
+   **Propose only; change no test file.** The prefix matters: an earlier Markdown table
+   made the header indistinguishable from data, so one candidate counted as two.
+
+2. **Compute the status.**
+
    ```bash
-     mkdir -p .ship
-     # Written by Claude from the reading above, one CANDIDATE: line each.
-     # `grep -c` PRINTS 0 and EXITS 1 when it finds nothing, so `|| echo 0` appended a
-     # second zero and an empty report displayed as `00`. `|| true` keeps grep's own
-     # count; the default only covers a missing file, where grep prints nothing.
-     CANDIDATES=$(grep -c '^CANDIDATE: ' .ship/prune-candidates.md 2>/dev/null || true)
-     CANDIDATES=$(echo "$CANDIDATES" | tr -d '[:space:]')
-     [ -n "$CANDIDATES" ] || CANDIDATES=0
-     PRUNE_STATUS="${CANDIDATES} prune candidate(s) — see .ship/prune-candidates.md (nothing deleted)"
-     fi
-   fi
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/prune-report.sh
+   PRUNE_STATUS=$(prune_report "$ORIG_BRANCH" "$BRANCH" "$TEST_BUDGET_VERDICT")
    ```
 
-   There is no coverage run, no rollback path and no commit here, because nothing
-   changes. The `--auto:yes` question disappears with the destructive act: a report is
-   safe to produce unattended.
+   The mechanical half — trigger, scope resolution, counting — lives in
+   `lib/prune-report.sh` so it is unit-tested like every other function here. It was
+   previously inline bash in this file, and proving it destroyed nothing meant extracting
+   these fences and executing them; four review rounds then found holes in that
+   *extraction harness* rather than in the code. `prune_report` is read-only by
+   construction: its only write is `mkdir -p .ship` and its only git subcommand is `diff`.
 
-4. **Surface it.** Phase 9 puts `PRUNE_STATUS` in the summary and the `_log.md` row, so
-   the count shows up whether or not you open the file. Acting on the list is yours.
+3. **Surface it.** Phase 9 puts `PRUNE_STATUS` in the summary and in the `_log.md` row,
+   so the count appears whether or not you open the file. Acting on the list is yours.
+
+   There is no rollback path and no commit, because nothing changes. The `--auto:yes`
+   question disappears with the destructive act: a report is safe to produce unattended.
 
 ## Phase 8.7 — UA knowledge graph rebuild
 
