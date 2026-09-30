@@ -101,3 +101,18 @@ p85_bash() {
   run grep -F 'Simulate a prune that drops coverage' "$SPEC"
   [ "$status" -ne 0 ]
 }
+
+@test "Phase 8.5 uses only plain triple-backtick fences" {
+  # The extractor recognises ```-fences at any indentation. Rather than grow it into
+  # an approximate Markdown parser — tildes, four backticks, five — forbid the
+  # alternatives outright, so a fence it cannot see cannot exist.
+  section=$(awk '/^[[:space:]]*## Phase 8\.5/,/^[[:space:]]*## Phase 8\.7/' "$CMD")
+  if echo "$section" | grep -qE '^[[:space:]]*~~~'; then
+    echo "Phase 8.5 contains a tilde fence, which the extractor cannot see"
+    return 1
+  fi
+  if echo "$section" | grep -qE '^[[:space:]]*````'; then
+    echo "Phase 8.5 contains a four-backtick fence, which the extractor cannot see"
+    return 1
+  fi
+}

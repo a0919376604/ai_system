@@ -120,13 +120,50 @@ teardown() { rm -rf "$SCRATCH"; }
   # document whose fences must be located first. Both checks apply.
   src="$SHIP_LIB/prune-report.sh"
   body=$(grep -v '^[[:space:]]*#' "$src")
+  # Allowlist, not denylist: `diff` reads history, `rev-parse` resolves a ref. Anything
+  # else — add, rm, commit, checkout, restore, stash — fails regardless of its arguments.
   while IFS= read -r sub; do
     [ -z "$sub" ] && continue
-    [ "$sub" = "diff" ] || { echo "mutating git subcommand: git $sub"; return 1; }
+    case "$sub" in
+      diff|rev-parse) ;;
+      *) echo "mutating git subcommand: git $sub"; return 1 ;;
+    esac
   done <<< "$(echo "$body" | grep -oE '\bgit +[a-z][a-z-]*' | awk '{print $2}')"
   for verb in rm mv cp truncate tee shred; do
     if echo "$body" | grep -qE "(^|[|;&(]|[[:space:]])${verb}([[:space:]]|$)"; then
       echo "destructive verb: $verb"; return 1
     fi
   done
+}
+
+# --- argument validation ----------------------------------------------------
+
+@test "prune_report: a git option as a ref creates nothing" {
+  # `git diff --name-only "${orig}...${head}"` puts the argument in git's option
+  # position, so a leading `-` is parsed as a flag: `--output=tests/pwned` wrote
+  # tests/pwned... and still returned exit 0 with "no scoped test targets".
+  before=$(find . -path ./.git -prune -o -type f -print | sort)
+  for payload in '--output=tests/pwned' '--output=tests/src/test_a.py' '-o tests/x' \
+                 '--output-indicator-new=X'; do
+    run prune_report "$payload" "" major
+    [ "$status" -eq 0 ]
+    run prune_report "" "$payload" major
+    [ "$status" -eq 0 ]
+  done
+  after=$(find . -path ./.git -prune -o -type f -print | sort)
+  [ "$before" = "$after" ]
+}
+
+@test "prune_report_ref_ok: rejects options, empties and non-commits" {
+  run prune_report_ref_ok "--output=x"; [ "$status" -ne 0 ]
+  run prune_report_ref_ok "-o";         [ "$status" -ne 0 ]
+  run prune_report_ref_ok "";           [ "$status" -ne 0 ]
+  run prune_report_ref_ok "no-such-ref"; [ "$status" -ne 0 ]
+  run prune_report_ref_ok "$BASE";      [ "$status" -eq 0 ]
+}
+
+@test "prune_report: an unresolvable ref reports no targets rather than erroring" {
+  run prune_report deadbeef "$HEAD_REF" major
+  [ "$status" -eq 0 ]
+  [[ "$output" == "no report (no scoped test targets)" ]]
 }

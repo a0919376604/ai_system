@@ -530,13 +530,29 @@ if CONTEXT.md quality visibly degrades over the first ~10 ships.**
   This is the single most important test: all three integrations must be additive.
 - **Threshold boundaries.** Explicit cases at 199/200/201 lines, 59/60/61 entries,
   49/50/51 drifted files, and ratio exactly 2x and exactly 4x.
-- **P8.5 destroys nothing.** Execute the phase's extracted bash against a *dirty*
-  fixture repo — an unstaged edit, a staged file, an existing `.ship/` — and assert the
-  worktree, the index, the stash list and HEAD are all unchanged. Behavioural, not
-  textual: two successive pattern-matching guards were written here and both were
-  defeated (`/bin/rm`, `git -C . add`, `.ship/../tests/x.py`, `sed -e ... -i ''`).
-  The fixture must be dirty or `git add`, `checkout`, `restore` and `stash` are no-ops
-  and slip through.
+- **P8.5 destroys nothing.** The phase's mechanical half is `prune_report` in
+  `lib/prune-report.sh`, so this is a unit test like any other: call the function with
+  every verdict against a *dirty* fixture — an unstaged edit, a staged file, an existing
+  `.ship/` — and assert the worktree, index, stash list, file hashes and HEAD are
+  unchanged. The fixture must be dirty, or `git add`, `checkout`, `restore` and `stash`
+  are no-ops that slip through.
+
+  This replaced an extract-the-fences-and-execute-them harness over the command file.
+  Four review rounds found defects in that harness rather than in the code it extracted:
+  two pattern-matching guards were defeated outright (`/bin/rm`, `git -C . add`,
+  `.ship/../tests/x.py`, `sed -e ... -i ''`), the non-major branch was never reached, and
+  fences using tildes or four backticks were skipped. A guard that needs its own guard is
+  a sign the code is in the wrong place.
+
+- **P8.5 arguments are validated before they reach git.** `git diff "${a}...${b}"` puts
+  the argument in git's option position, so a ref beginning with `-` is parsed as a flag:
+  `prune_report '--output=tests/pwned' '' major` wrote a file and returned exit 0.
+  Assert that git options passed as refs create nothing.
+
+- **P8.5's command-file wiring is exhaustive, not sampled.** Its bash is two statements —
+  source the lib, call the function — so assert that every non-comment statement is
+  exactly one of those. Fence styles other than plain triple backticks are forbidden in
+  that section rather than parsed, so a fence the extractor cannot see cannot exist.
 - **Shadow mode.** Assert ships 1 to 3 emit no budget finding and ship 4 does.
 - **Seam gate.** Assert `--auto:yes` exits 2 when the spec has no `## Seams`, and that
   interactive mode only warns.

@@ -16,10 +16,27 @@
 # Usage:  prune_report <orig_ref> <head_ref> <verdict>
 # Echoes the status; always exits 0.
 
+# prune_report_ref_ok <ref>
+# Exit 0 only for a string that resolves to a commit and cannot be read as an option.
+#
+# Without this, `git diff --name-only "${orig}...${head}"` interpolates an attacker's
+# string straight into git's argument list, and git parses a leading `-` as an option:
+#   prune_report '--output=tests/pwned' '' major   ->   writes tests/pwned...
+# It returned exit 0 and "no scoped test targets" while doing it. `--` does not help,
+# because the `A...B` range has to sit in the option position.
+prune_report_ref_ok() {
+  local ref="$1"
+  [ -n "$ref" ] || return 1
+  case "$ref" in -*) return 1 ;; esac
+  git rev-parse --verify --quiet "${ref}^{commit}" >/dev/null 2>&1
+}
+
 # prune_report_targets <orig_ref> <head_ref>
 # Echo the test files in scope: those covering non-test modules the ship touched.
 prune_report_targets() {
   local orig="$1" head="$2" touched modules m
+  prune_report_ref_ok "$orig" || return 0
+  prune_report_ref_ok "$head" || return 0
   touched=$(git diff --name-only "${orig}...${head}" 2>/dev/null | grep -v '^tests/' || true)
   [ -n "$touched" ] || return 0
   modules=$(echo "$touched" | sed 's|/[^/]*$||' | sort -u)

@@ -1863,6 +1863,140 @@ document has no boundary and fails silently.
 
 ## Execution log
 
+### 2026-09-30 — Task 11 acceptance BLOCKED at c3f889e
+
+- Ran `cd claude-skills/ship-workflow && bats tests/` as its own command:
+  **237/237 passed, exit 0**. Initial HEAD was `c3f889e`; initial status contained
+  only the pre-existing untracked `.claude-uploads/`.
+- Applied the invoked ship and executing-plans review/verification workflow within
+  the explicit acceptance-only, repository-only scope, including an independent
+  absent-integration reviewer. No release or global bookkeeping operations were run.
+  Implementation and committed tests were left unchanged.
+
+**1. The unmodified function can overwrite a test through Git option injection.**
+
+`lib/prune-report.sh:23` passes `"${orig}...${head}"` to `git diff` without preventing
+Git from interpreting it as an option. Shell quoting preserves one argument; it does
+not make that argument a revision. `diff` itself supports writing an output file.
+
+In an isolated dirty repository with committed `src/a.py` and
+`tests/src/test_a.py`, source the actual library, then run:
+
+```bash
+prune_report '--output=tests/created' '' major
+```
+
+Exit **0**, stdout **`no report (no scoped test targets)`**, empty stderr. It creates
+`tests/created...`, containing the names of the dirty tracked files. No source mutation
+or Git stub is needed. The actual Git argument is `--output=tests/created...`.
+
+To overwrite an ordinary existing test filename in a weird but valid repository state:
+
+```bash
+mkdir -p tests/...
+prune_report '--output=tests/' '/../src/test_a.py' major
+```
+
+The resulting option is `--output=tests/.../../src/test_a.py`. The existing `tests/...`
+directory makes that path resolve to `tests/src/test_a.py`. In the executed fixture its
+bytes changed from `assert 2\n` to `src/a.py\ntests/src/test_a.py\n`. Again exit **0**,
+the same no-target status, and empty stderr. This is a defect in the **current library**,
+not a hypothetical future destructive statement. It requires hostile arguments; ordinary
+branch refs did not reproduce it. It violates the requested hostile-input acceptance
+and the library/command claim that `mkdir -p .ship` is the only write.
+
+The probe ran real Git **2.50.1 (Apple Git-155)** and `/bin/bash` **3.2.57**. Repair must
+prevent option-bearing ref arguments from reaching Git's option parser while preserving
+revision semantics. Pin a regression on file bytes/existence, not just the returned
+status. Do not restore automatic pruning.
+
+**2. The exhaustive statement check still silently omits valid Bash fences.**
+
+`tests/test_ship-next-prune.bats:13` recognizes exactly three backticks followed by
+`bash`. Indentation is fixed, but fence syntax is still incomplete. Insert this block
+immediately before `## Phase 8.7`, keeping it inside Phase 8.5:
+
+````markdown
+~~~bash
+/bin/rm -f tests/src/test_a.py
+~~~
+````
+
+The same escape works with four backticks instead of the three tildes above. Both are
+valid fenced Bash blocks, and neither is extracted.
+
+Used a scratch copy of the real command and the real Bats file, redirecting only the
+copied test's `load helpers` and `CMD` paths. For each fence form tested both
+`/bin/rm -f tests/src/test_a.py` and `git -C . add -- tests/src/test_a.py` separately.
+**All four mutants passed the complete copied prune test file: 9/9, exit 0.**
+
+Reproduction command after inserting either skipped fence in the copied command:
+
+```bash
+bats tests/.tmp/acceptance-c3f889e/guard.bats
+```
+
+Independently extracted those Bash blocks with matching fence character/length handling
+and executed them with the actual library, distinct refs, and a dirty real Git fixture.
+The deletion mutants deleted the test; the staging mutants changed the exact index tree.
+All four executions exited **0** and HEAD remained unchanged. This confirms the effects
+when the omitted Bash is executed; Markdown itself is not automatically executable.
+
+Controls: the six stated deletion/staging insertions (existing fence, new indented
+triple-backtick fence, new column-0 triple-backtick fence) all failed the real guard,
+exit **1**. Original and restored copies passed, exit **0**. The remaining defect is
+extraction completeness, not the exact statement allowlist. Recognize the supported
+executable fence forms or explicitly reject other forms instead of silently skipping
+those blocks.
+
+**Other checks and documentation.**
+
+- Fifty direct calls crossed ten ref pairs with major/pass/blocking/empty/hostile verdicts:
+  valid and identical refs, relative refs, missing and empty refs, malformed options,
+  literal command-substitution/semicolon strings, and a path-style ref. All returned 0
+  and preserved worktree hashes, exact index tree, HEAD, status and stash. A genuine
+  non-repository cwd also returned the no-target status silently without creating files.
+  The `--output=` cases above were separate destructive probes confined to scratch.
+- Independent reviewer executed eight actual optional command blocks for AUTO=0/1
+  crossed with UA absent/installed without KG: **32 executions plus four sequential
+  cycles**, with no CONTEXT or ponytail. Dirty worktree bytes, index tree, HEAD, status,
+  existing stash and isolated HOME stayed unchanged; optional artifacts stayed absent;
+  stdout/stderr were empty; binding/mirror sentinels were not called. CONTEXT status was
+  absent, ponytail drift 0, UA n/a. **40 public-helper checks** in empty Git and genuine
+  non-Git fixtures passed, including documented count/predicate exceptions. P1.5 retains
+  the previously documented silent exit 1 from its trailing false test; other blocks and
+  cycles exit 0. This verifies optional hooks, not an external agent-driven full ship.
+- Current spec §7, §9.4, §10 and §12.4, plan Task 9's withdrawal and Task 10's replacement
+  prose, and the command agree on report-only operation. P9 carries the status into both
+  summary and durable row. One stale verification prescription remains: spec §13 still
+  says to execute the phase's **extracted bash**, although this revision deliberately
+  replaced that harness with direct function tests. Align that description with the new
+  testing arrangement; the intended no-destruction invariant is unchanged.
+- Manually reviewed the excluded Execution log instead of treating the doc guard as
+  proof. Old deletion/coverage instructions describe withdrawn implementations, with
+  later dated entries explicitly superseding them. No current prescription to restore
+  deletion was found. The previously reported peer heading `## RESUME HERE — paused
+  2026-09-29` remains excluded and still says to relaunch Task 8 at obsolete `fea7807`
+  with 198 tests. It is a historical checkpoint, not current authorization; labeling it
+  historical would remove the ambiguity. The exclusion is broader than the heading's
+  Markdown section because it drops everything to EOF.
+
+**Verdict: BLOCKED. Task 11 remains incomplete; no acceptance commit created.**
+
+Required repair: close the demonstrated Git-option write path and ensure executable
+fence variants cannot bypass the command check. The report-only design stays settled.
+No source fix or test weakening was attempted.
+
+Scratch fixtures under `tests/.tmp/acceptance-c3f889e/` and
+`tests/.tmp/acceptance-c3f889e-absent/` were removed after recording the evidence.
+Only this Execution log was edited. `git diff --check` passed. No push, branch switch,
+amend, hook bypass, live HOME/.claude change, or `.claude-uploads/` change occurred.
+
+Durable learning: a nominally read-only subcommand can have write-capable options.
+Shell quoting is not option validation. Moving logic into a function improves direct
+coverage, but an allowlist over extracted Markdown remains only as complete as its
+fence recognizer.
+
 ### 2026-09-30 — Task 11 acceptance BLOCKED at 54028b2
 
 - Ran `cd claude-skills/ship-workflow && bats tests/` as its own command:
@@ -3445,3 +3579,43 @@ Durable learning: when a guard needs its own guard, the thing being guarded is i
 wrong place. Four rounds of harness defects were four signals that twenty lines of bash
 did not belong inside a markdown document. Moving them cost less than the last round of
 patching did.
+
+### 2026-09-30 — argument validation, and fence styles forbidden rather than parsed
+
+Eleventh review. Two attacks, and the first was in shipped code rather than in a test.
+
+**1. `prune_report` passed unvalidated arguments to git.**
+`git diff --name-only "${orig}...${head}"` interpolates its arguments into git's option
+position, so a ref beginning with `-` is parsed as a flag:
+
+    prune_report '--output=tests/pwned' '' major
+    -> creates tests/pwned...  and returns exit 0 with "no scoped test targets"
+
+Reproduced exactly. This is the first genuine vulnerability in this change set rather than
+a gap in a guard, and it was introduced in the same commit that moved the logic to `lib/`
+to make it safer. `--` does not help, because the `A...B` range must sit in the option
+position. `prune_report_ref_ok` now rejects anything empty, anything starting with `-`,
+and anything that does not resolve via `git rev-parse --verify --quiet "$ref^{commit}"`.
+Four payloads verified to create nothing; normal two-ref usage still works.
+
+**2. The fence extractor skipped tilde and four-backtick fences.**
+Rather than grow the extractor toward a full Markdown parser — tildes, four backticks,
+five, indented code blocks — the alternative syntaxes are now **forbidden in Phase 8.5**.
+A fence the extractor cannot see cannot exist, which is checkable in one assertion instead
+of approximable in many. Injection-tested across four fence styles with a deletion and a
+staging mutant each: all eight caught.
+
+The git allowlist in the lib's own audit gained `rev-parse` alongside `diff`; both read,
+neither writes. It stays an allowlist, so any other subcommand fails regardless of
+arguments.
+
+Also corrected: spec §13 still described the extract-and-execute harness that no longer
+exists, and gained entries for argument validation and the exhaustive wiring check.
+
+Suite: 237 -> 241, 0 failures.
+
+Durable learning: moving code somewhere safer does not make it safe. `prune_report` was
+extracted to `lib/` precisely so it could be tested properly, and the extraction shipped
+an injection the inline version never had, because "read-only by construction" was
+asserted about the *subcommands* and never about the *arguments*. Validate what crosses
+the boundary, not just what the code intends to do with it.
