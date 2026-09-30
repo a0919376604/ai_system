@@ -1760,7 +1760,7 @@ git commit -m "feat: add Phase 8.7 UA rebuild and extend the P9 summary"
 
 This is the single most important test in the plan: all three integrations must be purely additive, so a repo with no ponytail, no UA, and no `CONTEXT.md` must behave exactly as it did before.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `claude-skills/ship-workflow/tests/test_ship-next-no-ua.bats`:
 
@@ -1818,21 +1818,21 @@ Append to `claude-skills/ship-workflow/tests/test_ship-next-no-ua.bats`:
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd claude-skills/ship-workflow && bats tests/test_ship-next-no-ua.bats`
 Expected: FAIL only if an earlier task regressed. If Tasks 1-10 are correct these pass immediately, which is the point — this task is the proof, not new behavior.
 
-- [ ] **Step 3: Fix any regression surfaced**
+- [x] **Step 3: Fix any regression surfaced**
 
 If a test fails, the defect is in the task that owns that lib or phase. Fix it there, not by weakening this test.
 
-- [ ] **Step 4: Run the full suite**
+- [x] **Step 4: Run the full suite**
 
 Run: `cd claude-skills/ship-workflow && bats tests/`
 Expected: PASS — every file, including all pre-existing tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add claude-skills/ship-workflow/tests/test_ship-next-no-ua.bats
@@ -1862,6 +1862,70 @@ boundaries and assert the structure survived. A textual index slice on a 1900-li
 document has no boundary and fails silently.
 
 ## Execution log
+
+### 2026-10-01 — Task 11 final acceptance DONE at 0ef8e34
+
+Applied the operator's revised exit criterion: block on loss of developer work or
+misleading ship outcomes; record non-consequential issues as follow-ups. The supplied
+ship skill and executing-plans/verification guidance were applied within the explicit
+repository-only review scope. Release steps and global bookkeeping were excluded.
+
+- Initial HEAD: `0ef8e34`, branch `ship/ship-next-context-test-discipline`.
+  Initial status contained only the pre-existing untracked `.claude-uploads/`.
+- Ran `cd claude-skills/ship-workflow && bats tests/` as its own command:
+  **264/264 passed, exit 0**. All retained acceptance and boundary tests passed.
+  Task 11's five prescribed tests were already committed; they were preserved.
+  No implementation repair or test weakening was needed.
+- Independently executed the actual Phase 8.5 Bash call with repository-local
+  library paths under `/bin/bash` 3.2.57. Crossed major/pass/blocking/empty/unknown
+  verdicts with distinct and identical refs: **10 executions**. The dirty fixture
+  contained an unstaged test edit, a separately staged test, an untracked sentinel,
+  an existing one-candidate report and an existing stash. Worktree status, all file
+  hashes, raw index bytes, staged entries, stash list and HEAD remained identical
+  after every call. Major with distinct refs reached the one-candidate branch;
+  valid skips returned 0; invalid verdicts returned 2 with their reason captured
+  in `PRUNE_STATUS`.
+- A fresh independent reviewer executed **32 actual optional Bash blocks plus
+  four sequential cycles**, crossing AUTO=0/1 with UA absent/plugin present without
+  a graph. CONTEXT and ponytail were absent throughout. Dirty file hashes, raw
+  index bytes, staged entries, status, HEAD and stash stayed unchanged; no optional
+  artifacts or stdout/stderr appeared. P1.5 retains its pre-existing silent exit 1
+  from a trailing false predicate; other blocks and complete cycles returned 0.
+  This verifies the optional hooks, not an external agent-driven ship conversation.
+- Spec section 7, withdrawn Task 9, Task 10 and the command agree on report-only
+  Phase 8.5, its trigger and scope, no test deletion/staging/commit, and the P9
+  summary and durable log status. The plan's `_log.md` row matches the command;
+  its retained equality test passed. The documentation exception below does not
+  change those behaviors.
+- No consequential issue remains under the revised criterion. Task 11 is complete;
+  its acceptance record uses the prescribed commit message:
+  `test: assert all three integrations are purely additive`.
+
+#### Follow-ups
+
+- **Ancillary CONTEXT log documentation.** Spec section 4.5 promises an
+  `.ship-auto-decisions.md` entry when CONTEXT is over cap in auto mode. Task 8
+  and `ship-compound.md` instead emit the warning and set the P9 status without
+  that extra entry. Align the ancillary-log description later. The warning,
+  no-auto-pruning behavior and final status remain intact; this does not cause
+  work loss or a false ship-success claim.
+- **Externally induced regular-file read failures.** By code inspection,
+  `prune_report_count` now rejects non-regular report paths, but still masks a
+  failing `grep` on a regular file (for example, permissions changed externally
+  after report generation). The normal same-user report-writing workflow does
+  not produce that state. Defer under the operator's explicit exotic-filesystem
+  carveout; a later hardening change can distinguish read errors from no matches.
+  This is not a claim that all possible report-read failures now return 2.
+
+Durable learning: state the tested boundary precisely. A read-only mechanical
+helper and isolated optional-hook cycles establish preservation of developer work;
+they do not establish execution of a complete external agent conversation. Apply
+an explicit consequence-based stopping rule after those checks pass.
+
+Scratch fixtures under `tests/.tmp/` were removed before the acceptance commit.
+No live `$HOME/.claude/` reads, push, branch switch, amend, hook bypass or
+`.claude-uploads/` modification occurred.
+
 
 ### 2026-10-01 — Task 11 acceptance BLOCKED at 843c308
 
