@@ -1589,212 +1589,21 @@ git commit -m "feat: write and cap CONTEXT.md in ship-compound"
 
 ---
 
-### Task 9: Phase 8.5 test pruning
+### Task 9: Phase 8.5 (superseded)
 
-> **SUPERSEDED 2026-09-29 — do not implement the steps below as written.**
-> This task specified a scoped prune behind a coverage gate. Six acceptance-review
-> rounds found fourteen defects in that gate, and the last three showed why it cannot
-> work: coverage records which lines executed, not whether an assertion observed them.
-> Phase 8.5 shipped as **report-only** — it lists candidates in
-> `.ship/prune-candidates.md` and deletes nothing. See spec §7.1 and the Execution log
-> entry for 2026-09-29. The steps below are kept as the record of what was attempted.
-
-
-**Files:**
-- Modify: `claude-skills/ship-workflow/commands/ship-next.md` (new Phase 8.5)
-- Test: `claude-skills/ship-workflow/tests/test_ship-next-prune.bats`
-
-**Interfaces:**
-- Consumes: `TEST_BUDGET_VERDICT` (Task 7).
-- Produces: `PRUNE_STATUS` for Task 10's P9 summary.
-
-- [x] **Step 1: Write the failing test**
-
-Create `claude-skills/ship-workflow/tests/test_ship-next-prune.bats`:
-
-```bash
-#!/usr/bin/env bats
-load helpers
-
-setup() {
-  export CMD="$SHIP_SKILL_ROOT/commands/ship-next.md"
-}
-
-@test "Phase 8.5 exists and sits between Phase 8 and Phase 9" {
-  run grep -n '^## Phase 8.5 — Test pruning' "$CMD"
-  [ "$status" -eq 0 ]
-  p85=$(grep -n '^## Phase 8.5' "$CMD" | cut -d: -f1)
-  p8=$(grep -n '^## Phase 8 ' "$CMD" | cut -d: -f1)
-  p9=$(grep -n '^## Phase 9' "$CMD" | cut -d: -f1)
-  [ "$p8" -lt "$p85" ]
-  [ "$p85" -lt "$p9" ]
-}
-
-@test "Phase 8.5 triggers only on the major verdict" {
-  run grep -F 'TEST_BUDGET_VERDICT" != "major"' "$CMD"
-  [ "$status" -eq 0 ]
-}
-
-@test "Phase 8.5 scopes pruning to modules this ship touched" {
-  run grep -F 'git diff --name-only "${ORIG_BRANCH}...${BRANCH}"' "$CMD"
-  [ "$status" -eq 0 ]
-}
-
-@test "Phase 8.5 records coverage before and after" {
-  run grep -F 'COV_BEFORE' "$CMD"
-  [ "$status" -eq 0 ]
-  run grep -F 'COV_AFTER' "$CMD"
-  [ "$status" -eq 0 ]
-}
-
-@test "Phase 8.5 rolls back when coverage drops or tests fail" {
-  run grep -F 'git checkout -- tests/' "$CMD"
-  [ "$status" -eq 0 ]
-  run grep -F 'coverage dropped' "$CMD"
-  [ "$status" -eq 0 ]
-}
-
-@test "Phase 8.5 commits separately from the R-NNN squash" {
-  run grep -F 'test: prune redundant tests' "$CMD"
-  [ "$status" -eq 0 ]
-}
-
-@test "Phase 8.5 runs in auto mode" {
-  run grep -F 'runs in --auto:yes because its invariants are machine-checked' "$CMD"
-  [ "$status" -eq 0 ]
-}
-```
-
-- [x] **Step 2: Run test to verify it fails**
-
-Run: `cd claude-skills/ship-workflow && bats tests/test_ship-next-prune.bats`
-Expected: FAIL — 7 tests fail; Phase 8.5 does not exist.
-
-- [x] **Step 3: Write minimal implementation**
-
-Insert a new section in `commands/ship-next.md` between Phase 8 and Phase 9:
-
-````markdown
-## Phase 8.5 — Test pruning
-
-Unlike `CONTEXT.md` pruning, this **runs in `--auto:yes` because its invariants are machine-checked**: coverage must not drop and tests must stay green, and a failure rolls back for free since nothing is committed yet.
-
-1. **Trigger.** Reuses the number Phase 6 already computed; normal ships skip.
-
-   ```bash
-   if [ "$TEST_BUDGET_VERDICT" != "major" ]; then
-     PRUNE_STATUS="skipped (verdict=${TEST_BUDGET_VERDICT})"
-   else
-   ```
-
-2. **Scope.** Only tests covering modules this ship touched. Bounded blast radius,
-   and the judgment is at its most accurate while the context is hot.
-
-   ```bash
-     TOUCHED=$(git diff --name-only "${ORIG_BRANCH}...${BRANCH}" | grep -v '^tests/' || true)
-     MODULES=$(echo "$TOUCHED" | sed 's|/[^/]*$||' | sort -u)
-     TEST_TARGETS=$(for m in $MODULES; do ls tests/${m##*/}/*.py 2>/dev/null; done | sort -u)
-     # NO fallback to tests/. Spec 7.3 bounds the blast radius to modules this ship
-     # touched; widening to the whole suite would turn this into an unscoped LLM prune
-     # pass over unrelated tests, and that bound is what justifies running in auto mode.
-     if [ -z "$TEST_TARGETS" ]; then
-       PRUNE_STATUS="skipped (no scoped test targets for ${MODULES})"
-     else
-   ```
-
-3. **Record the baseline.**
-
-   ```bash
-     # Pin the measurement scope. Without --source, coverage reports only files that
-     # were IMPORTED, so deleting a module's only test drops that module out of the
-     # report entirely and the remaining average can RISE. Measured on exactly that
-     # case: 100% reported, 50% actual. With --source the module stays in scope and
-     # its coverage correctly falls, which is what the gate needs to see.
-     COV_SOURCE=$(echo "$MODULES" | tr '\n' ',' | sed 's/,$//')
-     mkdir -p .ship
-
-     # Check pytest's exit code on its own. Chaining `run ...; report ...` with `;`
-     # discarded it, so a RED baseline still produced a number and pruning away the
-     # failing test then passed the gate.
-     if ! coverage run --source="$COV_SOURCE" -m pytest $TEST_TARGETS -q >/dev/null 2>&1; then
-       PRUNE_STATUS="skipped (baseline tests not green)"
-     else
-     # Delete first, then CHECK THE EXIT CODE. `|| true` swallowed an export failure,
-     # and a stale cov-after.json left over from an earlier run then satisfied the
-     # -s test and got compared: measured coverage fell 4 -> 3 and the gate committed.
-     # Freshness is part of the evidence, not a detail.
-     rm -f .ship/cov-before.json
-     if ! coverage json -q -o .ship/cov-before.json 2>/dev/null || [ ! -s .ship/cov-before.json ]; then
-       PRUNE_STATUS="skipped (coverage export failed)"
-     else
-   ```
-
-4. **Prune.** Edit only files under `$TEST_TARGETS`, in this order:
-   1. duplicate coverage — two tests asserting the same behavior, keep one
-   2. seam violations — tests asserting inside a seam, lift to seam level or delete
-   3. never-failing tests — assertions too weak to discriminate, strengthen or delete
-
-5. **Verify both invariants, or roll back.**
-
-   ```bash
-       # Same --source as the baseline, or the two numbers are not comparable.
-       if ! coverage run --source="$COV_SOURCE" -m pytest $TEST_TARGETS -q >/dev/null 2>&1; then
-         git checkout -- tests/
-         PRUNE_STATUS="rolled back (tests failed)"
-       else
-         rm -f .ship/cov-after.json
-         # The gate compares executed-line SETS, not counts and not percentages.
-         # A percentage hid a 903 -> 902 loss behind a rounded `90`. Exact counts
-         # then hid [1,3,4,5] -> [1,3,4,6], where the count stays 4 while line 5
-         # loses its only test: counts preserve cardinality, not membership.
-         # Exit 2 means "cannot decide" and is treated as a regression.
-         if ! coverage json -q -o .ship/cov-after.json 2>/dev/null || [ ! -s .ship/cov-after.json ]; then
-           git checkout -- tests/
-           PRUNE_STATUS="rolled back (coverage export failed after pruning)"
-         elif ! python3 ~/.claude/skills/ship-workflow/lib/coverage-diff.py \
-              .ship/cov-before.json .ship/cov-after.json; then
-           git checkout -- tests/
-           PRUNE_STATUS="rolled back (coverage regression)"
-         else
-           PRUNED_LINES=$(git diff --numstat -- tests/ | awk '{s+=$2} END {print s+0}')
-           git add tests/
-           git commit -m "test: prune redundant tests in ${MODULES}"
-           PRUNE_STATUS="pruned -${PRUNED_LINES} lines, per-file coverage verified"
-         fi
-       fi
-     fi
-     fi
-     fi
-   fi
-   ```
-
-   This is a **separate commit** from the Phase 7 squash on purpose: folding it in
-   would pollute the R-NNN diff and defocus review.
-
-   **Known limit:** per-file coverage parity does not prove assertion *strength* was
-   preserved — a test can be weakened without touching which lines execute. This bounds
-   the damage; it does not eliminate it.
-
-   **Auto-mode log:**
-   ```bash
-   [ "$AUTO" = "1" ] && ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P8.5" "$PRUNE_STATUS"
-   ```
-````
-
-- [x] **Step 4: Run test to verify it passes**
-
-Run: `cd claude-skills/ship-workflow && bats tests/test_ship-next-prune.bats`
-Expected: PASS — 7 tests.
-
-- [x] **Step 5: Commit**
-
-```bash
-git add claude-skills/ship-workflow/commands/ship-next.md \
-        claude-skills/ship-workflow/tests/test_ship-next-prune.bats
-git commit -m "feat: add Phase 8.5 coverage-gated test pruning"
-```
-
----
+> **WITHDRAWN 2026-09-30.** This task specified a scoped test prune behind a gate that
+> required coverage not to fall. Nine acceptance-review rounds found defects in that
+> gate; the last three showed why it could never work: coverage records which lines
+> executed, not whether an assertion observed them.
+>
+> Phase 8.5 shipped as **report-only** — it writes `.ship/prune-candidates.md` and
+> deletes nothing. See spec §7.1 for the design and the Execution log entries from
+> 2026-09-29 onward for the full history, including every defect and its reproduction.
+>
+> **The original 200 lines of steps are deleted, not kept as a record.** The Execution
+> log already holds the account. Leaving prescriptive text that must not be followed is
+> a trap for the next reader, and it tripped this repo's own documentation guard.
+> `git log -p` has them if they are ever wanted.
 
 ### Task 10: Phase 8.7 UA rebuild and the Phase 9 summary
 
@@ -1870,8 +1679,9 @@ Insert between Phase 8.5 and Phase 9 in `commands/ship-next.md`:
 ````markdown
 ## Phase 8.7 — UA knowledge graph rebuild
 
-Runs after Phase 8.5 so the rebuilt graph reflects the final tree, pruning commit
-included. Ordering is load-bearing.
+Runs after Phase 8.5. That phase is report-only and commits nothing, so this ordering is
+no longer load-bearing for correctness; it is kept so the rebuilt graph reflects the tree
+as Phase 9 will leave it.
 
 ```bash
 # shellcheck disable=SC1091
@@ -2052,6 +1862,111 @@ boundaries and assert the structure survived. A textual index slice on a 1900-li
 document has no boundary and fails silently.
 
 ## Execution log
+
+### 2026-09-30 — Task 11 acceptance BLOCKED at 78be616
+
+- Ran `cd claude-skills/ship-workflow && bats tests/` as its own command:
+  **231/231 passed, exit 0**. Initial HEAD was `78be616`; initial status contained
+  only the pre-existing untracked `.claude-uploads/`.
+- Applied ship and executing-plans review/verification within the explicitly
+  repository-only acceptance scope. No release, global bookkeeping, nested Codex,
+  or live HOME/.claude operations. An independent in-host reviewer verified absent
+  integrations. Existing Task 11 tests and all implementation files remain unchanged.
+
+**BLOCKER: the behavioural guard never enters the candidate-report branch.**
+
+`tests/test_ship-next-prune.bats:69` sets both `ORIG_BRANCH=HEAD` and `BRANCH=HEAD`.
+The actual phase therefore evaluates `git diff --name-only HEAD...HEAD` to nothing.
+`TOUCHED`, `MODULES`, and `TEST_TARGETS` are empty, and the condition at
+`commands/ship-next.md:756` skips the entire report branch, including its
+`mkdir -p .ship`, candidate count, and status assignment. Setting the verdict to
+`major` does not, as the test comment claims, force the branch that does the work.
+
+Reproduction used a scratch copy of the real command and real Bats file. Changed
+only the copied test's `load helpers` and `CMD` paths to resolve the real helpers
+and copied command. For each trial inserted exactly one statement immediately
+**after `mkdir -p .ship` at command line 780**, inside the existing Bash fence:
+
+| Injected statement | Actual guard exit | Executed with distinct refs and a mapped test target |
+|---|---:|---|
+| none (control) | 0 | no test/index/HEAD/status change |
+| `/bin/rm -f tests/src/test_a.py` | **0** | test file deleted |
+| `: > .ship/../tests/src/test_a.py` | **0** | test file truncated to zero bytes |
+| `git -C . add -- tests/src/test_a.py` | **0** | index tree changed; unstaged edit staged |
+| `git restore -- tests/src/test_a.py` | **0** | unstaged assertion edit discarded |
+
+Run the copied guard with:
+
+```bash
+bats --filter 'Phase 8.5 bash mutates nothing'   claude-skills/ship-workflow/tests/.tmp/acceptance-78be616/guard.bats
+```
+
+Restoring the command copy returned exit 0. Moving the same `/bin/rm` injection
+before `TOUCHED=` made the guard exit **1**, reporting the missing test/hash.
+This control establishes that the snapshot catches this deletion when executed;
+the passing inner-branch injections are missed execution, not harmless commands.
+The restored copied prune test file passed all **15/15** tests.
+
+Executed all four accepted mutants through the actual extracted phase using real
+Git and `/bin/bash`, without Git stubs, in separate scratch repositories. Each had:
+
+1. A committed `src/a.py` returning 1 and `tests/src/test_a.py` asserting 1.
+2. A second commit changing only `src/a.py` to return 2.
+3. An unstaged assertion change to 2 and separately staged `tests/src/test_b.py`.
+4. An existing `.ship/` and one `CANDIDATE: ` line in its report.
+5. `TEST_BUDGET_VERDICT=major`, `ORIG_BRANCH=<first commit>`, `BRANCH=HEAD`.
+
+Compared test bytes/existence, `git write-tree`, HEAD, and status around execution.
+Every mutant exited **0** and emitted **`1 prune candidate(s) ... (nothing deleted)`**
+despite the effects above. HEAD stayed unchanged. The unmodified phase preserved
+these snapshots. Re-running that original phase with identical refs explicitly
+produced `TARGETS=<> STATUS=<no report (no scoped test targets for )>`.
+
+Required guard repair: include a real nonempty committed source diff and resolved
+mapping, and assert that the report branch was reached. Keep skip-path coverage as
+separate cases. Inject inside the report branch, not only before its condition.
+This is a regression-test defect, not evidence that the current unmodified phase
+contains destructive operations. Report-only remains the settled design.
+
+**Other acceptance results and document review.**
+
+- Executed the original phase on missing, empty, header-only, one-candidate, and
+  two-candidate reports. Counts were **0, 0, 0, 1, 2**, all exit 0. The `00` repair
+  holds. P9's actual log-row source contains `prune: ${PRUNE_STATUS}`.
+- Independent reviewer executed eight actual optional Bash blocks individually
+  and sequentially: P1.5 UA drift, P3 UA and CONTEXT, P5 ponytail render/drift,
+  P6 UA, ship-compound UA and CONTEXT cap/commit, and P8.7 UA rebuild. AUTO=0/1
+  crossed with UA absent/installed without KG gives **32 block executions and
+  four sequential cycles**, all without ponytail or CONTEXT. Real dirty Git
+  fixtures, isolated HOME via subprocess environment, installed library paths
+  redirected to repository sources, and binding/mirror sentinels were used.
+  Worktree hashes/status, index tree, HEAD and stash were unchanged; stdout/stderr
+  stayed empty; optional artifacts stayed absent; binding/mirror sentinels were
+  not called. Statuses were absent CONTEXT, PONYTAIL_DRIFT=0 and UA_STATUS=n/a.
+  P1.5 retains the previously documented silent exit 1 from its trailing false
+  string test; other blocks and the sequential cycles exit 0. This verifies
+  optional hooks, not an entire external agent-driven ship conversation.
+- Swept current spec for `coverage|rollback|prune|deletes` and judged the hits.
+  P5, §7, §10, §12.4 and §13 now agree with the command's report-only design.
+  Task 9 is explicitly superseded. One residual **plan snippet mismatch** remains:
+  Task 10 Step 3, lines 1873–1874, still instructs insertion of “pruning commit
+  included. Ordering is load-bearing.” Current command/spec state the opposite.
+  Its later Execution log records the correction, so this does not reopen the
+  design; annotate that completed task's old snippet as historical/superseded
+  to avoid treating it as current reproduction instructions. No source repair
+  was made during acceptance.
+
+**Verdict: BLOCKED. Task 11 remains incomplete; no acceptance commit created.**
+
+Scratch directories `tests/.tmp/acceptance-78be616/` and
+`tests/.tmp/acceptance-78be616-absent/` were removed after recording the evidence.
+Only this Execution log was edited. No push, branch switch, amend, hook bypass,
+live HOME/.claude change, or `.claude-uploads/` change occurred.
+
+Durable learning: executing a block is not proof that its guarded body executed.
+A behavioural guard needs branch-reaching fixture data and a reachability assertion;
+otherwise even a correct snapshot proves only that the skip path is harmless.
+
 
 ### 2026-09-29 — Task 11 acceptance BLOCKED at 393e80e
 
@@ -3286,3 +3201,48 @@ textual approximation of that claim — denylist, allowlist, "structural" rules 
 guess about how the next author will spell the thing you are forbidding. And when a
 behavioural test passes, check the fixture actually represents the state where the defect
 would bite; a no-op on the wrong fixture is indistinguishable from safety.
+
+### 2026-09-30 — the behavioural guard now exercises the branch it guards
+
+Ninth review. The guard ran the phase's bash but never reached the code it was guarding:
+both refs were stubbed to `HEAD`, so the diff was empty, `TEST_TARGETS` was empty, and the
+phase returned at "no scoped test targets". Statements injected inside the report branch
+were dead code and passed.
+
+This is precisely the caveat written into the previous entry — *"check the fixture
+actually represents the state where the defect would bite; a no-op on the wrong fixture
+is indistinguishable from safety"* — and it shipped one round later in the same file.
+Writing the lesson down did not prevent repeating it. Executing it would have.
+
+**Fixed.** The fixture now builds a base commit, changes a non-test source file on a
+second commit, and passes the two distinct refs, so `MODULES` resolves to `src` and
+`TEST_TARGETS` maps to `tests/src/*.py`. The phase runs all the way through.
+
+**And the guard now proves it got there.** It fails loudly if the output says "no scoped
+test targets", and requires "prune candidate" in the result before trusting the
+before/after comparison. A vacuous guard is now a red test, not a green one. Verified by
+reverting the refs to `HEAD`/`HEAD`: the guard fails with `guard is vacuous: fixture never
+reached the report branch`.
+
+**A broken test harness, caught on the way.** The first injection run reported all twelve
+branch-position mutants as escaping. They had not escaped — the injector was matching the
+first of five `mkdir -p .ship` lines in the file, which lives in Phase 3, so the mutants
+were landing in the wrong phase. The injector now scopes to the Phase 8.5 heading range.
+Twelve mutants inside the report branch, all caught; three at top level, all caught.
+
+**Task 9's 200 withdrawn lines are deleted, not kept.** They still read as instructions
+despite the SUPERSEDED banner, and the documentation guard — widened this round to cover
+the plan's prescriptive body while excluding its Execution log — fired on them. The log
+holds the account; `git log -p` holds the text. Prescriptive text that must not be
+followed is a trap, which is the same judgement that deleted `coverage-diff.py` and
+`tb_coverage_ok` rather than leaving them in `lib/`.
+
+Also corrected: Task 10 Step 3 still prescribed inserting "pruning commit" prose.
+
+Suite: 231, 0 failures.
+
+Durable learning: a behavioural test has two obligations, and the second is easy to skip.
+It must exercise the code, and it must *prove* it exercised the code. Assert on a marker
+that only the intended path produces, or the test degrades into a green no-op the first
+time the fixture drifts. The same applies to the harness that tests the test: verify an
+injection actually landed where it was aimed before believing it escaped.

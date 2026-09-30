@@ -25,11 +25,13 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "Phase 8.5 bash mutates nothing — executed, not pattern-matched" {
-  # Two textual guards were written here and both were defeated, by `/bin/rm`,
-  # `git -C . add`, `.ship/../tests/x.py` and `sed -e ... -i ''`. Matching patterns
-  # over shell text cannot work: the ways to spell a destructive command are
-  # unbounded. So run the code and look at the tree afterwards.
+@test "Phase 8.5 bash mutates nothing — executed, on a fixture that reaches the work" {
+  # Textual guards were written here twice and defeated twice, so this one runs the
+  # code. But a behavioural guard is only worth the path it exercises: the first
+  # version stubbed both refs to HEAD, so the diff was empty, TEST_TARGETS was empty,
+  # and the phase returned before its report branch. Injections placed inside that
+  # branch were dead code and "passed". The fixture below drives the phase all the
+  # way in, and the guard asserts it got there before trusting the result.
   repo="$BATS_TEST_TMPDIR/repo"
   mkdir -p "$repo/tests/src" "$repo/src"
   cd "$repo"
@@ -39,18 +41,21 @@ setup() {
   printf 'def f():\n    return 1\n' > src/a.py
   printf 'def test_f():\n    assert f() == 1\n' > tests/src/test_a.py
   git add -A
-  git commit -q -m init
+  git commit -q -m base
+  base=$(git rev-parse HEAD)
 
-  # The fixture must be DIRTY. On a clean tree `git add`, `git checkout -- tests/`,
-  # `git restore` and `git stash` are all no-ops and slip past unnoticed; they are
-  # only destructive when there is uncommitted work to destroy. Leave some.
-  printf 'def test_f():\n    assert f() == 1\n    assert f() != 2\n' > tests/src/test_a.py
+  # A real diff on a NON-test source file, so MODULES resolves to src and
+  # TEST_TARGETS maps to tests/src/*.py. Without this the report branch never runs.
+  printf 'def f():\n    return 2\n' > src/a.py
+  git add -A
+  git commit -q -m change
+  head=$(git rev-parse HEAD)
+
+  # Dirty, because on a clean tree git add / checkout / restore / stash are no-ops.
+  printf 'def test_f():\n    assert f() == 2\n    assert f() != 9\n' > tests/src/test_a.py
   printf 'def test_g():\n    assert True\n' > tests/src/test_b.py
-  git add tests/src/test_b.py   # one staged, one unstaged
-
-  # .ship/ exists in a real run, so path-traversal redirects like
-  # `.ship/../tests/x.py` resolve. Without it the redirect fails on a missing
-  # directory and the injection looks harmless.
+  git add tests/src/test_b.py
+  # .ship/ exists in a real run, so `.ship/../tests/x.py` traversal resolves.
   mkdir -p .ship
 
   snapshot() {
@@ -65,9 +70,18 @@ setup() {
   block=$(awk '/^## Phase 8.5/,/^## Phase 8.7/' "$CMD" \
           | awk '/^   ```bash/{f=1;next}/^   ```/{f=0}f' | sed 's/^   //')
   [ -n "$block" ]
-  # Stub what earlier phases would have set, and force the branch that does the work.
-  TEST_BUDGET_VERDICT=major ORIG_BRANCH=HEAD BRANCH=HEAD \
-    bash -c "$block" >/dev/null 2>&1 || true
+  out=$(TEST_BUDGET_VERDICT=major ORIG_BRANCH="$base" BRANCH="$head" \
+        bash -c "$block; echo \"PRUNE_STATUS=\$PRUNE_STATUS\"" 2>&1) || true
+
+  # Prove the report branch actually ran. If this ever regresses to "no scoped test
+  # targets", the guard is vacuous again and must fail loudly rather than pass.
+  if echo "$out" | grep -q 'no scoped test targets'; then
+    echo "guard is vacuous: fixture never reached the report branch"
+    echo "$out"
+    return 1
+  fi
+  echo "$out" | grep -q 'prune candidate' || {
+    echo "guard did not reach the candidate step; got: $out"; return 1; }
 
   after=$(snapshot)
   if [ "$before" != "$after" ]; then
@@ -135,12 +149,17 @@ setup() {
 }
 
 @test "no shipped document still claims Phase 8.5 deletes or commits" {
-  SPEC="$SHIP_SKILL_ROOT/../../docs/superpowers/specs/2026-09-28-ship-next-context-and-test-discipline-design.md"
-  for f in "$CMD" "$SPEC"; do
+  DOCS="$SHIP_SKILL_ROOT/../../docs/superpowers"
+  SPEC="$DOCS/specs/2026-09-28-ship-next-context-and-test-discipline-design.md"
+  PLAN="$DOCS/plans/2026-09-28-ship-next-context-and-test-discipline-impl.md"
+  for f in "$CMD" "$SPEC" "$PLAN"; do
     [ -f "$f" ] || continue
     for claim in 'coverage-gated' 'pruning commit' 'test: prune'; do
-      if grep -qF -- "$claim" "$f"; then
-        echo "$f still claims: $claim"
+      # The plan's Execution log quotes these strings while recording that they were
+      # wrong. Only prescriptive text counts: the log starts at "## Execution log".
+      body=$(awk '/^## Execution log/{exit} {print}' "$f")
+      if echo "$body" | grep -qF -- "$claim"; then
+        echo "$f prescribes: $claim"
         return 1
       fi
     done
