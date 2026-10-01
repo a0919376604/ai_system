@@ -457,29 +457,43 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    ```bash
    # shellcheck disable=SC1091
    source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
-   if ua_check_installed; then
-     mkdir -p .ship
-     ua_get_diff_report main > .ship/ua-diff-report.md
+   ua_check_installed && echo "UA present — run the blast-radius step below." || true
+   ```
 
-     # Cross-ref: for each changed file, check vault REMINDERS.md for a rule
-     PROJECT=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_name 2>/dev/null || echo "")
+   When UA is present, **invoke `/understand-anything:understand-diff`** with
+   `${ORIG_BRANCH}` as the base, and write its analysis to `.ship/ua-diff-report.md`.
+
+   This used to be `ua_get_diff_report`, ~90 lines of bash walking
+   `.ua/knowledge-graph.json` by hand. It produced Changed and Affected components
+   only. `/understand-diff` reads the same graph and additionally gives **affected
+   layers**, a **risk assessment** derived from node complexity and cross-layer edge
+   count, and a **dashboard overlay** (`.ua/diff-overlay.json`). Its staleness check is
+   also stricter: it inspects staged, unstaged and untracked state, not just the
+   committed diff. Reimplementing a worse subset in shell was the duplication; the
+   output feeds an LLM reviewer and a template, so nothing parses it as a contract.
+
+   Then cross-reference the vault's architecture reminders — this part is independent
+   of UA's output format and stays as plain bash:
+
+   ```bash
+   if [ -s .ship/ua-diff-report.md ]; then
      PROJECT_PATH=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path 2>/dev/null || echo "")
      REMINDERS_PATH="$PROJECT_PATH/Architecture/REMINDERS.md"
-     if [ -n "$PROJECT" ] && [ -n "$PROJECT_PATH" ] && [ -f "$REMINDERS_PATH" ]; then
-       CHANGED=$(git diff --name-only main...HEAD)
-       while IFS= read -r f; do
+     if [ -n "$PROJECT_PATH" ] && [ -f "$REMINDERS_PATH" ]; then
+       git diff --name-only "${ORIG_BRANCH}...HEAD" | while IFS= read -r f; do
          [ -z "$f" ] && continue
          base=$(basename "$f" | sed 's/\.[^.]*$//')
          if grep -q "$base" "$REMINDERS_PATH" 2>/dev/null; then
            echo "> ℹ REMINDERS.md has a rule mentioning \`$base\` — review before merge." >> .ship/ua-diff-report.md
          fi
-       done <<< "$CHANGED"
+       done
      fi
      echo "UA blast-radius report → .ship/ua-diff-report.md"
    fi
    ```
 
-   code-review-skill should Read `.ship/ua-diff-report.md` when present, treating it as pre-computed review context alongside the diff itself.
+   code-review-skill should Read `.ship/ua-diff-report.md` when present, treating it as
+   pre-computed review context alongside the diff itself.
 
 0.5. **Mechanical test gates (pure git + shell, before the LLM review).**
 
