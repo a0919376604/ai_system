@@ -3,7 +3,9 @@ load helpers
 
 @test "ship-next Phase 6 calls airos-binding CLI instead of sourcing it" {
   local command_file="$SHIP_SKILL_ROOT/commands/ship-next.md"
-  run grep -F 'PROJECT=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_name' "$command_file"
+  # The intent is "invoke it as a CLI, never source it". Which subcommand Phase 6
+  # happens to need is not the point — it now needs project_path only.
+  run grep -F '~/.claude/skills/ship-workflow/lib/airos-binding.sh project_' "$command_file"
   [ "$status" -eq 0 ]
   run grep -F 'source ~/.claude/skills/ship-workflow/lib/airos-binding.sh' "$command_file"
   [ "$status" -eq 1 ]

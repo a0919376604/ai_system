@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 # ship-workflow/lib/ua-integration.sh
-# Detects Understand-Anything plugin + repo KG, exposes helpers for
-# ship-next phases and ship-compound. Auto-detected; every public
-# function is a silent no-op when UA is absent.
+# Detects Understand-Anything plugin + repo KG, exposes helpers for ship-next.
+# Auto-detected; every public function is a silent no-op when UA is absent.
+#
+# SCOPE. This answers two questions the UA plugin does not: "is the graph still
+# trustworthy for this ship" (ua_check_drift) and "what do this R-NNN's declared
+# target-files do, and who calls them" (ua_get_pre_brainstorm_context).
+# Blast-radius analysis is NOT here — that is
+# `/understand-anything:understand-diff`, which also reports affected layers, a
+# risk assessment and a dashboard overlay. Three helpers re-deriving a subset of
+# it in bash were deleted on 2026-10-01; do not reintroduce them.
 #
 # Design: reads .ua/knowledge-graph.json directly (no UA slash command
 # invocation) so it works from any IDE and is unaffected by Claude Code
@@ -132,34 +139,6 @@ except Exception:
 ' "$kg" "$target_path" 2>/dev/null
 }
 
-# _ua_extract_layers — echoes markdown bullet lines for layers whose
-# nodeIds intersect nodes of the given files. Format:
-#   - <layer_name>: <description>
-_ua_extract_layers() {
-  local kg
-  kg=$(_ua_kg_path)
-  [ -z "$kg" ] && return 0
-  local files_json
-  files_json=$(printf '%s\n' "$@" | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')
-  python3 -c '
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-    files = set(json.loads(sys.argv[2]))
-    node_ids = set()
-    for n in d.get("nodes", []):
-        if n.get("filePath") in files:
-            node_ids.add(n.get("id"))
-    for layer in d.get("layers", []):
-        if set(layer.get("nodeIds", [])) & node_ids:
-            name = layer.get("name", "?")
-            desc = layer.get("description", "")
-            print("- %s: %s" % (name, desc))
-except Exception:
-    pass
-' "$kg" "$files_json" 2>/dev/null
-}
-
 # --- 3. Phase 3 pre-brainstorm context ---------------------------------------
 
 # ua_get_pre_brainstorm_context <R-NNN>
@@ -173,7 +152,11 @@ ua_get_pre_brainstorm_context() {
   spec=$(ls docs/specs/${rid}-*.md 2>/dev/null | head -1)
   [ -z "$spec" ] || [ ! -f "$spec" ] && return 0
   # Grep the target-files: block (YAML list)
-  local files
+  local files summary callers
+  # Declared once here, NOT inside the loop below. zsh prints a `local` re-declared
+  # on an already-local name, so `local summary` per iteration emitted
+  # `summary=$'...'` debris into the report. bash is silent, which is why this
+  # survived unnoticed for months.
   files=$(awk '/^target-files:/{flag=1; next} /^[a-z-]+:/{flag=0} flag && /^[[:space:]]*-[[:space:]]/{sub(/^[[:space:]]*-[[:space:]]*/,""); print}' "$spec" | head -10)
   [ -z "$files" ] && return 0
   echo "## UA pre-brainstorm context"
@@ -183,10 +166,8 @@ ua_get_pre_brainstorm_context() {
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     echo "### \`$f\`"
-    local summary
     summary=$(_ua_extract_file_summary "$f")
     [ -n "$summary" ] && echo "$summary" && echo
-    local callers
     callers=$(_ua_extract_callers "$f" | head -3)
     if [ -n "$callers" ]; then
       echo "Callers (top 3):"
@@ -196,79 +177,3 @@ ua_get_pre_brainstorm_context() {
   done <<< "$files"
 }
 
-# --- 4. Phase 6 diff report --------------------------------------------------
-
-# ua_get_diff_report [<base>]
-# Default base = main. Echoes "## UA blast radius" block.
-# Truncates: top 30 changed (git diff order), top 20 affected (edge weight desc).
-# When changed > 100, full report written to .ship/ua-diff-full.md.
-# Empty stdout on UA absent.
-ua_get_diff_report() {
-  local base="${1:-main}"
-  ua_check_installed 2>/dev/null || return 0
-  local drift
-  drift=$(ua_check_drift)
-  local changed
-  changed=$(git diff --name-only "$base"...HEAD -- . ':(exclude).ua' ':(exclude).understand-anything' 2>/dev/null)
-  if [ -z "$changed" ]; then
-    echo "_(no changed files vs $base)_"
-    return 0
-  fi
-  local changed_count
-  changed_count=$(printf '%s\n' "$changed" | wc -l | tr -d ' ')
-  echo "## UA blast radius"
-  echo
-  [ -n "$drift" ] && echo "$drift" && echo
-  echo "### Changed components"
-  local shown=0
-  while IFS= read -r f; do
-    [ -z "$f" ] && continue
-    if [ "$shown" -lt 30 ]; then
-      local summary
-      summary=$(_ua_extract_file_summary "$f")
-      echo "- \`$f\`: ${summary:-_(no KG entry)_}"
-    fi
-    shown=$((shown + 1))
-  done <<< "$changed"
-  if [ "$shown" -gt 30 ]; then
-    mkdir -p .ship
-    {
-      echo "# UA blast radius (full)"
-      echo
-      while IFS= read -r f; do
-        [ -z "$f" ] && continue
-        local summary
-        summary=$(_ua_extract_file_summary "$f")
-        echo "- \`$f\`: ${summary:-_(no KG entry)_}"
-      done <<< "$changed"
-    } > .ship/ua-diff-full.md
-    echo "- ... ($((shown - 30)) more, see .ship/ua-diff-full.md)"
-  fi
-  echo
-  echo "### Affected components (1-hop callers, top 20 by edge weight)"
-  while IFS= read -r f; do
-    [ -z "$f" ] && continue
-    _ua_extract_callers "$f"
-  done <<< "$changed" | sort -k6,6nr | head -20
-  echo
-  echo "### Affected layers"
-  _ua_extract_layers $(printf '%s\n' "$changed" | tr '\n' ' ')
-}
-
-# --- 5. Phase 8 compound facts -----------------------------------------------
-
-# ua_get_shipped_facts <R-NNN>
-# Auto-derives the base commit as the first commit whose message contains
-# "chore: plan <R-NNN>"; falls back to --since="2 weeks ago". Then delegates
-# to ua_get_diff_report. Feed the output into the CASE_ELI5.md template.
-ua_get_shipped_facts() {
-  local rid="$1"
-  ua_check_installed 2>/dev/null || return 0
-  local base
-  base=$(git log --format=%H --grep="chore: plan ${rid}" 2>/dev/null | tail -1)
-  if [ -z "$base" ]; then
-    base=$(git log --format=%H --since="2 weeks ago" 2>/dev/null | tail -1)
-  fi
-  [ -z "$base" ] && return 0
-  ua_get_diff_report "$base"
-}

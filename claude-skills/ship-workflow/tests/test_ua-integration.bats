@@ -130,17 +130,6 @@ teardown() {
   [[ "$output" =~ "weight 5" ]]
 }
 
-@test "_ua_extract_layers: lists layers touched by given file" {
-  cd "$SCRATCH"
-  make_fake_ua_plugin_cache "$SCRATCH"
-  git init -q
-  make_fake_ua_kg "$SCRATCH"
-  source "$SHIP_LIB/ua-integration.sh"
-  run _ua_extract_layers "foo.py"
-  [ "$status" -eq 0 ]
-  [[ "$output" =~ "core" ]]
-  [[ "$output" =~ "core modules" ]]
-}
 
 @test "ua_get_pre_brainstorm_context: emits section per target file" {
   cd "$SCRATCH"
@@ -176,64 +165,6 @@ EOF
   [ -z "$output" ]
 }
 
-@test "ua_get_diff_report: emits blast radius sections on real diff" {
-  cd "$SCRATCH"
-  make_fake_ua_plugin_cache "$SCRATCH"
-  git init -q
-  git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
-  local base; base=$(git rev-parse HEAD)
-  make_fake_ua_kg "$SCRATCH" "$base"
-  echo "changed" > foo.py
-  git add foo.py && git -c user.email=t@t -c user.name=t commit -q -m "touch foo"
-  source "$SHIP_LIB/ua-integration.sh"
-  run ua_get_diff_report HEAD~1
-  [ "$status" -eq 0 ]
-  [[ "$output" =~ "UA blast radius" ]]
-  [[ "$output" =~ "Changed components" ]]
-  [[ "$output" =~ "foo.py" ]]
-  [[ "$output" =~ "Affected components" ]]
-  [[ "$output" =~ "Affected layers" ]]
-  [[ "$output" =~ "file:bar.py" ]]
-}
 
-@test "ua_get_diff_report: writes full report to .ship/ua-diff-full.md on huge diff" {
-  cd "$SCRATCH"
-  make_fake_ua_plugin_cache "$SCRATCH"
-  git init -q
-  git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
-  local base; base=$(git rev-parse HEAD)
-  make_fake_ua_kg "$SCRATCH" "$base"
-  for i in $(seq 1 105); do echo "x" > "f$i.py"; done
-  git add . && git -c user.email=t@t -c user.name=t commit -q -m "105 files"
-  source "$SHIP_LIB/ua-integration.sh"
-  run ua_get_diff_report HEAD~1
-  [ "$status" -eq 0 ]
-  [ -f ".ship/ua-diff-full.md" ]
-  [[ "$output" =~ "(75 more, see" ]]
-}
 
-@test "ua_get_diff_report: empty stdout when UA absent" {
-  cd "$SCRATCH"
-  git init -q
-  git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
-  source "$SHIP_LIB/ua-integration.sh"
-  run ua_get_diff_report HEAD~1 || true
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
 
-@test "ua_get_shipped_facts: uses plan-commit as base when found" {
-  cd "$SCRATCH"
-  make_fake_ua_plugin_cache "$SCRATCH"
-  git init -q
-  git -c user.email=t@t -c user.name=t commit -q --allow-empty -m "chore: plan R-042"
-  local base; base=$(git rev-parse HEAD)
-  make_fake_ua_kg "$SCRATCH" "$base"
-  echo "changed" > foo.py
-  git add foo.py && git -c user.email=t@t -c user.name=t commit -q -m "impl"
-  source "$SHIP_LIB/ua-integration.sh"
-  run ua_get_shipped_facts "R-042"
-  [ "$status" -eq 0 ]
-  [[ "$output" =~ "UA blast radius" ]]
-  [[ "$output" =~ "foo.py" ]]
-}

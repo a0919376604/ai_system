@@ -42,24 +42,36 @@ You are wrapping up a Roadmap item.
    ```bash
    # shellcheck disable=SC1091
    source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
-   source ~/.claude/skills/ship-workflow/lib/render-template.sh
-   if ua_check_installed; then
-     PROJECT=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_name)
-     UA_FACTS=$(ua_get_shipped_facts "$ID")
-     UA_CHANGED=$(echo "$UA_FACTS" | sed -n '/### Changed components/,/^###/p' | sed '/^###/d')
-     UA_BLAST=$(echo "$UA_FACTS" | sed -n '/### Affected components/,/^###/p' | sed '/^###/d')
-     STUB_PATH="/tmp/case-stub-${ID}.md"
-     render_template ~/.claude/skills/ship-workflow/templates/repo/CASE_ELI5.md \
-       id="$ID" project="$PROJECT" slug="$SLUG" theme="TODO" \
-       date="$(date +%Y-%m-%d)" \
-       ua_changed_files="$UA_CHANGED" \
-       ua_blast_radius="$UA_BLAST" \
-       ua_raw_diff_report="$UA_FACTS" \
-       > "$STUB_PATH"
-     echo "Case ELI5 stub drafted at $STUB_PATH"
-     echo "Review + add rationale + move to AIR-OS 10 Projects/$PROJECT/Architecture/cases/<theme>/"
-   fi
+   ua_check_installed && echo "UA present — run the case-stub step below." || true
    ```
+
+   When UA is present, **invoke `/understand-anything:understand-diff`** with the base
+   being the commit of `chore: plan ${ID}` (fall back to two weeks ago if absent). Then
+   render the stub, supplying the three UA fields **from the analysis you just read**:
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/render-template.sh
+   PROJECT=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_name)
+   STUB_PATH="/tmp/case-stub-${ID}.md"
+   render_template ~/.claude/skills/ship-workflow/templates/repo/CASE_ELI5.md \
+     id="$ID" project="$PROJECT" slug="$SLUG" theme="TODO" \
+     date="$(date +%Y-%m-%d)" \
+     ua_changed_files="$UA_CHANGED" \
+     ua_blast_radius="$UA_BLAST" \
+     ua_raw_diff_report="$UA_REPORT" \
+     > "$STUB_PATH"
+   echo "Case ELI5 stub drafted at $STUB_PATH"
+   echo "Review + add rationale + move to AIR-OS 10 Projects/$PROJECT/Architecture/cases/<theme>/"
+   ```
+
+   Set `UA_CHANGED`, `UA_BLAST` and `UA_REPORT` yourself from the analysis. This used to
+   run `ua_get_shipped_facts` and cut the values out with
+   `sed -n '/### Changed components/,/^###/p'` — parsing prose for fixed headings. That
+   worked only because the prose came from bash. `/understand-diff` is written by a model
+   following instructions, and treating its output as a parseable contract is the mistake
+   this repo spent thirteen review rounds learning not to make. You read it; you fill the
+   fields.
 
 5.6. **REMINDERS candidate prompt (no auto-write):**
 
