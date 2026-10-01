@@ -207,6 +207,17 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
        - `discard`: `git worktree remove --force "$WORKTREE"; git branch -D "$BRANCH"`, fall through to Phase 2.
        - `n`: exit 0.
 
+## Phase 1.5 — UA drift check (auto-detect, silent no-op if UA absent)
+
+```bash
+# shellcheck disable=SC1091
+source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
+DRIFT_WARN=$(ua_check_drift)
+[ -n "$DRIFT_WARN" ] && echo "$DRIFT_WARN"
+```
+
+When UA plugin + repo KG are both present and the KG's baseline commit differs from HEAD by any project files, this prints a warning block. It does NOT gate; the phase proceeds. See `docs/superpowers/specs/2026-08-30-ua-ship-workflow-integration-design.md`.
+
 ## Phase 2 — Open worktree
 
 1. **Invoke `superpowers:using-git-worktrees`** with parameters:
@@ -222,6 +233,34 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 
 ## Phase 3 — Brainstorm
 
+0. **UA pre-brainstorm context (auto-detect, silent if UA absent):**
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
+   if ua_check_installed; then
+     mkdir -p .ship
+     ua_get_pre_brainstorm_context "$ID" > .ship/ua-context.md
+     [ -s .ship/ua-context.md ] && echo "UA pre-context saved to .ship/ua-context.md — Read this before brainstorm dialog."
+   fi
+   ```
+
+   When the brainstorming skill kicks off, it should Read `.ship/ua-context.md` (if present) as part of its opening context — this gives the design dialog concrete grounding in how the target files actually connect.
+
+   **CONTEXT.md (project vocabulary):**
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/context-md.sh
+   if [ -n "$(context_md_path)" ]; then
+     echo "CONTEXT.md present — Read it before brainstorm dialog."
+   fi
+   ```
+
+   When present, Read `CONTEXT.md` before the brainstorm dialog. It is the
+   project's shared domain vocabulary; using its terms verbatim avoids
+   re-deriving jargon and keeps naming consistent with what teammates read.
+
 0. **Resume detection.** Check what's already done in the worktree:
    - `ls docs/specs/${ID}-${SLUG}.md` exists → **first re-mirror spec to vault** (catch any post-write edits), then skip to Phase 4 (plan stage):
      ```bash
@@ -236,6 +275,12 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 1. **Proposal check** (same as existing /ship-next pre-step): look for `<vault>/Proposals/*-${ID}-*-proposal.md`. If `status: accepted`, load §1-§7 as brainstorm context.
 
 2. **Invoke `superpowers:brainstorming`** with context: spec target `docs/specs/${ID}-${SLUG}.md`, project `<project_name>`, proposal context (if loaded).
+
+   Also pass a **required output section: `## Seams`** — a three-column table
+   (Seam | Interface | Guaranteed behavior) declaring every boundary this work
+   introduces or changes. Tests may assert a seam's behavior and nothing inside
+   it. This instruction travels in the invocation context; no `superpowers`
+   file is modified.
 
    **In auto mode (`AUTO=1`):** the brainstorming skill is still invoked, but **every clarifying question is auto-answered by picking option 1**. The brainstorming skill convention is to lead with the recommended option, so option 1 = recommended.
 
@@ -278,6 +323,37 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 
 ## Phase 4 — Writing plans
 
+**Plan-authoring guidance (learned from R-084.1, 2026-07-30):**
+
+- **Verification/acceptance steps MUST run scoped pytest, not the full
+  suite.** `pytest tests/ -q` in developer/codex environments without
+  `env.json` + PG credentials hits pre-existing baseline timeouts that
+  can stall 30+ min with no natural termination. Instead, list the
+  specific test files/directories the plan touched:
+  `pytest tests/domain/test_foo.py tests/api/test_bar.py -q`. If you
+  genuinely need a broader run, prefer `pytest tests/domain/ tests/api/ -q`
+  (or whatever module scopes are relevant) over `tests/`.
+
+- **Reader-untouched grep guards MUST use three-dot diff:**
+  `git diff <base>...HEAD -- <paths>`, NOT `<base>..HEAD`. Two-dot
+  leaks commits that landed on `<base>` after this branch forked and
+  makes them show up as reverse-diff pollution when you compare.
+
+0. **Seam gate.**
+
+   ```bash
+   SPEC_FILE="docs/specs/${ID}-${SLUG}.md"
+   if ! grep -qF '## Seams' "$SPEC_FILE"; then
+     if [ "$AUTO" = "1" ]; then
+       echo "ERROR: --auto:yes refused — spec has no \`## Seams\` section." >&2
+       echo "       Add it to $SPEC_FILE, then re-invoke /ship-next ${ID} --auto:yes." >&2
+       exit 2
+     else
+       echo "WARN: spec has no \`## Seams\` — tests will have no declared boundary to attach to." >&2
+     fi
+   fi
+   ```
+
 1. **Invoke `superpowers:writing-plans`** with the spec from Phase 3.
 
    **In auto mode (`AUTO=1`):** the writing-plans skill's "Review plan first?" gate is auto-approved.
@@ -314,6 +390,59 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    # In auto mode, the log entry from step 5.4 already captured the choice.
    ```
 
+2.5. **Render executor rule files.**
+
+   ```bash
+   mkdir -p .ship
+
+   # TDD discipline, rendered from the spec's ## Seams table
+   {
+     echo "# TDD rules for ${ID}"
+     echo
+     echo "1. Tests attach only to the seams listed below."
+     echo "2. \`Seam: none\` tasks add no tests. Behavior unchanged => tests unchanged."
+     echo "3. One test, one behavior. Do not pack unrelated assertions into a single test."
+     echo
+     echo "## Declared seams"
+     sed -n '/^## Seams/,/^## /p' "docs/specs/${ID}-${SLUG}.md" | sed '$d'
+   } > .ship/tdd-rules.md
+
+   # ponytail ladder (silent no-op when ponytail is not installed)
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/ponytail-integration.sh
+   ponytail_render_rules .ship/ponytail-rules.md
+
+   # Version pin + drift detection (spec §8.4). Drift NEVER blocks: we use the
+   # new ruleset and surface the change, because a stale pin nobody bumps is the
+   # failure mode this project already has.
+   PONYTAIL_CURRENT=$(ponytail_version)
+   PONYTAIL_SHA=$(ponytail_ruleset_sha256)
+   PONYTAIL_PINNED=$(grep -A3 '^ponytail:' ~/.claude/ship-workflow.yml 2>/dev/null \
+                     | grep 'pinned_version:' | sed 's/.*: *//' | tr -d '"' )
+   PONYTAIL_PINNED_SHA=$(grep -A3 '^ponytail:' ~/.claude/ship-workflow.yml 2>/dev/null \
+                     | grep 'ruleset_sha256:' | sed 's/.*: *//' | tr -d '"' )
+   PONYTAIL_DRIFT=0
+   if [ -n "$PONYTAIL_SHA" ] && [ -n "$PONYTAIL_PINNED_SHA" ] \
+      && [ "$PONYTAIL_SHA" != "$PONYTAIL_PINNED_SHA" ]; then
+     PONYTAIL_DRIFT=1
+   fi
+   ```
+
+   **On drift (`PONYTAIL_DRIFT=1`):**
+   - `--auto:yes`: proceed with the new ruleset, log it, and let Phase 9 surface it.
+     ```bash
+     [ "$AUTO" = "1" ] && ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh \
+       "$WORKTREE" "P5" "ponytail ruleset drift" "${PONYTAIL_PINNED} -> ${PONYTAIL_CURRENT}, using new"
+     ```
+   - Interactive: show the version delta and a `diff` of the ruleset against the pin,
+     then offer `[A]ccept and re-pin / [S]kip / [C]ontinue without re-pinning`.
+     `[A]` rewrites `pinned_version` and `ruleset_sha256` in `~/.claude/ship-workflow.yml`.
+
+   The plan's task template already instructs executors to read both files.
+   Rendering to `.ship/` rather than relying on skill activation is deliberate:
+   Phase 5 spawns a fresh subagent per task, and ponytail documents that
+   subagent-start hooks cannot inject its ruleset.
+
 3. **Invoke the chosen sub-skill:**
    - `1` → `superpowers:subagent-driven-development`
    - `2` → `superpowers:executing-plans`
@@ -322,6 +451,90 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 4. **Wait for completion.** Executor commits ≥ 1 commit per task into the worktree branch.
 
 ## Phase 6 — Code review loop (strict gate)
+
+0. **UA blast-radius report + REMINDERS cross-ref (auto-detect, silent if UA absent):**
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
+   if ua_check_installed; then
+     mkdir -p .ship
+     ua_get_diff_report main > .ship/ua-diff-report.md
+
+     # Cross-ref: for each changed file, check vault REMINDERS.md for a rule
+     PROJECT=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_name 2>/dev/null || echo "")
+     PROJECT_PATH=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path 2>/dev/null || echo "")
+     REMINDERS_PATH="$PROJECT_PATH/Architecture/REMINDERS.md"
+     if [ -n "$PROJECT" ] && [ -n "$PROJECT_PATH" ] && [ -f "$REMINDERS_PATH" ]; then
+       CHANGED=$(git diff --name-only main...HEAD)
+       while IFS= read -r f; do
+         [ -z "$f" ] && continue
+         base=$(basename "$f" | sed 's/\.[^.]*$//')
+         if grep -q "$base" "$REMINDERS_PATH" 2>/dev/null; then
+           echo "> ℹ REMINDERS.md has a rule mentioning \`$base\` — review before merge." >> .ship/ua-diff-report.md
+         fi
+       done <<< "$CHANGED"
+     fi
+     echo "UA blast-radius report → .ship/ua-diff-report.md"
+   fi
+   ```
+
+   code-review-skill should Read `.ship/ua-diff-report.md` when present, treating it as pre-computed review context alongside the diff itself.
+
+0.5. **Mechanical test gates (pure git + shell, before the LLM review).**
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/test-budget.sh
+
+   # (a) Refactor violation: a `Seam: none` task must not add test lines.
+   MECH_BLOCKERS=0
+   PLAN_FILE="docs/plans/${ID}-${SLUG}.md"
+   if [ -f "$PLAN_FILE" ] && grep -qF 'Seam: none' "$PLAN_FILE"; then
+     for sha in $(git log --format=%H "${ORIG_BRANCH}..HEAD"); do
+       SUBJ=$(git log -1 --format=%s "$sha")
+       TASK_NO=$(echo "$SUBJ" | grep -oE 'Task [0-9]+' | head -1)
+       [ -z "$TASK_NO" ] && continue
+       grep -A6 "### ${TASK_NO}:" "$PLAN_FILE" | grep -qF 'Seam: none' || continue
+       ADDED=$(git diff --numstat "${sha}^" "$sha" -- '*test*' 'tests/' 2>/dev/null \
+               | awk '{s+=$1} END {print s+0}')
+       if [ "${ADDED:-0}" -gt 0 ]; then
+         echo "🛑 blocking: refactor task added test lines (${TASK_NO}, +${ADDED} in tests)" >&2
+         MECH_BLOCKERS=$((MECH_BLOCKERS + 1))
+       fi
+     done
+   fi
+
+   # (b) Test budget, relative to this repo's own baseline.
+   BASELINE_RATIO_BP=$(tb_baseline_ratio)
+   SHIP_RATIO_BP=$(tb_ship_ratio "$ORIG_BRANCH" HEAD)
+   set -- $(tb_ship_lines "$ORIG_BRANCH" HEAD)
+   TEST_LINES_ADDED="$1"; SRC_LINES_ADDED="$2"
+   TEST_BUDGET_VERDICT=$(tb_verdict "$SHIP_RATIO_BP" "$BASELINE_RATIO_BP")
+
+   if tb_shadow_active; then
+     echo "Test budget: ship=${SHIP_RATIO_BP}bp baseline=${BASELINE_RATIO_BP}bp verdict=${TEST_BUDGET_VERDICT} (shadow mode — reporting only)"
+     TEST_BUDGET_VERDICT=pass
+   else
+     echo "Test budget: ship=${SHIP_RATIO_BP}bp baseline=${BASELINE_RATIO_BP}bp verdict=${TEST_BUDGET_VERDICT}"
+     [ "$TEST_BUDGET_VERDICT" = "blocking" ] && MECH_BLOCKERS=$((MECH_BLOCKERS + 1))
+   fi
+
+   # (c) Extra review checks handed to the LLM reviewer.
+   mkdir -p .ship
+   cat > .ship/review-extra-checks.md <<'CHECKS'
+In addition to your normal findings, tag any finding that matches one of these
+categories by appending the literal tag to the finding line:
+
+- `[seam-violation]` — a test asserts something not declared in the spec's `## Seams`
+- `[assertion-roulette]` — one test bundles multiple unrelated assertions
+- `[weak-assertion]` — an assertion that cannot fail for any valid input
+
+Keep your usual severity tag as well; these categories are orthogonal to severity.
+CHECKS
+   ```
+
+   `MECH_BLOCKERS > 0` feeds the same fix-plan loop as LLM blockers in step 2.
 
 1. **Verify code-review-skill installed:**
    ```bash
@@ -338,11 +551,18 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    ```
    attempt=1
    while [ "$attempt" -le 3 ]; do
-     REVIEW_TARGET=$(git diff ${ORIG_BRANCH}..HEAD)
+     # Three-dot diff: shows only what this branch added relative to the
+     # merge-base. Two-dot (..HEAD) leaks commits that landed on ORIG_BRANCH
+     # after this worktree forked — those are NOT this branch's changes and
+     # would pollute the review with reverse-showing "removed" lines.
+     # See R-084.1 learning (2026-07-30) for the burn.
+     REVIEW_TARGET=$(git diff ${ORIG_BRANCH}...HEAD)
      REVIEW_OUT=/tmp/ship-next-review-${ID}-${attempt}.md
      # Invoke awesome-skills/code-review-skill on REVIEW_TARGET; capture output to $REVIEW_OUT
+     # Read .ship/review-extra-checks.md alongside .ship/ua-diff-report.md when present.
 
      eval "$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh $REVIEW_OUT)"
+     BLOCKING_COUNT=$((BLOCKING_COUNT + MECH_BLOCKERS))
 
      # Auto mode: log every attempt
      if [ "$AUTO" = "1" ]; then
@@ -484,6 +704,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    - minor:    ${MINOR_COUNT}
    - praise:   ${PRAISE_COUNT}
 
+   Tests: +${TEST_LINES_ADDED} / Src: +${SRC_LINES_ADDED}  (ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp)
    Spec:  docs/specs/${ID}-${SLUG}.md
    Plan:  docs/plans/${ID}-${SLUG}.md
    Notes: docs/roadmap-notes/${ID}-${SLUG}.md (if exists)
@@ -499,6 +720,94 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 1. **Invoke `/ship-compound`** for this R-NNN. It writes the learning, promotes patterns to AIR-OS, marks the ROADMAP row ✅.
 
    `/ship-compound` runs from the original repo cwd (Phase 7 already cd'd back), so it touches the canonical ROADMAP in the vault directly.
+
+   `/ship-compound` now also updates `CONTEXT.md` and exports `CONTEXT_MD_STATUS`.
+
+## Phase 8.5 — Test prune report
+
+**Report-only. This phase deletes nothing.**
+
+It was designed to prune redundant tests behind a coverage gate. Six review rounds found
+fourteen defects in that gate, and the last three established why: coverage records which
+lines and branches *executed*, not whether an assertion *observed* them. A test stripped
+of its assertions produces coverage identical to one that checks everything, so no
+coverage-derived value can establish that deleting a test is safe. Proving assertion
+strength needs mutation testing, which is its own roadmap item. See spec §7.1.
+
+1. **Identify candidates.** When `TEST_BUDGET_VERDICT` is `major`, read the tests
+   covering the modules this ship touched and list, for each one you would propose
+   removing, the file, the test name, the category and one line of reasoning. Three
+   categories:
+
+   1. duplicate coverage — two tests asserting the same behavior
+   2. seam violations — a test asserting inside a seam rather than at it
+   3. never-failing tests — an assertion too weak to discriminate any input
+
+   Write them to `.ship/prune-candidates.md`, one line each, in exactly this form:
+
+   ```
+   CANDIDATE: <test file>::<test name> — <category> — <one line of reasoning>
+   ```
+
+   **Propose only; change no test file.** The prefix matters: an earlier Markdown table
+   made the header indistinguishable from data, so one candidate counted as two.
+
+2. **Compute the status.**
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/prune-report.sh
+   PRUNE_STATUS=$(prune_report "$ORIG_BRANCH" "$BRANCH" "$TEST_BUDGET_VERDICT")
+   ```
+
+   The mechanical half — trigger, scope resolution, counting — lives in
+   `lib/prune-report.sh` so it is unit-tested like every other function here. It was
+   previously inline bash in this file, and proving it destroyed nothing meant extracting
+   these fences and executing them; four review rounds then found holes in that
+   *extraction harness* rather than in the code. `prune_report` is read-only by
+   construction: its only write is `mkdir -p .ship`, and its git subcommands are `diff`,
+   `rev-parse` and `merge-base`, all of which read. It returns exit 2 when it cannot
+   evaluate its input — a malformed ref, an unknown verdict, two commits with no merge
+   base — so "could not tell" never reads as "nothing to do". The command substitution
+   below does not abort on that, so the reason lands in the Phase 9 summary.
+
+3. **Surface it.** Phase 9 puts `PRUNE_STATUS` in the summary and in the `_log.md` row,
+   so the count appears whether or not you open the file. Acting on the list is yours.
+
+   There is no rollback path and no commit, because nothing changes. The `--auto:yes`
+   question disappears with the destructive act: a report is safe to produce unattended.
+
+## Phase 8.7 — UA knowledge graph rebuild
+
+Runs after Phase 8.5. That phase is report-only and commits nothing, so this ordering is
+no longer load-bearing for correctness; it is kept so the rebuilt graph reflects the tree
+as Phase 9 will leave it.
+
+```bash
+# shellcheck disable=SC1091
+source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
+UA_STATUS="n/a"
+if ua_check_installed; then
+  # ua_check_drift already computes the count against the KG's baseline commit;
+  # re-deriving it here would risk the two disagreeing.
+  DRIFT_COUNT=$(ua_check_drift | grep -oE '[0-9]+ file' | grep -oE '[0-9]+' | head -1)
+  DRIFT_COUNT=${DRIFT_COUNT:-0}
+  if [ "$DRIFT_COUNT" -gt 50 ]; then
+    UA_STATUS="rebuilt (drift ${DRIFT_COUNT}/50)"
+  else
+    UA_STATUS="drift ${DRIFT_COUNT}/50"
+  fi
+fi
+```
+
+When `UA_STATUS` starts with `rebuilt`, **Invoke `/understand`** to do a full
+rebuild. There is no incremental refresh in the UA plugin: `understand-diff` reads
+the graph rather than writing it, so the options are a full rebuild or nothing.
+The `> 50` threshold is reused verbatim from `ua_check_drift`'s own severity
+boundary, not re-derived, and it doubles as the rate limiter.
+
+Rebuilding is non-destructive — it writes a new graph and touches no source — so it
+runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 
 ## Phase 9 — Cleanup
 
@@ -526,7 +835,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 3. **Log + commit (repo side, on $ORIG_BRANCH):**
 
    ```bash
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}) | n |" >> docs/learnings/_log.md
+   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}) | n |" >> docs/learnings/_log.md
    git add docs/learnings/_log.md
    git commit -m "log: ship ${ID}"
    ```
@@ -541,7 +850,19 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    • major: ${MAJOR_COUNT} → IDEA-NNN auto-logged
    • minor: ${MINOR_COUNT}
    • praise: ${PRAISE_COUNT}
+   • CONTEXT.md: ${CONTEXT_MD_STATUS}
+   • Test budget: ship ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp (${TEST_BUDGET_VERDICT})
+   • Test pruning: ${PRUNE_STATUS}
+   • UA: ${UA_STATUS}
    • decisions log: ${WORKTREE}/.claude/.ship-auto-decisions.md (kept in worktree pre-cleanup; copy if you want post-mortem)"
+
+     case "$UA_STATUS" in
+       rebuilt*) SUMMARY="${SUMMARY/• UA:/• 🔄 UA KG rebuilt UA:}" ;;
+     esac
+     if [ "$PONYTAIL_DRIFT" = "1" ]; then
+       SUMMARY="${SUMMARY}
+   ⚠ ponytail ${PONYTAIL_PINNED} -> ${PONYTAIL_CURRENT}, ruleset changed, this ship used the new version"
+     fi
 
      # Channel routing (per /run-plan skill convention):
      # - Discord session (incoming message tag has channel source="discord"): use Discord reply

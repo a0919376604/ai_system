@@ -18,6 +18,11 @@
 #      Also accepts `[important]` and the word `important` after **Severity:** as MAJOR
 #      (awesome-skills uses [important] for yellow-tier instead of [major]).
 #
+# Category tags are orthogonal to severity and matched anywhere on a line:
+#   [seam-violation], [assertion-roulette], [weak-assertion].
+# Emits SEAM_VIOLATION_COUNT, ASSERTION_ROULETTE_COUNT, WEAK_ASSERTION_COUNT
+# alongside the four existing severity counters.
+#
 # Word match is case-insensitive: blocking | major | important | minor | nit | praise.
 # Emoji match is exact codepoint.
 #
@@ -67,18 +72,44 @@ count_praise() {
   grep -ciE '^[[:space:]]*(🎉|\[praise\])|\*\*Severity:\*\*[[:space:]]*(praise|🎉)' "$FILE" || echo 0
 }
 
+# --- Category counters (orthogonal to severity) ------------------------------
+# A finding may carry a category tag in addition to its severity tag.
+# Category tags are matched anywhere on the line, since severity already
+# occupies the line-start position.
+
+count_seam_violation() {
+  grep -ciE '\[seam-violation\]' "$FILE" || echo 0
+}
+
+count_assertion_roulette() {
+  grep -ciE '\[assertion-roulette\]' "$FILE" || echo 0
+}
+
+count_weak_assertion() {
+  grep -ciE '\[weak-assertion\]' "$FILE" || echo 0
+}
+
 BLOCKING=$(count_blocking)
 MAJOR=$(count_major)
 MINOR=$(count_minor)
 PRAISE=$(count_praise)
+SEAM_VIOLATION=$(count_seam_violation)
+ASSERTION_ROULETTE=$(count_assertion_roulette)
+WEAK_ASSERTION=$(count_weak_assertion)
 
 # Strip whitespace that grep -c may inject on some bash versions
 BLOCKING=$(echo -n "$BLOCKING" | tr -d '[:space:]')
 MAJOR=$(echo -n "$MAJOR" | tr -d '[:space:]')
 MINOR=$(echo -n "$MINOR" | tr -d '[:space:]')
 PRAISE=$(echo -n "$PRAISE" | tr -d '[:space:]')
+SEAM_VIOLATION=$(echo -n "$SEAM_VIOLATION" | tr -d '[:space:]')
+ASSERTION_ROULETTE=$(echo -n "$ASSERTION_ROULETTE" | tr -d '[:space:]')
+WEAK_ASSERTION=$(echo -n "$WEAK_ASSERTION" | tr -d '[:space:]')
 
 echo "BLOCKING_COUNT=${BLOCKING}"
 echo "MAJOR_COUNT=${MAJOR}"
 echo "MINOR_COUNT=${MINOR}"
 echo "PRAISE_COUNT=${PRAISE}"
+echo "SEAM_VIOLATION_COUNT=${SEAM_VIOLATION}"
+echo "ASSERTION_ROULETTE_COUNT=${ASSERTION_ROULETTE}"
+echo "WEAK_ASSERTION_COUNT=${WEAK_ASSERTION}"

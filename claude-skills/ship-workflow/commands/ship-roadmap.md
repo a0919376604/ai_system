@@ -33,7 +33,11 @@ You are running the Roadmap refresh ritual.
    - `docs/ideas/IDEA-*.md` where `status != shelved`
    - `docs/decisions/D-*.md` where `decision-status: accepted`
    - `docs/learnings/R-*.md` modified within last 30 days
-   - **`<airos_project_path>/Architecture/overview.md`** if exists — produced by `/ship-arch`. Gives ce-strategy a module dependency graph + per-module improvement candidates so Impact × Dependency ranking is grounded in real code structure, not guesswork. Pass alongside STRATEGY/ROADMAP in the prompt.
+   - **Architecture context (fallback chain)** — pass whichever of these exists to ce-strategy, in this order:
+     1. `<airos_project_path>/Architecture/POCKET.md` — hand-written 3-min system summary; strongest signal for Impact × Dependency ranking
+     2. `<airos_project_path>/Architecture/JOURNEY.md` — 8-min narrative walkthrough
+     3. If UA plugin + `.ua/knowledge-graph.json` present, pipe `python3 -c 'import json,sys; d=json.load(open(sys.argv[1]))["project"]; print(d.get("description",""))'` to get the KG's project description
+     4. If none of the above exist, skip this context piece (ce-strategy still runs; ranking is less grounded)
 
 4. **Delegate to `compound-engineering:ce-strategy`** with all inputs concatenated. Ask it to:
    - Identify Roadmap items that should change status
@@ -49,7 +53,7 @@ You are running the Roadmap refresh ritual.
 
 6. **Detect "too big" items.** For each item in "Now", evaluate against this rubric:
    - Description contains ≥ 2 distinct outcomes ("do X and Y and Z")
-   - Touches ≥ 3 modules per `Architecture/overview.md`
+   - Touches ≥ 3 modules per the available POCKET/JOURNEY/UA architecture context
    - Estimated effort (`est=`) > 1 week
    - Has ≥ 3 unresolved dependencies (`dep: R-... R-... R-...`)
    - ce-strategy independently rates `complexity: high`

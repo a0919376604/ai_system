@@ -9,7 +9,7 @@
                                      │
                                      ▼
                             ┌─────────────────┐
-                            │ /ship-arch      │ ← optional: snapshot initial architecture
+                            │ UA /understand  │ ← optional, run in Claude Code
                             └────────┬────────┘
                                      │
                                      ▼
@@ -38,29 +38,18 @@
                                      ▼
                             ┌─────────────────┐
                             │ ✅ shipped       │ → /ship-compound runs inside Phase 8
-                            └────────┬────────┘   optional: /ship-arch if architecture shifted
+                            └────────┬────────┘   optional: UA /understand if code shape shifted significantly
                                      │
                                      └─▶ back to /ship-next
 ```
 
 ## Knowledge-input bridge commands
 
-`/ship-arch` and `/ship-research` are **optional inputs** that write to AIR-OS:
+`/ship-research` (external grounding) and UA's `/understand` / `/understand-explain` (code understanding) are **optional inputs**:
 
 ```
-                     ┌────────────────────────────────┐
-   /ship-arch  ────▶ │ AIR-OS 10 Projects/<P>/        │
-                     │   Architecture/  ◀── codebase  │
-                     │     scan output                │
-                     │                                │
-/ship-research  ───▶ │ AIR-OS Projects/<P>/Research/  │ ◀── 3-5 external sub-queries
-   <topic>           │   or Research/Deep/ (global)   │     synthesized vs vault baseline
-                     └────────────────────────────────┘
-                              │
-                              ▼
-                     next ship-* command's sync.sh
-                     auto-pulls into repo's docs/product/
-                     so brainstorm / writing-plans see it
+   /ship-research  ────▶ │ AIR-OS 10 Projects/<P>/Research/         │
+   UA /understand  ────▶ │ target-repo/.ua/knowledge-graph.json    │
 ```
 
 These commands DELEGATE to the underlying obsidian-second-brain skill commands (`/obsidian-architect` and `/obsidian-research-deep`) but add ship housekeeping (sync, _log.md, commit).

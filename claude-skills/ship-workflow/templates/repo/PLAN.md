@@ -12,4 +12,11 @@
 
 ---
 
+### Task N: <task name>
+
+Seam: <seam name from the spec's ## Seams table, or `none (refactor)`>
+
+Read .ship/tdd-rules.md before writing tests.
+Read .ship/ponytail-rules.md before writing code.
+
 (Use superpowers:writing-plans's plan format from here onward.)
