@@ -3,6 +3,8 @@ load helpers
 
 setup() {
   export SCRATCH="$(make_scratch ua-integration)"
+  mkdir -p "$SCRATCH/.ua"
+  ( cd "$SCRATCH" && git init -q . )
   export HOME="$SCRATCH/home"
   mkdir -p "$HOME"
 }
@@ -168,3 +170,51 @@ EOF
 
 
 
+
+@test "_ua_extract_callers: never lists the file as its own caller" {
+  cd "$SCRATCH"
+  python3 - <<'PY'
+import json
+json.dump({"project":{"name":"x","gitCommitHash":"abc"},
+ "nodes":[
+   {"id":"file:a.py","type":"file","filePath":"a.py","summary":"A"},
+   {"id":"function:a.py:foo","type":"function","filePath":"a.py","summary":"foo"},
+   {"id":"function:a.py:bar","type":"function","filePath":"a.py","summary":"bar"},
+   {"id":"file:b.py","type":"file","filePath":"b.py","summary":"B"}],
+ "edges":[
+   {"source":"file:a.py","target":"function:a.py:foo","type":"contains","weight":1},
+   {"source":"file:a.py","target":"function:a.py:bar","type":"contains","weight":1},
+   {"source":"file:b.py","target":"file:a.py","type":"imports","weight":5}],
+ "layers":[]}, open(".ua/knowledge-graph.json","w"))
+PY
+  source "$SHIP_LIB/ua-integration.sh"
+  out=$(_ua_extract_callers "a.py")
+  if echo "$out" | grep -q 'file:a.py'; then
+    echo "a.py is listed as its own caller:"; echo "$out"
+    return 1
+  fi
+  echo "$out" | grep -q 'file:b.py' || { echo "the real caller b.py is missing"; return 1; }
+}
+
+@test "_ua_extract_callers: deduplicates and drops containment edges" {
+  # bats runs setup() per test, so this builds its own graph rather than reusing
+  # the previous test's scratch — which it silently did not inherit.
+  cd "$SCRATCH"
+  python3 - <<'PY2'
+import json
+json.dump({"project":{"name":"x","gitCommitHash":"abc"},
+ "nodes":[
+   {"id":"file:a.py","type":"file","filePath":"a.py","summary":"A"},
+   {"id":"function:a.py:foo","type":"function","filePath":"a.py","summary":"foo"},
+   {"id":"file:b.py","type":"file","filePath":"b.py","summary":"B"}],
+ "edges":[
+   {"source":"file:a.py","target":"function:a.py:foo","type":"contains","weight":1},
+   {"source":"file:b.py","target":"file:a.py","type":"imports","weight":5},
+   {"source":"file:b.py","target":"function:a.py:foo","type":"imports","weight":5}],
+ "layers":[]}, open(".ua/knowledge-graph.json","w"))
+PY2
+  source "$SHIP_LIB/ua-integration.sh"
+  out=$(_ua_extract_callers "a.py")
+  n=$(echo "$out" | grep -c . )
+  [ "$n" -eq 1 ] || { echo "expected 1 caller, got $n:"; echo "$out"; return 1; }
+}
