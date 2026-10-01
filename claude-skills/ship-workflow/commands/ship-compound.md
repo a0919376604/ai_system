@@ -115,6 +115,11 @@ source ~/.claude/skills/ship-workflow/lib/context-md.sh
        # so pruning is skipped in --auto:yes. Surface it instead.
        echo "WARN: CONTEXT.md over cap ($(context_md_line_count) lines / $(context_md_entry_count) entries)" >&2
        CONTEXT_MD_STATUS="over cap — prune pending"
+       # Spec 4.5 promises a decision-log entry too. An unattended run's WARN goes to
+       # stderr and is gone; the log is where the operator looks afterwards.
+       ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P8" \
+         "CONTEXT.md over cap — pruning skipped (deletion is never automatic)" \
+         "$(context_md_line_count) lines / $(context_md_entry_count) entries"
      else
        CONTEXT_MD_STATUS="pruned"
      fi

@@ -128,12 +128,26 @@ try:
     for n in d.get("nodes", []):
         if n.get("filePath") == sys.argv[2]:
             target_ids.add(n.get("id"))
+    # target_ids holds the file node AND every function/class defined in it, so a
+    # `file:x --contains--> function:x:foo` edge has its target inside the set and
+    # its source equal to the file itself. Without these two filters the file was
+    # listed as its own caller, once per symbol it defines.
+    seen = set()
     for e in d.get("edges", []):
-        if e.get("target") in target_ids:
-            src = e.get("source", "?")
-            etype = e.get("type", "?")
-            w = e.get("weight", 0)
-            print("- %s (via %s, weight %s)" % (src, etype, w))
+        if e.get("target") not in target_ids:
+            continue
+        src = e.get("source", "?")
+        if src in target_ids:          # a symbol of this file, not a caller of it
+            continue
+        etype = e.get("type", "?")
+        if etype == "contains":        # containment is structure, not a call
+            continue
+        key = (src, etype)
+        if key in seen:
+            continue
+        seen.add(key)
+        w = e.get("weight", 0)
+        print("- %s (via %s, weight %s)" % (src, etype, w))
 except Exception:
     pass
 ' "$kg" "$target_path" 2>/dev/null

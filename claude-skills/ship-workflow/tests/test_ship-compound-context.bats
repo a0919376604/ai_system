@@ -43,3 +43,14 @@ setup() {
   run grep -F 'absent — no qualifying terms this ship' "$CMD"
   [ "$status" -eq 0 ]
 }
+
+@test "ship-compound logs the over-cap decision in auto mode, as the spec promises" {
+  # Spec 4.5: auto mode emits "a WARN, a .ship-auto-decisions.md entry, and a line in
+  # the P9 summary". Only the WARN and the status were wired. The decision log is the
+  # audit trail for an unattended run — the one place the operator looks afterwards.
+  run grep -F 'auto-decision-log.sh' "$CMD"
+  [ "$status" -eq 0 ]
+  block=$(awk '/over cap/,/^   \`\`\`$/' "$CMD")
+  echo "$block" | grep -qF 'auto-decision-log.sh' \
+    || { echo "the over-cap branch does not write the decision log"; return 1; }
+}
