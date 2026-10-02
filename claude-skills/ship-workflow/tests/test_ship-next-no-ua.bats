@@ -87,3 +87,20 @@ teardown() {
     [ "$status" -eq 0 ]
   done
 }
+
+@test "a repo with no codex completes the cycle unchanged" {
+  cd "$SCRATCH"
+  git init -q
+  git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+  source "$SHIP_LIB/codex-verdict.sh"
+  source "$SHIP_LIB/codex-rounds.sh"
+  source "$SHIP_LIB/codex-supervise-state.sh"
+  # Nothing here may write, and nothing may report success it cannot support.
+  before=$(find . -path ./.git -prune -o -type f -print | sort)
+  run codex_verdict missing.log;   [ "$output" = "infra" ]
+  run codex_state_attempt "$PWD";  [ "$output" = "0" ]
+  run codex_round_count "$PWD";    [ "$output" = "0" ]
+  run codex_state_alive "$PWD";    [ "$status" -ne 0 ]
+  after=$(find . -path ./.git -prune -o -type f -print | sort)
+  [ "$before" = "$after" ]
+}

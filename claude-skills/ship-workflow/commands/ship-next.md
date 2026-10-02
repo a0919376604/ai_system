@@ -426,6 +426,20 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
       && [ "$PONYTAIL_SHA" != "$PONYTAIL_PINNED_SHA" ]; then
      PONYTAIL_DRIFT=1
    fi
+
+   # An absent ponytail is a legitimate state, but a SILENT one misleads. The
+   # lib no-ops by design (spec 8.4) — correct for a missing optional
+   # dependency, wrong for one the operator asked for and believes is active.
+   # Measured on this machine: check_installed false, render_rules 0 lines,
+   # Phase 5 said nothing, so every executor ran with no ladder at all.
+   if ponytail_check_installed; then
+     PONYTAIL_STATUS="v${PONYTAIL_CURRENT} ladder rendered"
+   else
+     PONYTAIL_STATUS="not installed — no ladder enforced this run"
+     # Printed here, not only in Phase 9: the SUMMARY is built only when
+     # AUTO=1, and interactive is the mode the operator is actually watching.
+     echo "ponytail: not installed — no ladder enforced this run" >&2
+   fi
    ```
 
    **On drift (`PONYTAIL_DRIFT=1`):**
@@ -443,12 +457,176 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    Phase 5 spawns a fresh subagent per task, and ponytail documents that
    subagent-start hooks cannot inject its ruleset.
 
-3. **Invoke the chosen sub-skill:**
+3. **Invoke the chosen sub-skill.**
    - `1` → `superpowers:subagent-driven-development`
    - `2` → `superpowers:executing-plans`
-   - `3` → `/run-plan docs/plans/${ID}-${SLUG}.md`
+   - `3` → the supervise loop in step 4 below.
 
-4. **Wait for completion.** Executor commits ≥ 1 commit per task into the worktree branch.
+4. **Executor 3 only — supervise the codex run.**
+
+   `/run-plan` detaches codex and returns. It does not finish the work. Across 19
+   real runs it stopped 13 times with a `BLOCKED` verdict, and every one of those
+   stops was correct. This step does the routing a human did by hand 16 times.
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/codex-verdict.sh
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/codex-rounds.sh
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/codex-supervise-state.sh
+
+   CODEX_ATTEMPT_CAP=3
+   PLAN="docs/plans/${ID}-${SLUG}.md"
+   # Same derivation /run-plan uses, so this agrees with its /tmp state files.
+   # (It appends a trailing _ because tr -c converts basename's newline too.
+   # /run-plan does the identical thing, so the paths match. Do not "fix" it
+   # here in isolation — that would break the interop it exists to preserve.)
+   SLOT=$(basename "$PLAN" .md | tr -c 'A-Za-z0-9_.-' '_')
+
+   # Resume before relaunching. A session restart kills the supervisor but not
+   # codex, and a state file from a different ship must not be inherited.
+   if codex_state_matches "$WORKTREE" "$PLAN"; then
+     CODEX_ATTEMPT=$(codex_state_attempt "$WORKTREE")
+     if codex_state_alive "$WORKTREE"; then
+       echo "codex is still running for $PLAN — attaching, not relaunching."
+     fi
+   else
+     CODEX_ATTEMPT=0
+   fi
+   ```
+
+   **Launch** with `/run-plan "$PLAN"`, then record the run so a later re-entry can
+   tell a live run from a dead one:
+
+   ```bash
+   # Pid authority: /run-plan owns /tmp/run-plan-codex-$SLOT.pid and deletes it.
+   # .ship/codex.pid is a durable mirror that survives a /tmp wipe, and is what
+   # codex_state_alive reads. A stale mirror is tolerable because that function
+   # also confirms the live pid is actually codex before trusting it.
+   mkdir -p "$WORKTREE/.ship"
+   cp "/tmp/run-plan-codex-${SLOT}.pid" "$WORKTREE/.ship/codex.pid" 2>/dev/null || true
+
+   # Write state NOW, not at the first BLOCKED. A session restart during the
+   # first run would otherwise leave no state, so codex_state_matches would be
+   # false, the live-process check inside that branch would never run, and the
+   # supervisor would relaunch over a live executor.
+   codex_state_write "$WORKTREE" "$PLAN" "$SLOT" "$CODEX_ATTEMPT" running "n/a" "n/a"
+   ```
+
+   Carry all five hardening items in the prompt — each is here because a run
+   failed without it:
+
+   - **Scope override.** `/run-plan`'s template tells the agent to ignore anything
+     under `.claude/skills/`. When the plan's target *is* a skill directory, the
+     agent refuses the entire plan.
+   - **`--auto:yes` requirement.** Codex cannot answer an interactive prompt. A plan
+     step invoking `/ship-next` without it hangs until the cap expires.
+   - **Engineering vocabulary.** A prompt written as "attack it", "payloads", "try to
+     make it delete" tripped a provider content filter and crashed the run. The same
+     review, phrased as input validation, completed. Request the same content; do not
+     phrase it as offensive security.
+   - **Resume context.** Which tasks are committed, which task to start at, and which
+     conclusions from earlier rounds are settled and must not be re-litigated.
+   - **Round history.** `.ship/codex-rounds.md`, so the executor does not rediscover
+     what the previous round already found.
+
+   **When codex exits**, classify before judging:
+
+   ```bash
+   CODEX_LOG="/tmp/run-plan-codex-${SLOT}.log"
+   CODEX_FINAL_VERDICT=$(codex_verdict "$CODEX_LOG")
+   CODEX_REASON=$(codex_verdict_reason "$CODEX_LOG")
+
+   # Extract the report by the same whole-log rule codex_verdict uses. An empty
+   # extraction is an error, never an empty round: preserving the executor's
+   # bullet-list report verbatim is the point of this loop.
+   CODEX_REPORT="/tmp/codex-report-${SLOT}.md"
+   if ! codex_report_extract "$CODEX_LOG" "$CODEX_REPORT"; then
+     echo "codex: no report could be extracted from $CODEX_LOG" >&2
+     CODEX_FINAL_VERDICT=infra
+     CODEX_REASON="no extractable report — $CODEX_REASON"
+   fi
+
+   case "$CODEX_FINAL_VERDICT" in
+     done|done_with_concerns) CODEX_ROUTE=continue ;;
+     blocked)                 CODEX_ROUTE=classify ;;
+     infra)                   CODEX_ROUTE=stop_infra ;;
+     *)                       CODEX_ROUTE=stop_infra ;;
+   esac
+   ```
+
+   Then route on `$CODEX_ROUTE`:
+
+   - **`continue`** (verdict `done` / `done_with_concerns`) → record the round, mark
+     the run finished, and continue to Phase 6.
+
+     ```bash
+     codex_round_append "$WORKTREE" "$((CODEX_ATTEMPT + 1))" "$CODEX_FINAL_VERDICT" \
+       "$CODEX_REPORT" "n/a" "executor completed"
+     CODEX_ROUNDS=$(codex_round_count "$WORKTREE")
+     # Clear the blocked state. Phase 6 re-enters this loop for fix-plans and
+     # must not inherit a verdict from a round that has already been resolved.
+     codex_state_write "$WORKTREE" "$PLAN" "$SLOT" "$CODEX_ATTEMPT" \
+       "$CODEX_FINAL_VERDICT" "n/a" "n/a"
+     rm -f "$WORKTREE/.ship/codex.pid"
+     ```
+
+   - **`stop_infra`** (verdict `infra`) → STOP and notify. Do **not** relaunch, and
+     leave the **attempt count unchanged**: two of the 19 runs ended this way, and
+     retrying them would have burned the budget real defects needed. Use Phase 9's
+     notification routing with `$CODEX_REASON`. The worktree and branch are retained.
+
+   - **`classify`** (verdict `blocked`) → read the executor's report and classify it
+     into exactly one of three, then act:
+
+     | Class | Signal | Action |
+     |---|---|---|
+     | **plan defect** | the prescribed step is wrong, ambiguous or impossible as written | repair `$PLAN`, relaunch from the blocked task |
+     | **executor error** | the plan is right and the executor deviated — a transcription slip, an edit in the wrong place | relaunch with a correction note, plan unchanged |
+     | **spec-level** | the finding says the *approach* cannot work, not that this step is wrong | **STOP and notify the operator** |
+
+     **When the classification is unclear, treat it as spec-level and escalate.** The
+     cost of a needless escalation is one message. The cost of silently redesigning
+     the software overnight is a morning spent reading commits to find out what it
+     decided. Changing what the software is supposed to do is not the executor's call
+     and it is not yours.
+
+     **Set these three yourself from the classification above** — they are the
+     judgement's output and nothing computes them:
+
+     ```bash
+     CODEX_CLASS="plan defect"          # or "executor error" — spec-level stops instead
+     CODEX_NOTE="repaired Task 7 step 3; the prescribed grep lacked --"
+     CODEX_BLOCKED_AT="Task 7"          # the task the executor stopped at
+     ```
+
+     Record the round, then relaunch or stop:
+
+     ```bash
+     CODEX_ATTEMPT=$((CODEX_ATTEMPT + 1))
+     codex_round_append "$WORKTREE" "$CODEX_ATTEMPT" blocked \
+       "$CODEX_REPORT" "$CODEX_CLASS" "$CODEX_NOTE"
+     codex_state_write "$WORKTREE" "$PLAN" "$SLOT" "$CODEX_ATTEMPT" \
+       blocked "$CODEX_CLASS" "$CODEX_BLOCKED_AT"
+     CODEX_ROUNDS=$(codex_round_count "$WORKTREE")
+     if [ "$CODEX_ATTEMPT" -ge "$CODEX_ATTEMPT_CAP" ]; then
+       CODEX_ROUTE=stop_exhausted
+       echo "codex: $CODEX_ATTEMPT_CAP repair attempts exhausted — stopping." >&2
+       echo "worktree retained at $WORKTREE; history in .ship/codex-rounds.md" >&2
+     else
+       CODEX_ROUTE=relaunch
+     fi
+     ```
+
+     On `relaunch`, go back to **Launch** above with the repaired plan or the
+     correction note, reusing the same `$SLOT`. On `stop_exhausted`, stop and notify.
+     A run that burns three attempts is a signal the plan was not ready, not a
+     budget to raise.
+
+5. **Wait for the executor to finish.** For options 1 and 2 this is the sub-skill
+   returning. For option 3 it is the loop above reaching `continue`, an escalation,
+   or the cap. Either way the branch carries ≥ 1 commit per completed task.
 
 ## Phase 6 — Code review loop (strict gate)
 
@@ -563,6 +741,17 @@ CHECKS
 
 2. **Loop:**
    ```
+   # Phase 6 is a different shell from Phase 5 — Phase 7 cd's back to the main
+   # repo between them, and nothing Phase 5 sourced is in scope here. Executor 3
+   # calls codex_verdict, codex_report_extract and codex_round_append below, so
+   # source them. Sourcing is harmless for executors 1 and 2.
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/codex-verdict.sh
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/codex-rounds.sh
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/codex-supervise-state.sh
+
    attempt=1
    while [ "$attempt" -le 3 ]; do
      # Three-dot diff: shows only what this branch added relative to the
@@ -610,7 +799,54 @@ CHECKS
      case "$EXECUTOR" in
        1) invoke superpowers:subagent-driven-development on $FIX_PLAN ;;
        2) invoke superpowers:executing-plans on $FIX_PLAN ;;
-       3) invoke /run-plan $FIX_PLAN ;;
+       3) # Supervise this run the same way Phase 5 does. A fix-plan run can be
+          # BLOCKED or hit infrastructure exactly as the original run can, and
+          # firing-and-forgetting here would silently drop the reason.
+          invoke /run-plan "$FIX_PLAN"
+
+          # The fix-plan gets its OWN slot: /run-plan derives the slot from the
+          # plan filename it was handed, so docs/plans/R-001-x-review-fix-1.md
+          # logs to run-plan-codex-R-001-x-review-fix-1_.log, NOT to Phase 5's
+          # slot. Reusing $SLOT here would classify the ORIGINAL run's log and
+          # record its report again as though it were this fix's result.
+          FIX_SLOT=$(basename "$FIX_PLAN" .md | tr -c 'A-Za-z0-9_.-' '_')
+          FIX_LOG="/tmp/run-plan-codex-${FIX_SLOT}.log"
+
+          # /run-plan DETACHES and returns immediately. Phase 5 handles that with
+          # the prose "When codex exits"; here the next statement would run
+          # milliseconds after launch, read a log that does not exist yet, and
+          # classify infra — breaking the review loop on a false infrastructure
+          # failure while codex is still committing unsupervised.
+          # Deliberately NOT writing supervise state here. Every reader of
+          # .ship/codex-supervise.md and .ship/codex.pid lives in Phase 5, and
+          # both files hold ONE record — so a write here is read by nothing and
+          # destroys the plan identity and attempt count Phase 5 depends on.
+          # Verified: after a Phase 6 write, codex_state_matches against the
+          # original plan returns false and Phase 5 resets CODEX_ATTEMPT to 0.
+          # Making Phase 6 resumable needs a reader and its own record, not a
+          # second writer into Phase 5's slot. Tracked as a follow-up.
+          codex_wait_for_exit "/tmp/run-plan-codex-${FIX_SLOT}.pid"
+
+          FIX_VERDICT=$(codex_verdict "$FIX_LOG")
+          FIX_REPORT="/tmp/codex-fix-${FIX_SLOT}.md"
+          if ! codex_report_extract "$FIX_LOG" "$FIX_REPORT"; then
+            echo "codex: no report extractable from $FIX_LOG" >&2
+            FIX_VERDICT=infra
+          else
+            codex_round_append "$WORKTREE" "fix-${attempt}" "$FIX_VERDICT" \
+              "$FIX_REPORT" "review fix-plan" \
+              "attempt ${attempt} of the Phase 6 review loop"
+          fi
+          # Phase 9 reports CODEX_FINAL_VERDICT and CODEX_ROUNDS. Leaving them at
+          # Phase 5's values would tell the operator the ship ended on the
+          # original run's verdict and hide every fix round from the count.
+          CODEX_FINAL_VERDICT="$FIX_VERDICT"
+          CODEX_ROUNDS=$(codex_round_count "$WORKTREE")
+          if [ "$FIX_VERDICT" = "infra" ]; then
+            echo "codex infrastructure failure during the fix-plan run — stopping." >&2
+            break
+          fi
+          ;;
      esac
    done
    ```
@@ -825,6 +1061,38 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 
 ## Phase 9 — Cleanup
 
+0. **Capture anything inside the worktree the summary needs.** Step 1 removes the
+   worktree, so `.ship/` is gone by the time steps 3 and 4 run. Read it first —
+   this is the step that makes the round history survive cleanup.
+
+   ```bash
+   # Phase 9 is a different shell from Phase 5: nothing sourced there is in
+   # scope here. Source what this phase calls.
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/codex-rounds.sh
+
+   CODEX_ROUNDS_ARCHIVE=""
+   CODEX_LAST_FINDINGS=""
+   if [ -f "$WORKTREE/.ship/codex-rounds.md" ]; then
+     CODEX_ROUNDS=$(codex_round_count "$WORKTREE")
+     CODEX_LAST_FINDINGS=$(codex_round_last_findings "$WORKTREE")
+     # Bound what goes into the notification. A report with a long bullet list
+     # would otherwise be interpolated whole into $SUMMARY and can exceed a
+     # Discord message limit — at which point the operator gets nothing at all
+     # rather than a truncated list. The archive has the full text.
+     CODEX_FINDINGS_TOTAL=$(printf '%s\n' "$CODEX_LAST_FINDINGS" | grep -c '^- ' || true)
+     if [ "${CODEX_FINDINGS_TOTAL:-0}" -gt 12 ] 2>/dev/null; then
+       CODEX_LAST_FINDINGS="$(printf '%s\n' "$CODEX_LAST_FINDINGS" | head -12)
+   ... and $((CODEX_FINDINGS_TOTAL - 12)) more — see the archive below"
+     fi
+     # Copy it out. `.ship/` dies with the worktree, and a post-mortem of an
+     # unattended overnight run has nothing else to read.
+     CODEX_ROUNDS_ARCHIVE="/tmp/ship-${ID}-codex-rounds.md"
+     cp "$WORKTREE/.ship/codex-rounds.md" "$CODEX_ROUNDS_ARCHIVE" 2>/dev/null \
+       || CODEX_ROUNDS_ARCHIVE=""
+   fi
+   ```
+
 1. **Remove worktree:**
 
    ```bash
@@ -849,7 +1117,14 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 3. **Log + commit (repo side, on $ORIG_BRANCH):**
 
    ```bash
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}) | n |" >> docs/learnings/_log.md
+   # Only ships that actually ran codex carry a codex fragment. Auto mode picks
+   # executor 1, so most ships never run it, and an empty "codex:  round(s)" on
+   # every row is noise that hides the rows where it means something.
+   CODEX_LOG_FRAGMENT=""
+   if [ "${CODEX_ROUNDS:-0}" -gt 0 ] 2>/dev/null; then
+     CODEX_LOG_FRAGMENT=", codex: ${CODEX_ROUNDS} round(s) ${CODEX_FINAL_VERDICT}"
+   fi
+   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}${CODEX_LOG_FRAGMENT}) | n |" >> docs/learnings/_log.md
    git add docs/learnings/_log.md
    git commit -m "log: ship ${ID}"
    ```
@@ -859,6 +1134,14 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
    Build the success message body:
    ```bash
    if [ "$AUTO" = "1" ]; then
+     # Built from what step 0 captured, so it survives the worktree removal.
+     CODEX_SUMMARY_BLOCK=""
+     if [ "${CODEX_ROUNDS:-0}" -gt 0 ] 2>/dev/null; then
+       CODEX_SUMMARY_BLOCK="
+   • codex: ${CODEX_ROUNDS} round(s), final ${CODEX_FINAL_VERDICT}
+${CODEX_LAST_FINDINGS}
+   • full round history: ${CODEX_ROUNDS_ARCHIVE:-(not archived)}"
+     fi
      SUMMARY="✅ ${ID} ${DESCRIPTION} shipped (squash ${MERGE_SHA})
    • blocking: 0 ✓
    • major: ${MAJOR_COUNT} → IDEA-NNN auto-logged
@@ -867,7 +1150,8 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
    • CONTEXT.md: ${CONTEXT_MD_STATUS}
    • Test budget: ship ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp (${TEST_BUDGET_VERDICT})
    • Test pruning: ${PRUNE_STATUS}
-   • UA: ${UA_STATUS}
+   • ponytail: ${PONYTAIL_STATUS}
+   • UA: ${UA_STATUS}${CODEX_SUMMARY_BLOCK}
    • decisions log: ${WORKTREE}/.claude/.ship-auto-decisions.md (kept in worktree pre-cleanup; copy if you want post-mortem)"
 
      case "$UA_STATUS" in
@@ -892,6 +1176,16 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
      printf '\a' >&2
    fi
    ```
+
+   The summary carries the **last round's bullets verbatim**, not a paraphrase. That
+   list is the operator's only window into an unattended run, and its fifth element —
+   the statement of what was *not* changed — is the blast radius of a failed round.
+   Summarising destroys exactly the part that makes it scannable.
+
+   `.ship/` dies with the worktree at step 1 of this phase, which is why step 0 reads
+   it first and **copies it out** to `${CODEX_ROUNDS_ARCHIVE}` — the same caveat that
+   already applies to `.ship-auto-decisions.md`, except here it is handled rather
+   than warned about.
 
 ## Failure modes
 

@@ -67,6 +67,33 @@ The shadow-mode ship count is derived from `docs/learnings/_log.md` and is delib
 
 **Per-repo** (`.claude/ship-config.yml`, optional, only on `--custom` init).
 
+## Standing rule: background agents do not survive a session boundary
+
+Measured on this machine, not assumed. Across two sampled sessions, nine
+dispatched background agents produced nothing: a `/ship-research` run lost two
+full research rounds at Phase 3 and had to redo them inline, and a
+`subagent-driven-development` run lost six agents, twice re-dispatching the
+*identical* fix before the work was finally done inline. Every one of them
+reported `didn't finish before the previous session ended`.
+
+So, before dispatching any background agent:
+
+1. **Ask whether the task writes anything.** Read-only fan-out (search, review,
+   research gathering) is cheap to lose and fine to dispatch. Work that must
+   produce a commit, a file, or a decision is not — run it inline.
+2. **Never re-dispatch after a loss.** If an agent is reported lost, verify
+   what landed (`git log`, the expected file, the test count) and then do the
+   work inline. A second dispatch of the same task is the single most expensive
+   mistake in the sampled history.
+3. **Checkpoint multi-phase work to disk after every phase**, not at the end.
+   The `/ship-research` loss was two completed phases thrown away because
+   nothing was written until Phase 4.
+
+`/ship-next` Phase 5 executor 1 (`subagent-driven-development`) is subject to
+this rule. Its per-task ledger at `.superpowers/sdd/<plan>/progress.md` is the
+checkpoint — write the ruling and the commit SHA to it as each task closes, so
+a lost agent costs one task rather than the run.
+
 ## Reference
 
 See `references/flow-diagrams.md` for the full lifecycle diagram, `references/escape-hatches.md` for `--adhoc` behavior, and `references/ce-skill-mapping.md` for which `ce-*` skill each `ship-*` delegates to.
