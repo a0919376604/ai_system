@@ -155,3 +155,36 @@ mklog() { printf '%s\n' "$@" > run.log; }
   run diff run.log out.md
   [ "$status" -eq 0 ]
 }
+
+@test "codex_verdict: a log containing ONLY the prompt's echoed marker is infra" {
+  # The previous anchoring test put a real **DONE.** after the quoted line, so
+  # removing ^ from CODEX_VERDICT_MARKER_RE still produced the right answer and
+  # the test could not fail on its own claim. With no real verdict present, the
+  # anchor is the only thing preventing the prompt from being read back as one.
+  mklog "you must report DONE / DONE_WITH_CONCERNS / BLOCKED when finished" \
+        "run interrupted before any verdict was printed"
+  run codex_verdict run.log
+  [ "$output" = "infra" ]
+}
+
+@test "codex_report_extract: the prompt's echoed marker does not start a report" {
+  printf 'please report DONE when finished\nnothing else happened\n' > run.log
+  run codex_report_extract run.log out.md
+  [ "$status" -eq 2 ]
+  [ ! -f out.md ]
+}
+
+@test "codex_verdict: the LAST marker wins, not the first" {
+  # The last-vs-first rule is duplicated between _codex_marker and
+  # codex_report_extract; only the extractor's half was pinned. Changing
+  # _codex_marker's `tail -1` to `head -1` previously left the suite green.
+  mklog "BLOCKED" "retried after repairing the plan" "**DONE.** all green"
+  run codex_verdict run.log
+  [ "$output" = "done" ]
+}
+
+@test "codex_verdict_reason: also reports the LAST marker" {
+  mklog "DONE" "then a later task failed" "**BLOCKED.** task 7 cannot proceed"
+  run codex_verdict_reason run.log
+  [[ "$output" == *BLOCKED* ]]
+}

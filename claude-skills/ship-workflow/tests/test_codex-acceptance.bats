@@ -55,7 +55,12 @@ These are more defects of the same measurement class.
 EOT
   run codex_verdict r.md
   [ "$output" = "blocked" ]
-  grep -qiE 'cannot (work|establish)|recommend making' r.md
+  # NOTE: only the line above exercises code. Deciding that this report is
+  # spec-level rather than a plan defect is an LLM judgement with no mechanical
+  # surface, so there is nothing further to assert here. An earlier version
+  # grepped the fixture for the words the fixture itself contains, which could
+  # not fail for any implementation change. The routing rules that act on this
+  # judgement are covered in test_ship-next-codex-loop.bats.
 }
 
 @test "spec 7.4: three attempts is the documented cap, and it gates the relaunch" {
@@ -141,28 +146,38 @@ EOT
 @test "spec 7.7: every phase that calls a supervise helper also sources its lib" {
   # Phases do not share a shell. Three prior defects in this repo were exactly
   # this, and all of them fail closed — the feature silently does nothing.
-  for phase in 5 6 9; do
-    case "$phase" in
-      5) next=6 ;; 6) next=7 ;; 9) next="" ;;
-    esac
-    if [ -n "$next" ]; then
-      sec=$(awk "/^## Phase $phase /,/^## Phase $next /" "$CMD")
-    else
-      sec=$(awk "/^## Phase $phase /,0" "$CMD")
-    fi
-    [ -n "$sec" ] || { echo "Phase $phase not found"; return 1; }
-    for fn in codex_verdict codex_report_extract codex_round_append \
-              codex_round_count codex_round_last_findings codex_state_write; do
-      if echo "$sec" | grep -qF "$fn"; then
-        case "$fn" in
-          codex_verdict|codex_report_extract) lib=codex-verdict.sh ;;
-          codex_round_*)                      lib=codex-rounds.sh ;;
-          codex_state_*)                      lib=codex-supervise-state.sh ;;
-        esac
-        echo "$sec" | grep -qF "lib/$lib" \
-          || { echo "Phase $phase calls $fn without sourcing $lib"; return 1; }
-      fi
+  #
+  # The function list is DERIVED from the libs, not restated here. A hardcoded
+  # list omitted codex_state_alive/_matches/_attempt/_get, and a review proved
+  # the hole: inserting codex_state_alive into Phase 6 (which did not source
+  # codex-supervise-state.sh) left the whole suite green.
+  for lib in codex-verdict.sh codex-rounds.sh codex-supervise-state.sh; do
+    fns=$(grep -oE '^codex_[a-z_]+\(\)' "$SHIP_LIB/$lib" | tr -d '()')
+    [ -n "$fns" ] || { echo "derived no public functions from $lib"; return 1; }
+    for phase in 5 6 9; do
+      case "$phase" in
+        5) sec=$(awk '/^## Phase 5 /,/^## Phase 6 /' "$CMD") ;;
+        6) sec=$(awk '/^## Phase 6 /,/^## Phase 7 /' "$CMD") ;;
+        9) sec=$(awk '/^## Phase 9 /,0' "$CMD") ;;
+      esac
+      [ -n "$sec" ] || { echo "Phase $phase not found"; return 1; }
+      for fn in $fns; do
+        if echo "$sec" | grep -qF "$fn"; then
+          echo "$sec" | grep -qF "lib/$lib" \
+            || { echo "Phase $phase calls $fn without sourcing $lib"; return 1; }
+        fi
+      done
     done
+  done
+}
+
+@test "spec 7.7: the derived function list is not silently empty" {
+  # If the grep that derives the list ever stops matching, the guard above
+  # passes vacuously. Pin the two functions whose omission was the known hole.
+  all=$(grep -hoE '^codex_[a-z_]+\(\)' "$SHIP_LIB"/codex-*.sh | tr -d '()')
+  for fn in codex_state_alive codex_state_matches codex_wait_for_exit \
+            codex_verdict codex_report_extract codex_round_count; do
+    echo "$all" | grep -qx "$fn" || { echo "derivation missed $fn"; return 1; }
   done
 }
 

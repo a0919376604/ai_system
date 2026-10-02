@@ -21,6 +21,21 @@
 # readers key off that. A report body cannot forge one: codex_round_append is
 # the only writer, and it neutralises look-alikes on the way in (see below).
 
+# One definition of the round delimiter, shared by both readers. It was
+# originally digits-only, and Phase 6 passes `fix-${attempt}` — so three real
+# rounds counted as one and the "last round" boundary swallowed all of them.
+# Round ids are sanitised to this charset on write, so a written sentinel always
+# matches this pattern no matter what a caller passes.
+CODEX_ROUND_SENTINEL_RE='^<!-- codex-round [A-Za-z0-9._-][A-Za-z0-9._-]* -->$'
+
+# codex_round_id <raw> — the id as it will appear in a sentinel.
+_codex_round_id() {
+  local id
+  id=$(printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_')
+  [ -n "$id" ] || id=unknown
+  printf '%s' "$id"
+}
+
 # The one documented exception to byte-identical storage: a body line that would
 # itself parse as a round delimiter is indented one space inside the fence. The
 # text stays legible; it just stops being structure. Without this, feeding the
@@ -45,14 +60,15 @@ _codex_round_fence() {
 # codex_round_append <worktree> <n> <verdict> <reportfile> <classification> <note>
 # Exit 2 if the report file is missing — a round with no report is not a round.
 codex_round_append() {
-  local wt="$1" n="$2" verdict="$3" report="$4" cls="$5" note="$6" out fence
+  local wt="$1" n="$2" verdict="$3" report="$4" cls="$5" note="$6" out fence id
   [ -d "$wt" ] || return 2
   [ -f "$report" ] || return 2
   mkdir -p "$wt/.ship" || return 2
   out="$wt/.ship/codex-rounds.md"
   fence=$(_codex_round_fence "$report")
+  id=$(_codex_round_id "$n")
   {
-    printf '<!-- codex-round %s -->\n' "$n"
+    printf '<!-- codex-round %s -->\n' "$id"
     printf '## Round %s — %s — %s\n\n' "$n" "$verdict" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf '%stext\n' "$fence"
     _codex_round_neutralise "$report"
@@ -73,7 +89,7 @@ codex_round_count() {
   [ -f "$f" ] || { echo 0; return 0; }
   # `grep -c` prints 0 AND exits 1 on no match; `|| true` keeps the 0 without
   # appending a second one (the `|| echo 0` form yields "00").
-  n=$(grep -c '^<!-- codex-round [0-9][0-9]* -->$' "$f" 2>/dev/null || true)
+  n=$(grep -c "$CODEX_ROUND_SENTINEL_RE" "$f" 2>/dev/null || true)
   n=$(echo "$n" | tr -d '[:space:]')
   [ -n "$n" ] || n=0
   echo "$n"
@@ -87,7 +103,7 @@ codex_round_count() {
 codex_round_last_findings() {
   local f="$1/.ship/codex-rounds.md" start
   [ -f "$f" ] || return 0
-  start=$(grep -n '^<!-- codex-round [0-9][0-9]* -->$' "$f" | tail -1 | cut -d: -f1)
+  start=$(grep -n "$CODEX_ROUND_SENTINEL_RE" "$f" | tail -1 | cut -d: -f1)
   [ -n "$start" ] || return 0
   tail -n "+$start" "$f" | grep -E '^- ' || true
 }

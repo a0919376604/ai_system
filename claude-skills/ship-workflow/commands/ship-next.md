@@ -735,6 +735,8 @@ CHECKS
    source ~/.claude/skills/ship-workflow/lib/codex-verdict.sh
    # shellcheck disable=SC1091
    source ~/.claude/skills/ship-workflow/lib/codex-rounds.sh
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/codex-supervise-state.sh
 
    attempt=1
    while [ "$attempt" -le 3 ]; do
@@ -795,6 +797,22 @@ CHECKS
           # record its report again as though it were this fix's result.
           FIX_SLOT=$(basename "$FIX_PLAN" .md | tr -c 'A-Za-z0-9_.-' '_')
           FIX_LOG="/tmp/run-plan-codex-${FIX_SLOT}.log"
+
+          # /run-plan DETACHES and returns immediately. Phase 5 handles that with
+          # the prose "When codex exits"; here the next statement would run
+          # milliseconds after launch, read a log that does not exist yet, and
+          # classify infra — breaking the review loop on a false infrastructure
+          # failure while codex is still committing unsupervised.
+          # Make this run restart-survivable the same way Phase 5's is: mirror
+          # the pid and record which plan is in flight before blocking on it.
+          mkdir -p "$WORKTREE/.ship"
+          cp "/tmp/run-plan-codex-${FIX_SLOT}.pid" "$WORKTREE/.ship/codex.pid" \
+            2>/dev/null || true
+          codex_state_write "$WORKTREE" "$FIX_PLAN" "$FIX_SLOT" "$attempt" \
+            running "review fix-plan" "Phase 6 attempt ${attempt}"
+
+          codex_wait_for_exit "/tmp/run-plan-codex-${FIX_SLOT}.pid"
+
           FIX_VERDICT=$(codex_verdict "$FIX_LOG")
           FIX_REPORT="/tmp/codex-fix-${FIX_SLOT}.md"
           if ! codex_report_extract "$FIX_LOG" "$FIX_REPORT"; then
@@ -805,6 +823,14 @@ CHECKS
               "$FIX_REPORT" "review fix-plan" \
               "attempt ${attempt} of the Phase 6 review loop"
           fi
+          # Phase 9 reports CODEX_FINAL_VERDICT and CODEX_ROUNDS. Leaving them at
+          # Phase 5's values would tell the operator the ship ended on the
+          # original run's verdict and hide every fix round from the count.
+          CODEX_FINAL_VERDICT="$FIX_VERDICT"
+          CODEX_ROUNDS=$(codex_round_count "$WORKTREE")
+          codex_state_write "$WORKTREE" "$FIX_PLAN" "$FIX_SLOT" "$attempt" \
+            "$FIX_VERDICT" "review fix-plan" "Phase 6 attempt ${attempt}"
+          rm -f "$WORKTREE/.ship/codex.pid"
           if [ "$FIX_VERDICT" = "infra" ]; then
             echo "codex infrastructure failure during the fix-plan run — stopping." >&2
             break
@@ -1039,6 +1065,15 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
    if [ -f "$WORKTREE/.ship/codex-rounds.md" ]; then
      CODEX_ROUNDS=$(codex_round_count "$WORKTREE")
      CODEX_LAST_FINDINGS=$(codex_round_last_findings "$WORKTREE")
+     # Bound what goes into the notification. A report with a long bullet list
+     # would otherwise be interpolated whole into $SUMMARY and can exceed a
+     # Discord message limit — at which point the operator gets nothing at all
+     # rather than a truncated list. The archive has the full text.
+     CODEX_FINDINGS_TOTAL=$(printf '%s\n' "$CODEX_LAST_FINDINGS" | grep -c '^- ' || true)
+     if [ "${CODEX_FINDINGS_TOTAL:-0}" -gt 12 ] 2>/dev/null; then
+       CODEX_LAST_FINDINGS="$(printf '%s\n' "$CODEX_LAST_FINDINGS" | head -12)
+   ... and $((CODEX_FINDINGS_TOTAL - 12)) more — see the archive below"
+     fi
      # Copy it out. `.ship/` dies with the worktree, and a post-mortem of an
      # unattended overnight run has nothing else to read.
      CODEX_ROUNDS_ARCHIVE="/tmp/ship-${ID}-codex-rounds.md"

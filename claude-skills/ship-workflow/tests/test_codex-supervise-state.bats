@@ -152,3 +152,40 @@ plan: docs/plans/R-099-other.md"
   [ "$status" -eq 2 ]
   [ ! -f "$SCRATCH/nope/.ship/codex-supervise.md" ]
 }
+
+# --- codex_wait_for_exit -----------------------------------------------------
+
+@test "codex_wait_for_exit: returns immediately when no pid file exists" {
+  run codex_wait_for_exit "$WT/.ship/absent.pid" 1
+  [ "$status" -eq 0 ]
+}
+
+@test "codex_wait_for_exit: returns once the process is gone" {
+  mkdir -p "$WT/.ship"
+  sleep 30 & pid=$!
+  echo "$pid" > "$WT/.ship/w.pid"
+  kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true
+  run codex_wait_for_exit "$WT/.ship/w.pid" 1
+  [ "$status" -eq 0 ]
+}
+
+@test "codex_wait_for_exit: does not spin forever on a malformed pid" {
+  # Without validation, a pid file of -1 makes kill -0 succeed forever.
+  mkdir -p "$WT/.ship"
+  for bad in "-1" "0" "garbage"; do
+    echo "$bad" > "$WT/.ship/w.pid"
+    run timeout 5 bash -c "source '$SHIP_LIB/codex-supervise-state.sh'; codex_wait_for_exit '$WT/.ship/w.pid' 1"
+    [ "$status" -eq 0 ] || { echo "hung or failed on pid '$bad' (status $status)"; return 1; }
+  done
+}
+
+@test "codex_wait_for_exit: actually blocks while the process is alive" {
+  mkdir -p "$WT/.ship"
+  sleep 2 & pid=$!
+  echo "$pid" > "$WT/.ship/w.pid"
+  start=$(date +%s)
+  codex_wait_for_exit "$WT/.ship/w.pid" 1
+  elapsed=$(( $(date +%s) - start ))
+  [ "$elapsed" -ge 1 ] || { echo "returned in ${elapsed}s — it did not wait"; return 1; }
+  kill "$pid" 2>/dev/null || true
+}

@@ -132,3 +132,36 @@ teardown() { rm -rf "$SCRATCH"; }
   run codex_round_count "$WT"
   [ "$output" = "1" ]
 }
+
+@test "codex_round_count: any round id a caller passes is still counted" {
+  # Regression: the sentinel charset was digits-only while Phase 6 passes
+  # `fix-${attempt}`, so three real rounds counted as one and the last-round
+  # boundary swallowed all of them. Ids are now sanitised on write, so this
+  # holds for the whole class rather than just the two shapes in use today.
+  for id in 1 42 "fix-1" "fix-12" "retry 3" "" "a/b" "x*y" "2026-10-02"; do
+    rm -rf "$WT/.ship"
+    echo body > r.md
+    codex_round_append "$WT" "$id" blocked r.md c n
+    run codex_round_count "$WT"
+    [ "$output" = "1" ] || { echo "id '$id' produced count '$output', not 1"; return 1; }
+  done
+}
+
+@test "codex_round_last_findings: mixed numeric and fix- rounds resolve to the last one" {
+  # Exactly the Phase 5 -> Phase 6 sequence: one numbered round, then fix rounds.
+  printf '**BLOCKED**\n\n- round one issue\n' > r1.md
+  printf '**BLOCKED**\n\n- could not fix blocker 2\n' > r2.md
+  printf '**DONE_WITH_CONCERNS**\n\n- all blockers cleared\n' > r3.md
+  codex_round_append "$WT" 1 blocked r1.md "plan defect" a
+  codex_round_append "$WT" "fix-1" blocked r2.md "review fix-plan" b
+  codex_round_append "$WT" "fix-2" done_with_concerns r3.md "review fix-plan" c
+
+  run codex_round_count "$WT"
+  [ "$output" = "3" ]
+
+  run codex_round_last_findings "$WT"
+  [[ "$output" == *"- all blockers cleared"* ]]
+  # A blocker a later round resolved must not be shown as the branch's state.
+  ! [[ "$output" == *"- could not fix blocker 2"* ]]
+  ! [[ "$output" == *"- round one issue"* ]]
+}

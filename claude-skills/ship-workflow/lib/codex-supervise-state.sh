@@ -71,18 +71,22 @@ codex_state_matches() {
 # this whole feature exists to prevent. A false "dead" makes it relaunch, and
 # /run-plan refuses a second launch for a live slot (SKILL.md:149-155). So when
 # liveness cannot be established, report NOT alive.
+# _codex_pid_valid <pid> — exit 0 only for a positive integer.
+# `kill -0 -1` and `kill -0 0` both exit 0: they are process-GROUP queries, not
+# process queries, so an unvalidated pid reads as alive forever.
+_codex_pid_valid() {
+  case "$1" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  [ "$1" -gt 0 ] 2>/dev/null
+}
+
 codex_state_alive() {
   local pidf="$1/.ship/codex.pid" pid cmd match
   match="${CODEX_STATE_PROCESS_MATCH:-codex}"
   [ -f "$pidf" ] || return 1
   pid=$(tr -d '[:space:]' < "$pidf")
-  # A pid must be a positive integer. `kill -0 -1` and `kill -0 0` both exit 0:
-  # they are process-GROUP queries, not process queries, so a truncated or
-  # hand-edited pid file would otherwise read as alive forever.
-  case "$pid" in
-    ''|*[!0-9]*) return 1 ;;
-  esac
-  [ "$pid" -gt 0 ] 2>/dev/null || return 1
+  _codex_pid_valid "$pid" || return 1
   kill -0 "$pid" 2>/dev/null || return 1
   # The pid was recorded before a possible session restart, and resume can happen
   # hours later; macOS recycles pids inside that window. Confirm the live process
@@ -93,4 +97,25 @@ codex_state_alive() {
     *"$match"*) return 0 ;;
   esac
   return 1
+}
+
+# codex_wait_for_exit <pidfile> [poll_seconds]
+# Block while the process recorded in <pidfile> is alive; return once it is gone
+# or was never there.
+#
+# `/run-plan` DETACHES: it writes the pid file and returns immediately. Phase 5
+# handles this with the prose "When codex exits", but Phase 6 classifies inside a
+# bash loop, where the next statement runs milliseconds after launch. Without
+# this, codex_verdict reads a log that does not exist yet, returns infra, and the
+# review loop breaks on a false infrastructure failure while codex is still
+# committing unsupervised.
+codex_wait_for_exit() {
+  local pidf="$1" interval="${2:-30}" pid
+  while [ -f "$pidf" ]; do
+    pid=$(tr -d '[:space:]' < "$pidf" 2>/dev/null)
+    _codex_pid_valid "$pid" || return 0
+    kill -0 "$pid" 2>/dev/null || return 0
+    sleep "$interval"
+  done
+  return 0
 }

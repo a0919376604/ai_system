@@ -255,3 +255,44 @@ p6_section() { awk '/^## Phase 6/,/^## Phase 7/' "$CMD"; }
   echo "$section" | grep -qF 'if ! codex_report_extract' \
     || { echo "extraction failure is not checked before appending a round"; return 1; }
 }
+
+@test "Phase 6 waits for codex to exit before classifying its log" {
+  # /run-plan detaches. Classifying on the next statement reads a log that does
+  # not exist yet: infra, zero rounds, and a break on a false failure while
+  # codex keeps committing.
+  section=$(p6_section)
+  wait_at=$(echo "$section" | grep -n 'codex_wait_for_exit' | head -1 | cut -d: -f1)
+  verdict_at=$(echo "$section" | grep -n 'FIX_VERDICT=$(codex_verdict' | head -1 | cut -d: -f1)
+  [ -n "$wait_at" ] || { echo "Phase 6 never waits for codex to exit"; return 1; }
+  [ -n "$verdict_at" ]
+  [ "$wait_at" -lt "$verdict_at" ] || { echo "Phase 6 classifies before waiting"; return 1; }
+}
+
+@test "Phase 6 propagates the final verdict and round count to Phase 9" {
+  # Phase 9 reports CODEX_FINAL_VERDICT and CODEX_ROUNDS. Left at Phase 5's
+  # values, the operator is told the ship ended on the original run's verdict
+  # and every fix round is missing from the count.
+  section=$(p6_section)
+  echo "$section" | grep -qF 'CODEX_FINAL_VERDICT="$FIX_VERDICT"' \
+    || { echo "the fix-plan verdict never reaches Phase 9"; return 1; }
+  echo "$section" | grep -qF 'CODEX_ROUNDS=$(codex_round_count "$WORKTREE")' \
+    || { echo "fix rounds are missing from the count Phase 9 reports"; return 1; }
+}
+
+@test "Phase 6 fix-plan runs are restart-survivable like Phase 5's" {
+  section=$(p6_section)
+  echo "$section" | grep -qF 'codex_state_write "$WORKTREE" "$FIX_PLAN"' \
+    || { echo "a fix-plan run records no state; a restart loses it"; return 1; }
+  echo "$section" | grep -qF 'codex.pid' \
+    || { echo "no pid mirror for the fix-plan run"; return 1; }
+}
+
+@test "Phase 9 bounds the findings it interpolates into the notification" {
+  body=$(p9_bash)
+  echo "$body" | grep -qF 'CODEX_FINDINGS_TOTAL' \
+    || { echo "the findings block is unbounded"; return 1; }
+  echo "$body" | grep -qF 'head -12' \
+    || { echo "no cap on the findings block"; return 1; }
+  echo "$body" | grep -qF 'more — see the archive' \
+    || { echo "truncation is silent — the operator cannot tell"; return 1; }
+}
