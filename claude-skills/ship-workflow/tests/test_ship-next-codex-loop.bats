@@ -201,3 +201,57 @@ p9_bash() {
   run bash -n "$BATS_TEST_TMPDIR/p9.sh"
   [ "$status" -eq 0 ]
 }
+
+# ============================ Task 6: Phase 6 ===============================
+
+p6_section() { awk '/^## Phase 6/,/^## Phase 7/' "$CMD"; }
+
+@test "Phase 6's fix-plan re-invoke supervises rather than firing and forgetting" {
+  section=$(p6_section)
+  echo "$section" | grep -qF 'codex_verdict' \
+    || { echo "the fix-plan re-invoke does not classify codex's verdict"; return 1; }
+  if echo "$section" | grep -qE '^[[:space:]]*3\) invoke /run-plan \$FIX_PLAN ;;[[:space:]]*$'; then
+    echo "the fix-plan case still fires and forgets"
+    return 1
+  fi
+}
+
+@test "Phase 6's fix-plan rounds land in the same history file" {
+  p6_section | grep -qF 'codex_round_append' \
+    || { echo "fix-plan rounds are not recorded"; return 1; }
+}
+
+@test "Phase 6 sources the libs it calls — phases do not share a shell" {
+  section=$(p6_section)
+  for lib in codex-verdict.sh codex-rounds.sh; do
+    echo "$section" | grep -qF "lib/$lib" \
+      || { echo "Phase 6 calls into $lib without sourcing it"; return 1; }
+  done
+}
+
+@test "Phase 6 reads the fix-plan's own slot, not Phase 5's" {
+  # /run-plan derives its slot from the plan filename it was handed, so the
+  # fix-plan logs to its own path. Reusing $SLOT would classify the ORIGINAL
+  # run's log and re-record its report as this fix's result.
+  section=$(p6_section)
+  echo "$section" | grep -qF 'FIX_SLOT=$(basename "$FIX_PLAN" .md' \
+    || { echo "the fix-plan slot is not derived from the fix-plan"; return 1; }
+  echo "$section" | grep -qF 'FIX_LOG="/tmp/run-plan-codex-${FIX_SLOT}.log"' \
+    || { echo "the fix log path is not built from the fix slot"; return 1; }
+  ! echo "$section" | grep -qF '/tmp/run-plan-codex-${SLOT}.log' \
+    || { echo "Phase 6 still reads Phase 5's log"; return 1; }
+}
+
+@test "Phase 6 uses the shared report extractor, not a tail window" {
+  section=$(p6_section)
+  echo "$section" | grep -qF 'codex_report_extract' \
+    || { echo "the fix-plan run does not use the shared extractor"; return 1; }
+  ! echo "$section" | grep -qE 'tail -[0-9]+ "?/tmp/run-plan-codex' \
+    || { echo "a fixed-size tail window is back in Phase 6"; return 1; }
+}
+
+@test "Phase 6 does not record a round it could not extract a report for" {
+  section=$(p6_section)
+  echo "$section" | grep -qF 'if ! codex_report_extract' \
+    || { echo "extraction failure is not checked before appending a round"; return 1; }
+}

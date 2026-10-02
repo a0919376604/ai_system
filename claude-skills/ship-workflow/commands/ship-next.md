@@ -727,6 +727,15 @@ CHECKS
 
 2. **Loop:**
    ```
+   # Phase 6 is a different shell from Phase 5 — Phase 7 cd's back to the main
+   # repo between them, and nothing Phase 5 sourced is in scope here. Executor 3
+   # calls codex_verdict, codex_report_extract and codex_round_append below, so
+   # source them. Sourcing is harmless for executors 1 and 2.
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/codex-verdict.sh
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/codex-rounds.sh
+
    attempt=1
    while [ "$attempt" -le 3 ]; do
      # Three-dot diff: shows only what this branch added relative to the
@@ -774,7 +783,33 @@ CHECKS
      case "$EXECUTOR" in
        1) invoke superpowers:subagent-driven-development on $FIX_PLAN ;;
        2) invoke superpowers:executing-plans on $FIX_PLAN ;;
-       3) invoke /run-plan $FIX_PLAN ;;
+       3) # Supervise this run the same way Phase 5 does. A fix-plan run can be
+          # BLOCKED or hit infrastructure exactly as the original run can, and
+          # firing-and-forgetting here would silently drop the reason.
+          invoke /run-plan "$FIX_PLAN"
+
+          # The fix-plan gets its OWN slot: /run-plan derives the slot from the
+          # plan filename it was handed, so docs/plans/R-001-x-review-fix-1.md
+          # logs to run-plan-codex-R-001-x-review-fix-1_.log, NOT to Phase 5's
+          # slot. Reusing $SLOT here would classify the ORIGINAL run's log and
+          # record its report again as though it were this fix's result.
+          FIX_SLOT=$(basename "$FIX_PLAN" .md | tr -c 'A-Za-z0-9_.-' '_')
+          FIX_LOG="/tmp/run-plan-codex-${FIX_SLOT}.log"
+          FIX_VERDICT=$(codex_verdict "$FIX_LOG")
+          FIX_REPORT="/tmp/codex-fix-${FIX_SLOT}.md"
+          if ! codex_report_extract "$FIX_LOG" "$FIX_REPORT"; then
+            echo "codex: no report extractable from $FIX_LOG" >&2
+            FIX_VERDICT=infra
+          else
+            codex_round_append "$WORKTREE" "fix-${attempt}" "$FIX_VERDICT" \
+              "$FIX_REPORT" "review fix-plan" \
+              "attempt ${attempt} of the Phase 6 review loop"
+          fi
+          if [ "$FIX_VERDICT" = "infra" ]; then
+            echo "codex infrastructure failure during the fix-plan run — stopping." >&2
+            break
+          fi
+          ;;
      esac
    done
    ```
