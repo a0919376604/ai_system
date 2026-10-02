@@ -129,7 +129,14 @@ make_fake_ponytail_plugin() {
   local scratch="$1"
   local version="${2:-4.8.4}"
   local mode="${3:-}"
-  local dir="$scratch/home/.claude/plugins/cache/ponytail/$version"
+  # REAL layout, verified against this machine's installed plugins:
+  #   cache/<marketplace>/<plugin>/<version>/
+  # e.g. cache/claude-plugins-official/superpowers/6.4.1/
+  # ponytail installs from its own marketplace, so marketplace == plugin name.
+  # An earlier fixture omitted the marketplace level; every ponytail test
+  # passed against a directory shape Claude Code never produces.
+  local marketplace="${4:-ponytail}"
+  local dir="$scratch/home/.claude/plugins/cache/$marketplace/ponytail/$version"
   mkdir -p "$dir"
   if [ "$mode" != "noruleset" ]; then
     cat > "$dir/AGENTS.md" <<'EOF'

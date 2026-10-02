@@ -123,3 +123,29 @@ teardown() {
   awk '/^## Phase 9 /,0' "$CMD" | grep -qF 'ponytail: ${PONYTAIL_STATUS}' \
     || { echo "the summary omits whether a ladder was enforced"; return 1; }
 }
+
+@test "ponytail_check_installed: finds the plugin under any marketplace name" {
+  # A fork or re-host changes the marketplace directory but not the plugin's.
+  make_fake_ponytail_plugin "$SCRATCH" 5.2.0 "" some-other-marketplace
+  run ponytail_check_installed
+  [ "$status" -eq 0 ]
+  run ponytail_version
+  [ "$output" = "5.2.0" ]
+}
+
+@test "ponytail_version: picks the highest version, not the last listed" {
+  make_fake_ponytail_plugin "$SCRATCH" 4.9.0
+  make_fake_ponytail_plugin "$SCRATCH" 4.10.0
+  make_fake_ponytail_plugin "$SCRATCH" 4.8.4
+  run ponytail_version
+  [ "$output" = "4.10.0" ]
+}
+
+@test "ponytail_check_installed: the pre-fix layout is NOT accepted" {
+  # cache/ponytail/<version>/ was the imagined shape. Accepting it would let
+  # the fiction back in and the fixture bug would stop being detectable.
+  mkdir -p "$HOME/.claude/plugins/cache/ponytail/9.9.9"
+  echo "# Ponytail" > "$HOME/.claude/plugins/cache/ponytail/9.9.9/AGENTS.md"
+  run ponytail_check_installed
+  [ "$status" -ne 0 ]
+}
