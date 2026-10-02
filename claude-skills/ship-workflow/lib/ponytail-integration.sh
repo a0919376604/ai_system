@@ -3,6 +3,13 @@
 # Detects an installed ponytail plugin and renders its ladder into
 # .ship/ponytail-rules.md for the Phase 5 executor to read.
 #
+# Upstream: https://github.com/DietrichGebert/ponytail
+#   /plugin marketplace add DietrichGebert/ponytail
+#   /plugin install ponytail@ponytail
+# Recorded here because it was not recorded anywhere: this integration was
+# built, tested and shipped against a dependency whose source nobody had
+# written down, which is part of why the layout went unverified for so long.
+#
 # Why render instead of relying on the plugin's own activation: Phase 5
 # spawns a fresh subagent per task, and ponytail documents that subagent
 # start hooks cannot inject its ruleset. Injection beats activation.
