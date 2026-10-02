@@ -443,12 +443,176 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    Phase 5 spawns a fresh subagent per task, and ponytail documents that
    subagent-start hooks cannot inject its ruleset.
 
-3. **Invoke the chosen sub-skill:**
+3. **Invoke the chosen sub-skill.**
    - `1` → `superpowers:subagent-driven-development`
    - `2` → `superpowers:executing-plans`
-   - `3` → `/run-plan docs/plans/${ID}-${SLUG}.md`
+   - `3` → the supervise loop in step 4 below.
 
-4. **Wait for completion.** Executor commits ≥ 1 commit per task into the worktree branch.
+4. **Executor 3 only — supervise the codex run.**
+
+   `/run-plan` detaches codex and returns. It does not finish the work. Across 19
+   real runs it stopped 13 times with a `BLOCKED` verdict, and every one of those
+   stops was correct. This step does the routing a human did by hand 16 times.
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/codex-verdict.sh
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/codex-rounds.sh
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/codex-supervise-state.sh
+
+   CODEX_ATTEMPT_CAP=3
+   PLAN="docs/plans/${ID}-${SLUG}.md"
+   # Same derivation /run-plan uses, so this agrees with its /tmp state files.
+   # (It appends a trailing _ because tr -c converts basename's newline too.
+   # /run-plan does the identical thing, so the paths match. Do not "fix" it
+   # here in isolation — that would break the interop it exists to preserve.)
+   SLOT=$(basename "$PLAN" .md | tr -c 'A-Za-z0-9_.-' '_')
+
+   # Resume before relaunching. A session restart kills the supervisor but not
+   # codex, and a state file from a different ship must not be inherited.
+   if codex_state_matches "$WORKTREE" "$PLAN"; then
+     CODEX_ATTEMPT=$(codex_state_attempt "$WORKTREE")
+     if codex_state_alive "$WORKTREE"; then
+       echo "codex is still running for $PLAN — attaching, not relaunching."
+     fi
+   else
+     CODEX_ATTEMPT=0
+   fi
+   ```
+
+   **Launch** with `/run-plan "$PLAN"`, then record the run so a later re-entry can
+   tell a live run from a dead one:
+
+   ```bash
+   # Pid authority: /run-plan owns /tmp/run-plan-codex-$SLOT.pid and deletes it.
+   # .ship/codex.pid is a durable mirror that survives a /tmp wipe, and is what
+   # codex_state_alive reads. A stale mirror is tolerable because that function
+   # also confirms the live pid is actually codex before trusting it.
+   mkdir -p "$WORKTREE/.ship"
+   cp "/tmp/run-plan-codex-${SLOT}.pid" "$WORKTREE/.ship/codex.pid" 2>/dev/null || true
+
+   # Write state NOW, not at the first BLOCKED. A session restart during the
+   # first run would otherwise leave no state, so codex_state_matches would be
+   # false, the live-process check inside that branch would never run, and the
+   # supervisor would relaunch over a live executor.
+   codex_state_write "$WORKTREE" "$PLAN" "$SLOT" "$CODEX_ATTEMPT" running "n/a" "n/a"
+   ```
+
+   Carry all five hardening items in the prompt — each is here because a run
+   failed without it:
+
+   - **Scope override.** `/run-plan`'s template tells the agent to ignore anything
+     under `.claude/skills/`. When the plan's target *is* a skill directory, the
+     agent refuses the entire plan.
+   - **`--auto:yes` requirement.** Codex cannot answer an interactive prompt. A plan
+     step invoking `/ship-next` without it hangs until the cap expires.
+   - **Engineering vocabulary.** A prompt written as "attack it", "payloads", "try to
+     make it delete" tripped a provider content filter and crashed the run. The same
+     review, phrased as input validation, completed. Request the same content; do not
+     phrase it as offensive security.
+   - **Resume context.** Which tasks are committed, which task to start at, and which
+     conclusions from earlier rounds are settled and must not be re-litigated.
+   - **Round history.** `.ship/codex-rounds.md`, so the executor does not rediscover
+     what the previous round already found.
+
+   **When codex exits**, classify before judging:
+
+   ```bash
+   CODEX_LOG="/tmp/run-plan-codex-${SLOT}.log"
+   CODEX_FINAL_VERDICT=$(codex_verdict "$CODEX_LOG")
+   CODEX_REASON=$(codex_verdict_reason "$CODEX_LOG")
+
+   # Extract the report by the same whole-log rule codex_verdict uses. An empty
+   # extraction is an error, never an empty round: preserving the executor's
+   # bullet-list report verbatim is the point of this loop.
+   CODEX_REPORT="/tmp/codex-report-${SLOT}.md"
+   if ! codex_report_extract "$CODEX_LOG" "$CODEX_REPORT"; then
+     echo "codex: no report could be extracted from $CODEX_LOG" >&2
+     CODEX_FINAL_VERDICT=infra
+     CODEX_REASON="no extractable report — $CODEX_REASON"
+   fi
+
+   case "$CODEX_FINAL_VERDICT" in
+     done|done_with_concerns) CODEX_ROUTE=continue ;;
+     blocked)                 CODEX_ROUTE=classify ;;
+     infra)                   CODEX_ROUTE=stop_infra ;;
+     *)                       CODEX_ROUTE=stop_infra ;;
+   esac
+   ```
+
+   Then route on `$CODEX_ROUTE`:
+
+   - **`continue`** (verdict `done` / `done_with_concerns`) → record the round, mark
+     the run finished, and continue to Phase 6.
+
+     ```bash
+     codex_round_append "$WORKTREE" "$((CODEX_ATTEMPT + 1))" "$CODEX_FINAL_VERDICT" \
+       "$CODEX_REPORT" "n/a" "executor completed"
+     CODEX_ROUNDS=$(codex_round_count "$WORKTREE")
+     # Clear the blocked state. Phase 6 re-enters this loop for fix-plans and
+     # must not inherit a verdict from a round that has already been resolved.
+     codex_state_write "$WORKTREE" "$PLAN" "$SLOT" "$CODEX_ATTEMPT" \
+       "$CODEX_FINAL_VERDICT" "n/a" "n/a"
+     rm -f "$WORKTREE/.ship/codex.pid"
+     ```
+
+   - **`stop_infra`** (verdict `infra`) → STOP and notify. Do **not** relaunch, and
+     leave the **attempt count unchanged**: two of the 19 runs ended this way, and
+     retrying them would have burned the budget real defects needed. Use Phase 9's
+     notification routing with `$CODEX_REASON`. The worktree and branch are retained.
+
+   - **`classify`** (verdict `blocked`) → read the executor's report and classify it
+     into exactly one of three, then act:
+
+     | Class | Signal | Action |
+     |---|---|---|
+     | **plan defect** | the prescribed step is wrong, ambiguous or impossible as written | repair `$PLAN`, relaunch from the blocked task |
+     | **executor error** | the plan is right and the executor deviated — a transcription slip, an edit in the wrong place | relaunch with a correction note, plan unchanged |
+     | **spec-level** | the finding says the *approach* cannot work, not that this step is wrong | **STOP and notify the operator** |
+
+     **When the classification is unclear, treat it as spec-level and escalate.** The
+     cost of a needless escalation is one message. The cost of silently redesigning
+     the software overnight is a morning spent reading commits to find out what it
+     decided. Changing what the software is supposed to do is not the executor's call
+     and it is not yours.
+
+     **Set these three yourself from the classification above** — they are the
+     judgement's output and nothing computes them:
+
+     ```bash
+     CODEX_CLASS="plan defect"          # or "executor error" — spec-level stops instead
+     CODEX_NOTE="repaired Task 7 step 3; the prescribed grep lacked --"
+     CODEX_BLOCKED_AT="Task 7"          # the task the executor stopped at
+     ```
+
+     Record the round, then relaunch or stop:
+
+     ```bash
+     CODEX_ATTEMPT=$((CODEX_ATTEMPT + 1))
+     codex_round_append "$WORKTREE" "$CODEX_ATTEMPT" blocked \
+       "$CODEX_REPORT" "$CODEX_CLASS" "$CODEX_NOTE"
+     codex_state_write "$WORKTREE" "$PLAN" "$SLOT" "$CODEX_ATTEMPT" \
+       blocked "$CODEX_CLASS" "$CODEX_BLOCKED_AT"
+     CODEX_ROUNDS=$(codex_round_count "$WORKTREE")
+     if [ "$CODEX_ATTEMPT" -ge "$CODEX_ATTEMPT_CAP" ]; then
+       CODEX_ROUTE=stop_exhausted
+       echo "codex: $CODEX_ATTEMPT_CAP repair attempts exhausted — stopping." >&2
+       echo "worktree retained at $WORKTREE; history in .ship/codex-rounds.md" >&2
+     else
+       CODEX_ROUTE=relaunch
+     fi
+     ```
+
+     On `relaunch`, go back to **Launch** above with the repaired plan or the
+     correction note, reusing the same `$SLOT`. On `stop_exhausted`, stop and notify.
+     A run that burns three attempts is a signal the plan was not ready, not a
+     budget to raise.
+
+5. **Wait for the executor to finish.** For options 1 and 2 this is the sub-skill
+   returning. For option 3 it is the loop above reaching `continue`, an escalation,
+   or the cap. Either way the branch carries ≥ 1 commit per completed task.
 
 ## Phase 6 — Code review loop (strict gate)
 

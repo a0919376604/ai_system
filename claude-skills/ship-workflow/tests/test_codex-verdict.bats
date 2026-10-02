@@ -95,3 +95,63 @@ mklog() { printf '%s\n' "$@" > run.log; }
   run codex_verdict_reason run.log
   [[ "$output" == *"no verdict"* ]]
 }
+
+# --- codex_report_extract ----------------------------------------------------
+
+@test "codex_report_extract: finds a marker far from the end of a long log" {
+  # The reproduction: 109 lines, verdict 49 lines from the end. The `tail -40`
+  # version produced a zero-line report here while codex_verdict said `done`.
+  { for i in $(seq 1 60); do echo "progress line $i"; done
+    echo "**DONE**"
+    echo ""
+    echo "- Task 1 complete"
+    for i in $(seq 1 45); do echo "trailing detail $i"; done
+  } > big.log
+  run codex_report_extract big.log out.md
+  [ "$status" -eq 0 ]
+  [ "$(head -1 out.md)" = "**DONE**" ]
+  grep -qF -- "- Task 1 complete" out.md
+  grep -qF "trailing detail 45" out.md
+  # And it agrees with the classifier on the same log.
+  run codex_verdict big.log
+  [ "$output" = "done" ]
+}
+
+@test "codex_report_extract: takes the last marker, not the first" {
+  printf 'BLOCKED\nfirst report\n**DONE**\nsecond report\n' > run.log
+  run codex_report_extract run.log out.md
+  [ "$status" -eq 0 ]
+  [ "$(head -1 out.md)" = "**DONE**" ]
+  ! grep -qF 'first report' out.md
+}
+
+@test "codex_report_extract: no marker exits 2 and writes no file" {
+  printf 'just some output\nnothing conclusive\n' > run.log
+  run codex_report_extract run.log out.md
+  [ "$status" -eq 2 ]
+  [ ! -f out.md ]
+}
+
+@test "codex_report_extract: a missing log exits 2" {
+  run codex_report_extract nope.log out.md
+  [ "$status" -eq 2 ]
+  [ ! -f out.md ]
+}
+
+@test "codex_report_extract: the prompt's own words do not start a report" {
+  # Same line-anchoring rule as the classifier: "report BLOCKED" mid-sentence
+  # is an instruction, not a verdict.
+  printf 'you must report BLOCKED if you cannot proceed\n**DONE**\nthe real report\n' > run.log
+  run codex_report_extract run.log out.md
+  [ "$status" -eq 0 ]
+  [ "$(head -1 out.md)" = "**DONE**" ]
+  ! grep -qF 'you must report' out.md
+}
+
+@test "codex_report_extract: the report is preserved byte-for-byte from the marker" {
+  printf '**BLOCKED**\n\n- `git diff` returns exit 0\n- $HOME is unquoted\n~~~\n' > run.log
+  run codex_report_extract run.log out.md
+  [ "$status" -eq 0 ]
+  run diff run.log out.md
+  [ "$status" -eq 0 ]
+}
