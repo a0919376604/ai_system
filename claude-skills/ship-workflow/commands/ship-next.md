@@ -426,6 +426,20 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
       && [ "$PONYTAIL_SHA" != "$PONYTAIL_PINNED_SHA" ]; then
      PONYTAIL_DRIFT=1
    fi
+
+   # An absent ponytail is a legitimate state, but a SILENT one misleads. The
+   # lib no-ops by design (spec 8.4) — correct for a missing optional
+   # dependency, wrong for one the operator asked for and believes is active.
+   # Measured on this machine: check_installed false, render_rules 0 lines,
+   # Phase 5 said nothing, so every executor ran with no ladder at all.
+   if ponytail_check_installed; then
+     PONYTAIL_STATUS="v${PONYTAIL_CURRENT} ladder rendered"
+   else
+     PONYTAIL_STATUS="not installed — no ladder enforced this run"
+     # Printed here, not only in Phase 9: the SUMMARY is built only when
+     # AUTO=1, and interactive is the mode the operator is actually watching.
+     echo "ponytail: not installed — no ladder enforced this run" >&2
+   fi
    ```
 
    **On drift (`PONYTAIL_DRIFT=1`):**
@@ -1139,6 +1153,7 @@ ${CODEX_LAST_FINDINGS}
    • CONTEXT.md: ${CONTEXT_MD_STATUS}
    • Test budget: ship ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp (${TEST_BUDGET_VERDICT})
    • Test pruning: ${PRUNE_STATUS}
+   • ponytail: ${PONYTAIL_STATUS}
    • UA: ${UA_STATUS}${CODEX_SUMMARY_BLOCK}
    • decisions log: ${WORKTREE}/.claude/.ship-auto-decisions.md (kept in worktree pre-cleanup; copy if you want post-mortem)"
 
