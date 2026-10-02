@@ -279,12 +279,24 @@ p6_section() { awk '/^## Phase 6/,/^## Phase 7/' "$CMD"; }
     || { echo "fix rounds are missing from the count Phase 9 reports"; return 1; }
 }
 
-@test "Phase 6 fix-plan runs are restart-survivable like Phase 5's" {
-  section=$(p6_section)
-  echo "$section" | grep -qF 'codex_state_write "$WORKTREE" "$FIX_PLAN"' \
-    || { echo "a fix-plan run records no state; a restart loses it"; return 1; }
-  echo "$section" | grep -qF 'codex.pid' \
-    || { echo "no pid mirror for the fix-plan run"; return 1; }
+@test "Phase 6 does not write state that only Phase 5 reads" {
+  # Every reader of the supervise state and the pid mirror is in Phase 5, and
+  # each file holds one record. A write from Phase 6 is read by nothing and
+  # clobbers the plan identity Phase 5 resumes from: after one,
+  # codex_state_matches against the original plan returns false and the
+  # attempt count resets to 0. An earlier version of this test asserted the
+  # write EXISTED, pinning machinery that could only do harm.
+  # Scan EXECUTABLE lines only. The first version of this guard matched the
+  # comment that explains the rule — the fourth time that defect has appeared
+  # in this repo. Strip comments and blank lines before asserting.
+  code=$(p6_section | sed 's/[[:space:]]*#.*$//' | grep -v '^[[:space:]]*$')
+  ! echo "$code" | grep -qF 'codex_state_write' \
+    || { echo "Phase 6 clobbers Phase 5's supervise state"; return 1; }
+  ! echo "$code" | grep -qF '.ship/codex.pid' \
+    || { echo "Phase 6 clobbers Phase 5's pid mirror"; return 1; }
+  # And the guard must be able to see a violation when there is one.
+  echo "$code" | grep -qF 'codex_wait_for_exit' \
+    || { echo "the code extraction produced nothing to scan"; return 1; }
 }
 
 @test "Phase 9 bounds the findings it interpolates into the notification" {

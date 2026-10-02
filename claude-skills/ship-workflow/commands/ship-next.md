@@ -817,14 +817,14 @@ CHECKS
           # milliseconds after launch, read a log that does not exist yet, and
           # classify infra — breaking the review loop on a false infrastructure
           # failure while codex is still committing unsupervised.
-          # Make this run restart-survivable the same way Phase 5's is: mirror
-          # the pid and record which plan is in flight before blocking on it.
-          mkdir -p "$WORKTREE/.ship"
-          cp "/tmp/run-plan-codex-${FIX_SLOT}.pid" "$WORKTREE/.ship/codex.pid" \
-            2>/dev/null || true
-          codex_state_write "$WORKTREE" "$FIX_PLAN" "$FIX_SLOT" "$attempt" \
-            running "review fix-plan" "Phase 6 attempt ${attempt}"
-
+          # Deliberately NOT writing supervise state here. Every reader of
+          # .ship/codex-supervise.md and .ship/codex.pid lives in Phase 5, and
+          # both files hold ONE record — so a write here is read by nothing and
+          # destroys the plan identity and attempt count Phase 5 depends on.
+          # Verified: after a Phase 6 write, codex_state_matches against the
+          # original plan returns false and Phase 5 resets CODEX_ATTEMPT to 0.
+          # Making Phase 6 resumable needs a reader and its own record, not a
+          # second writer into Phase 5's slot. Tracked as a follow-up.
           codex_wait_for_exit "/tmp/run-plan-codex-${FIX_SLOT}.pid"
 
           FIX_VERDICT=$(codex_verdict "$FIX_LOG")
@@ -842,9 +842,6 @@ CHECKS
           # original run's verdict and hide every fix round from the count.
           CODEX_FINAL_VERDICT="$FIX_VERDICT"
           CODEX_ROUNDS=$(codex_round_count "$WORKTREE")
-          codex_state_write "$WORKTREE" "$FIX_PLAN" "$FIX_SLOT" "$attempt" \
-            "$FIX_VERDICT" "review fix-plan" "Phase 6 attempt ${attempt}"
-          rm -f "$WORKTREE/.ship/codex.pid"
           if [ "$FIX_VERDICT" = "infra" ]; then
             echo "codex infrastructure failure during the fix-plan run — stopping." >&2
             break
