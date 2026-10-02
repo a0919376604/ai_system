@@ -135,11 +135,19 @@ p85_bash() {
   echo "$body" | grep -qF 'PRUNE_STATUS=$(prune_report'
 }
 
-@test "the plan's _log.md example matches the command file's actual row" {
-  # These drifted: the command file gained `prune: ${PRUNE_STATUS}` and the plan's
-  # Task 10 snippet did not, so the two disagreed about what a ship records.
-  PLAN="$SHIP_SKILL_ROOT/../../docs/superpowers/plans/2026-09-28-ship-next-context-and-test-discipline-impl.md"
-  [ -f "$PLAN" ]
+@test "the newest plan's _log.md example matches the command file's actual row" {
+  # These drifted once: the command file gained `prune: ${PRUNE_STATUS}` and the
+  # plan's Task 10 snippet did not, so the two disagreed about what a ship records.
+  #
+  # The check follows the NEWEST plan that documents the row, not a fixed one.
+  # Superseded plans legitimately describe the row as it was when they shipped —
+  # forcing a 2026-09 plan to mention a variable introduced in 2026-10 would make
+  # it describe machinery it never created. Plan filenames are date-prefixed, so
+  # lexicographic order is chronological order.
+  PLAN_DIR="$SHIP_SKILL_ROOT/../../docs/superpowers/plans"
+  [ -d "$PLAN_DIR" ]
+  PLAN=$(grep -l 'shipped (review: blocking=0, major=' "$PLAN_DIR"/*.md | sort | tail -1)
+  [ -n "$PLAN" ] && [ -f "$PLAN" ]
   cmd_row=$(grep -F 'shipped (review: blocking=0, major=' "$CMD" | head -1)
   plan_row=$(grep -F 'shipped (review: blocking=0, major=' "$PLAN" | head -1)
   [ -n "$cmd_row" ] && [ -n "$plan_row" ]

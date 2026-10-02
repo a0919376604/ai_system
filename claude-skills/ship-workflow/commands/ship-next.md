@@ -989,6 +989,29 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 
 ## Phase 9 — Cleanup
 
+0. **Capture anything inside the worktree the summary needs.** Step 1 removes the
+   worktree, so `.ship/` is gone by the time steps 3 and 4 run. Read it first —
+   this is the step that makes the round history survive cleanup.
+
+   ```bash
+   # Phase 9 is a different shell from Phase 5: nothing sourced there is in
+   # scope here. Source what this phase calls.
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/codex-rounds.sh
+
+   CODEX_ROUNDS_ARCHIVE=""
+   CODEX_LAST_FINDINGS=""
+   if [ -f "$WORKTREE/.ship/codex-rounds.md" ]; then
+     CODEX_ROUNDS=$(codex_round_count "$WORKTREE")
+     CODEX_LAST_FINDINGS=$(codex_round_last_findings "$WORKTREE")
+     # Copy it out. `.ship/` dies with the worktree, and a post-mortem of an
+     # unattended overnight run has nothing else to read.
+     CODEX_ROUNDS_ARCHIVE="/tmp/ship-${ID}-codex-rounds.md"
+     cp "$WORKTREE/.ship/codex-rounds.md" "$CODEX_ROUNDS_ARCHIVE" 2>/dev/null \
+       || CODEX_ROUNDS_ARCHIVE=""
+   fi
+   ```
+
 1. **Remove worktree:**
 
    ```bash
@@ -1013,7 +1036,14 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 3. **Log + commit (repo side, on $ORIG_BRANCH):**
 
    ```bash
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}) | n |" >> docs/learnings/_log.md
+   # Only ships that actually ran codex carry a codex fragment. Auto mode picks
+   # executor 1, so most ships never run it, and an empty "codex:  round(s)" on
+   # every row is noise that hides the rows where it means something.
+   CODEX_LOG_FRAGMENT=""
+   if [ "${CODEX_ROUNDS:-0}" -gt 0 ] 2>/dev/null; then
+     CODEX_LOG_FRAGMENT=", codex: ${CODEX_ROUNDS} round(s) ${CODEX_FINAL_VERDICT}"
+   fi
+   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}${CODEX_LOG_FRAGMENT}) | n |" >> docs/learnings/_log.md
    git add docs/learnings/_log.md
    git commit -m "log: ship ${ID}"
    ```
@@ -1023,6 +1053,14 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
    Build the success message body:
    ```bash
    if [ "$AUTO" = "1" ]; then
+     # Built from what step 0 captured, so it survives the worktree removal.
+     CODEX_SUMMARY_BLOCK=""
+     if [ "${CODEX_ROUNDS:-0}" -gt 0 ] 2>/dev/null; then
+       CODEX_SUMMARY_BLOCK="
+   • codex: ${CODEX_ROUNDS} round(s), final ${CODEX_FINAL_VERDICT}
+${CODEX_LAST_FINDINGS}
+   • full round history: ${CODEX_ROUNDS_ARCHIVE:-(not archived)}"
+     fi
      SUMMARY="✅ ${ID} ${DESCRIPTION} shipped (squash ${MERGE_SHA})
    • blocking: 0 ✓
    • major: ${MAJOR_COUNT} → IDEA-NNN auto-logged
@@ -1031,7 +1069,7 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
    • CONTEXT.md: ${CONTEXT_MD_STATUS}
    • Test budget: ship ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp (${TEST_BUDGET_VERDICT})
    • Test pruning: ${PRUNE_STATUS}
-   • UA: ${UA_STATUS}
+   • UA: ${UA_STATUS}${CODEX_SUMMARY_BLOCK}
    • decisions log: ${WORKTREE}/.claude/.ship-auto-decisions.md (kept in worktree pre-cleanup; copy if you want post-mortem)"
 
      case "$UA_STATUS" in
@@ -1056,6 +1094,16 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
      printf '\a' >&2
    fi
    ```
+
+   The summary carries the **last round's bullets verbatim**, not a paraphrase. That
+   list is the operator's only window into an unattended run, and its fifth element —
+   the statement of what was *not* changed — is the blast radius of a failed round.
+   Summarising destroys exactly the part that makes it scannable.
+
+   `.ship/` dies with the worktree at step 1 of this phase, which is why step 0 reads
+   it first and **copies it out** to `${CODEX_ROUNDS_ARCHIVE}` — the same caveat that
+   already applies to `.ship-auto-decisions.md`, except here it is handled rather
+   than warned about.
 
 ## Failure modes
 

@@ -894,7 +894,14 @@ Expected: FAIL — the 4 new tests fail; the 11 from Task 4 still pass.
 In Phase 9 step 3, extend the log row — it currently ends `prune: ${PRUNE_STATUS}) | n |`:
 
 ```bash
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}, codex: ${CODEX_ROUNDS} round(s) ${CODEX_FINAL_VERDICT}) | n |" >> docs/learnings/_log.md
+   # AMENDED DURING IMPLEMENTATION: the fragment is conditional. Auto mode picks
+   # executor 1, so most ships never run codex, and an unguarded "codex:  round(s)"
+   # on every row hides the rows where it means something.
+   CODEX_LOG_FRAGMENT=""
+   if [ "${CODEX_ROUNDS:-0}" -gt 0 ] 2>/dev/null; then
+     CODEX_LOG_FRAGMENT=", codex: ${CODEX_ROUNDS} round(s) ${CODEX_FINAL_VERDICT}"
+   fi
+   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}${CODEX_LOG_FRAGMENT}) | n |" >> docs/learnings/_log.md
 ```
 
 In Phase 9 step 4, extend the `SUMMARY` heredoc after the `UA:` line:

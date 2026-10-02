@@ -133,3 +133,71 @@ p5_bash() {
   echo "$section" | grep -qF 'superpowers:subagent-driven-development' || return 1
   echo "$section" | grep -qF 'superpowers:executing-plans' || return 1
 }
+
+# ============================ Task 5: Phase 9 ===============================
+
+p9_section() { awk '/^## Phase 9/,0' "$CMD"; }
+p9_bash() {
+  p9_section | awk '/^[[:space:]]*```bash[[:space:]]*$/{f=1;next} /^[[:space:]]*```[[:space:]]*$/{f=0} f'
+}
+
+@test "Phase 9 log row records the codex round count and verdict" {
+  row=$(grep -F '>> docs/learnings/_log.md' "$CMD")
+  [ -n "$row" ]
+  [[ "$row" == *'${CODEX_LOG_FRAGMENT}'* ]]
+  frag=$(p9_bash | grep -F 'CODEX_LOG_FRAGMENT=", codex:')
+  [[ "$frag" == *'${CODEX_ROUNDS}'* ]]
+  [[ "$frag" == *'${CODEX_FINAL_VERDICT}'* ]]
+}
+
+@test "Phase 9 omits the codex fragment on ships that never ran codex" {
+  # Auto mode picks executor 1, so most ships have no codex state at all.
+  # An unguarded "codex:  round(s)" on every row hides the rows that matter.
+  body=$(p9_bash)
+  echo "$body" | grep -qF 'CODEX_LOG_FRAGMENT=""' || { echo "fragment is not defaulted empty"; return 1; }
+  echo "$body" | grep -qF 'CODEX_SUMMARY_BLOCK=""' || { echo "summary block is not defaulted empty"; return 1; }
+  [ "$(echo "$body" | grep -cF 'if [ "${CODEX_ROUNDS:-0}" -gt 0 ]')" -eq 2 ]
+}
+
+@test "Phase 9 summary carries the last round's findings, not a paraphrase" {
+  p9_section | grep -qF 'codex_round_last_findings' \
+    || { echo "the summary does not pull the last round's bullets"; return 1; }
+  p9_section | grep -qF '${CODEX_LAST_FINDINGS}' \
+    || { echo "the captured findings are never interpolated"; return 1; }
+}
+
+@test "Phase 9 sources the lib it calls — phases do not share a shell" {
+  p9_bash | grep -qF 'lib/codex-rounds.sh' \
+    || { echo "Phase 9 calls codex_round_* without sourcing the lib"; return 1; }
+}
+
+@test "the round history is read and copied out BEFORE the worktree is removed" {
+  # The ordering is the whole point: step 1 removes the worktree, so a read at
+  # step 4 returns nothing. Compare line positions rather than trusting prose.
+  sec=$(p9_section)
+  read_at=$(echo "$sec" | grep -n 'codex_round_last_findings' | head -1 | cut -d: -f1)
+  copy_at=$(echo "$sec" | grep -n 'cp "\$WORKTREE/.ship/codex-rounds.md"' | head -1 | cut -d: -f1)
+  rm_at=$(echo "$sec" | grep -n 'git worktree remove "\$WORKTREE"' | head -1 | cut -d: -f1)
+  [ -n "$read_at" ] && [ -n "$copy_at" ] && [ -n "$rm_at" ]
+  [ "$read_at" -lt "$rm_at" ] || { echo "findings are read after the worktree is removed"; return 1; }
+  [ "$copy_at" -lt "$rm_at" ] || { echo "history is copied out after the worktree is removed"; return 1; }
+}
+
+@test "Phase 9 points at an archive that outlives the worktree" {
+  sec=$(p9_section)
+  echo "$sec" | grep -qiF 'copies it out' \
+    || { echo "nothing says the round history is preserved"; return 1; }
+  # The summary must not point inside the removed worktree.
+  echo "$sec" | grep -qF 'full round history: ${CODEX_ROUNDS_ARCHIVE' \
+    || { echo "the summary points at a path that no longer exists"; return 1; }
+  ! echo "$sec" | grep -qF 'full round history: ${WORKTREE}' \
+    || { echo "the summary points inside the removed worktree"; return 1; }
+}
+
+@test "Phase 9 bash blocks parse as valid shell" {
+  block=$(p9_bash)
+  [ -n "$block" ]
+  echo "$block" > "$BATS_TEST_TMPDIR/p9.sh"
+  run bash -n "$BATS_TEST_TMPDIR/p9.sh"
+  [ "$status" -eq 0 ]
+}
