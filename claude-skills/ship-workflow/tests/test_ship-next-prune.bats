@@ -26,13 +26,15 @@ p85_bash() {
 
 @test "Phase 8.5 executes nothing but sourcing the lib and calling it" {
   # The logic now lives in lib/prune-report.sh, which is unit-tested directly. What is
-  # left here is three lines, and three lines can be checked exhaustively — unlike the
+  # left here is four statements, which can be checked exhaustively — unlike the
   # twenty that preceded them, which needed an extraction harness that leaked for four
   # review rounds.
   body=$(p85_bash | grep -vE '^[[:space:]]*(#.*)?$')
   [ -n "$body" ]
   while IFS= read -r line; do
     case "$line" in
+      'source ~/.claude/skills/ship-workflow/lib/test-churn.sh') ;;
+      'tc_report "$ORIG_BRANCH" HEAD') ;;
       'source ~/.claude/skills/ship-workflow/lib/prune-report.sh') ;;
       'PRUNE_STATUS=$(prune_report "$ORIG_BRANCH" "$BRANCH" "$TEST_BUDGET_VERDICT")') ;;
       *) echo "Phase 8.5 runs an unexpected statement: $line"; return 1 ;;

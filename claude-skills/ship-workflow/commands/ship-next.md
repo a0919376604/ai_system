@@ -440,6 +440,11 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
      echo
      echo "1. Tests attach only to the seams listed below."
      echo "2. \`Seam: none\` tasks add no tests. Behavior unchanged => tests unchanged."
+     echo "2b. Existing shared fixtures are READ-ONLY. Need a different shape? Add a"
+     echo "    new fixture. Editing a shared one edits every test that uses it —"
+     echo "    conftest.py was the most-churned test file in this project's history"
+     echo "    at 31 edits, and one such edit silently moved two counts in a"
+     echo "    fixture other tests were asserting against."
      echo "3. One test, one behavior. Do not pack unrelated assertions into a single test."
      echo
      echo "## Declared seams"
@@ -1045,6 +1050,31 @@ review sets `merge_mode: mr`.
 ## Phase 8.5 — Test prune report
 
 **Report-only. This phase deletes nothing.**
+
+0. **Churn report.** The test budget counts ADDED lines only, so a ship that
+   rewrote forty existing tests and added none scores perfectly. Measured over
+   200 real commits: test files were added 376 times and **modified 456** —
+   more editing than writing, and nothing reported it.
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/test-churn.sh
+   tc_report "$ORIG_BRANCH" HEAD
+   ```
+
+   **Reading it.** A test edited alongside its source is tracking a real
+   behaviour change — that is correct and costs nothing to explain. A test
+   edited while its source stood still is the **change-detector** smell: it was
+   coupled to an implementation detail, or it was asserting something untrue.
+   On the real repo 32% of modifications are unpaired.
+
+   Lines-per-test is the volume signal. Counting tests points at the wrong
+   thing: that repo has only 1.92 tests per product function, which is thin,
+   but averages 24 lines per test. The bulk is setup, not test count.
+
+   **Report only.** Deciding whether a specific unpaired edit was wrong needs a
+   human, for the same reason the prune list below is a proposal: no mechanical
+   signal distinguishes a brittle test from a correctly-updated one.
 
 It was designed to prune redundant tests behind a coverage gate. Six review rounds found
 fourteen defects in that gate, and the last three established why: coverage records which
