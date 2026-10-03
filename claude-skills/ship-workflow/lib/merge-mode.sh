@@ -47,7 +47,12 @@ forge_mr_cmd() {
   local branch="$1" target="$2" title="$3" body="$4" cli
   cli=$(forge_cli) || return 1
   case "$cli" in
-    glab) printf 'glab mr create --source-branch %s --target-branch %s --title %s --description-file %s --remove-source-branch\n' \
+    # glab takes the description as TEXT, not a path: there is no
+    # --description-file. The first version of this invented one, and the
+    # unit test asserted the invented flag — pinning the assumption instead
+    # of the tool. It failed the first time it was really run.
+    # --no-editor keeps it non-interactive.
+    glab) printf 'glab mr create --source-branch %s --target-branch %s --title %s --description "$(cat %s)" --no-editor --remove-source-branch\n' \
             "$branch" "$target" "'$title'" "$body" ;;
     gh)   printf 'gh pr create --head %s --base %s --title %s --body-file %s\n' \
             "$branch" "$target" "'$title'" "$body" ;;

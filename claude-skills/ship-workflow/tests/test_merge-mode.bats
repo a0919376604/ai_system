@@ -73,7 +73,8 @@ teardown() { rm -rf "$SCRATCH"; }
   [ "$status" -eq 0 ]
   [[ "$output" == glab\ mr\ create* ]] || return 1
   [[ "$output" == *--source-branch* ]] || return 1
-  [[ "$output" == *--description-file* ]]
+  [[ "$output" == *--description* ]] || return 1
+  [[ "$output" == *--no-editor* ]]
 }
 
 @test "forge_mr_cmd: github variant uses gh pr create" {
@@ -81,4 +82,27 @@ teardown() { rm -rf "$SCRATCH"; }
   run forge_mr_cmd "feat/x" "main" "T" "/tmp/body.md"
   [[ "$output" == gh\ pr\ create* ]] || return 1
   [[ "$output" == *--body-file* ]]
+}
+
+@test "forge_mr_cmd: every flag it emits is one the installed CLI accepts" {
+  # The reason this test exists: the glab branch emitted --description-file,
+  # a flag glab does not have. The unit test asserted that same invented flag,
+  # so both agreed with each other and neither agreed with the tool. It failed
+  # the first time it was run for real. Check against --help, not belief.
+  for forge in glab gh; do
+    command -v "$forge" >/dev/null || continue
+    case "$forge" in
+      glab) git remote remove origin 2>/dev/null || true
+            git remote add origin git@gitlab.example.com:a/b.git
+            help=$(glab mr create --help 2>&1) ;;
+      gh)   git remote remove origin 2>/dev/null || true
+            git remote add origin git@github.com:a/b.git
+            help=$(gh pr create --help 2>&1) ;;
+    esac
+    cmd=$(forge_mr_cmd br main T /tmp/b.md)
+    for flag in $(printf '%s\n' "$cmd" | tr ' ' '\n' | grep '^--'); do
+      printf '%s' "$help" | grep -qF -- "$flag" \
+        || { echo "$forge does not accept $flag"; return 1; }
+    done
+  done
 }
