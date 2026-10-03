@@ -156,12 +156,30 @@ source ~/.claude/skills/ship-workflow/lib/context-md.sh
    - "Promote `<pattern title>` to AIR-OS `40 Knowledge/Concepts/<slug>.md` or `30 Engineering/<slug>.md`?"
    - On confirm, write the promoted note with AIR-OS frontmatter (`type: concept` or `type: engineering`, ai-first preamble, related-projects wikilink back to current project).
 
-7. **Update ROADMAP.** Edit the AIR-OS ROADMAP.md:
-   - Find the `${ID}` line under "🔥 Now"
-   - Strip `adhoc-inserted=true` if present
-   - Strip `status=in-progress`
-   - Move the line to "✅ Done" with `· ✅ $(date +%Y-%m-%d)` suffix
-   - Atomic write via `.tmp` + `mv`
+7. **Update ROADMAP.** What "done" means depends on how Phase 7 landed it.
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+   MERGE_MODE=$(merge_mode)
+   ```
+
+   - **`squash`** — the work is on the base branch. Edit the AIR-OS ROADMAP.md:
+     - Find the `${ID}` line under "🔥 Now"
+     - Strip `adhoc-inserted=true` if present
+     - Strip `status=in-progress`
+     - Move the line to "✅ Done" with `· ✅ $(date +%Y-%m-%d)` suffix
+     - Atomic write via `.tmp` + `mv`
+
+   - **`mr`** — the work is in review, not landed. The row stays in "🔥 Now":
+
+     ```bash
+     ~/.claude/skills/ship-workflow/lib/roadmap-insert.sh \
+       "$ROADMAP_PATH" "$ID" --mark-review "$SHIP_REVIEW_URL"
+     ```
+
+     Moving it to Done here would make the ROADMAP assert a merge that has not
+     happened. `/ship-land` performs the Done move after the review merges.
 
 7b. **Update Proposal (if any).** Find any vault proposal for this R-NNN:
 
@@ -189,11 +207,21 @@ source ~/.claude/skills/ship-workflow/lib/context-md.sh
    ~/.claude/skills/ship-workflow/lib/sync.sh --force
    ```
 
-9. **Log + commit:**
+9. **Log + commit.** In `mr` mode the learning belongs ON the review branch,
+   so it is reviewed and merged with the work it describes. Committing it to
+   the base branch would put a learning for unmerged code on main.
+
    ```bash
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-compound | $ID | shipped | n |" >> docs/learnings/_log.md
+   STATUS_WORD=shipped
+   [ "$MERGE_MODE" = "mr" ] && STATUS_WORD=in-review
+   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-compound | $ID | $STATUS_WORD | n |" >> docs/learnings/_log.md
    git add docs/learnings/${ID}-${slug}.md docs/product/ROADMAP.md docs/proposals/ docs/learnings/_log.md
-   git commit -m "compound: $ID — shipped + learning + ROADMAP update"
+   git commit -m "compound: $ID — $STATUS_WORD + learning + ROADMAP update"
+
+   if [ "$MERGE_MODE" = "mr" ]; then
+     # The review is already open; push the learning onto the same branch.
+     git push origin HEAD
+   fi
    ```
 
 10. **Report:**

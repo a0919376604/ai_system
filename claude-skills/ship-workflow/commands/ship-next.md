@@ -913,36 +913,28 @@ CHECKS
 
    - **Interactive (`AUTO=0`):** list majors and ask per-finding `[F]ix-now / [I]dea-NNN-followup / [S]kip`.
 
-## Phase 7 — Squash merge
+## Phase 7 — Land the branch (squash merge, or open a review)
 
-1. **Build the commit message body**:
+`merge_mode` in `.claude/ship-config.yml` decides. Default `squash` — the
+behaviour every repo had before this existed. A repo whose work goes through
+review sets `merge_mode: mr`.
+
+1. **Build the body.** Both paths carry the same content: a squash commit
+   message, or an MR/PR description. Build it once.
 
    ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+   MERGE_MODE=$(merge_mode)
+
    ROADMAP_PATH="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/ROADMAP.md"
    ROW=$(grep "\*\*${ID}\*\*" "$ROADMAP_PATH" | head -1)
    DONE_WHEN=$(grep -A1 "\*\*${ID}\*\*" "$ROADMAP_PATH" | grep "↳ done when:" | sed 's/.*↳ done when: //' | head -1)
-   DESCRIPTION=$(extract row description after the ** id ** part)
-   ```
+   # DESCRIPTION = the row text after the ** id ** part.
 
-2. **cd back to original repo:**
-
-   ```bash
-   cd "$REPO"
-   git checkout "$ORIG_BRANCH"
-   ```
-
-3. **Squash merge:**
-
-   ```bash
-   git merge --squash "$BRANCH"
-   ```
-
-4. **Compose commit message** (heredoc to capture multi-line):
-
-   ```bash
-   git commit -m "$(cat <<EOF
-   feat: ${ID} ${DESCRIPTION}
-
+   SHIP_TITLE="feat: ${ID} ${DESCRIPTION}"
+   SHIP_BODY="/tmp/ship-body-${ID}.md"
+   cat > "$SHIP_BODY" <<EOF
    ↳ done when: ${DONE_WHEN}
 
    Tasks (from docs/plans/${ID}-${SLUG}.md):
@@ -960,10 +952,48 @@ CHECKS
    Notes: docs/roadmap-notes/${ID}-${SLUG}.md (if exists)
 
    🤖 ${BRANCH}
-   Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+   Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
    EOF
-   )"
    ```
+
+2. **Land it.**
+
+   ```bash
+   cd "$REPO"
+
+   case "$MERGE_MODE" in
+     squash)
+       git checkout "$ORIG_BRANCH"
+       git merge --squash "$BRANCH"
+       git commit -m "$(printf '%s\n\n%s' "$SHIP_TITLE" "$(cat "$SHIP_BODY")")"
+       SHIP_REVIEW_URL=""
+       ;;
+
+     mr)
+       # The branch must exist on the remote before a review can point at it.
+       git push -u origin "$BRANCH" || {
+         echo "push failed — not opening a review for a branch the remote cannot see" >&2
+         exit 1
+       }
+       MR_CMD=$(forge_mr_cmd "$BRANCH" "$ORIG_BRANCH" "$SHIP_TITLE" "$SHIP_BODY") || {
+         echo "unknown forge for origin — push succeeded, open the review by hand" >&2
+         exit 1
+       }
+       echo "opening review: $MR_CMD"
+       SHIP_REVIEW_URL=$(eval "$MR_CMD" | grep -oE 'https?://[^[:space:]]+' | tail -1)
+       [ -n "$SHIP_REVIEW_URL" ] || {
+         echo "the review command produced no URL — check it by hand before continuing" >&2
+         exit 1
+       }
+       echo "review open: $SHIP_REVIEW_URL"
+       ;;
+   esac
+   ```
+
+   **`mr` does not move `$ORIG_BRANCH`.** The work is shipped but not landed, so
+   Phase 8 marks the ROADMAP row `in-review` rather than Done, and Phase 9 keeps
+   the branch and worktree the review depends on. `/ship-land` finishes the job
+   once the review merges.
 
 ## Phase 8 — /ship-compound
 
@@ -1061,6 +1091,14 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 
 ## Phase 9 — Cleanup
 
+0a. **Resolve the merge mode.** Phase 9 is a different shell from Phase 7.
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+   MERGE_MODE=$(merge_mode)
+   ```
+
 0. **Capture anything inside the worktree the summary needs.** Step 1 removes the
    worktree, so `.ship/` is gone by the time steps 3 and 4 run. Read it first —
    this is the step that makes the round history survive cleanup.
@@ -1093,11 +1131,19 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
    fi
    ```
 
-1. **Remove worktree:**
+1. **Remove worktree** — only when the work has actually landed.
 
    ```bash
-   git worktree remove "$WORKTREE"
+   if [ "$MERGE_MODE" = "mr" ]; then
+     echo "review open — the worktree is kept at $WORKTREE"
+   else
+     git worktree remove "$WORKTREE"
+   fi
    ```
+
+   In `mr` mode the worktree is kept: the review can come back with changes,
+   and rebuilding it costs more than the disk it occupies. `/ship-land` removes
+   it after the review merges.
 
    If this fails (e.g. uncommitted changes in worktree), print:
    ```
@@ -1106,11 +1152,19 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
          When ready: git worktree remove --force $WORKTREE
    ```
 
-2. **Delete worktree branch:**
+2. **Delete worktree branch** — never while a review points at it.
 
    ```bash
-   git branch -d "$BRANCH"
+   if [ "$MERGE_MODE" = "mr" ]; then
+     echo "review open — branch $BRANCH is kept (the remote review needs it)"
+   else
+     git branch -d "$BRANCH"
+   fi
    ```
+
+   This guard is the reason the mode is resolved in this phase at all. The
+   squash path's note below says to use `-D` when `-d` complains, which on an
+   unmerged review branch would throw the work away.
 
    The squash merge in Phase 7 doesn't update branch reachability, so `-d` may complain. Use `-D` if needed; the work is already squashed onto $ORIG_BRANCH.
 
