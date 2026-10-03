@@ -63,7 +63,7 @@ teardown() { rm -rf "$SCRATCH"; }
   codex_round_append "$WT" 1 blocked r1.md "plan defect" "a"
   codex_round_append "$WT" 2 blocked r2.md "plan defect" "b"
   run codex_round_last_findings "$WT"
-  [[ "$output" == *"second round finding"* ]]
+  [[ "$output" == *"second round finding"* ]] || return 1
   [[ "$output" != *"first round finding"* ]]
 }
 
@@ -160,8 +160,8 @@ teardown() { rm -rf "$SCRATCH"; }
   [ "$output" = "3" ]
 
   run codex_round_last_findings "$WT"
-  [[ "$output" == *"- all blockers cleared"* ]]
+  [[ "$output" == *"- all blockers cleared"* ]] || return 1
   # A blocker a later round resolved must not be shown as the branch's state.
-  ! [[ "$output" == *"- could not fix blocker 2"* ]]
+  ! [[ "$output" == *"- could not fix blocker 2"* ]] || return 1
   ! [[ "$output" == *"- round one issue"* ]]
 }

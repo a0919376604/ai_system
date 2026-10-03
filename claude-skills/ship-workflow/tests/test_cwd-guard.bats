@@ -32,7 +32,7 @@ teardown() {
   cd ../wt
   run "$SHIP_LIB/cwd-guard.sh"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"cannot run inside"* ]]
+  [[ "$output" == *"cannot run inside"* ]] || return 1
   [[ "$output" == *"ship/"* ]]
 }
 

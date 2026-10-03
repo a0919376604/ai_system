@@ -20,12 +20,12 @@ teardown() {
     id="R-042" project="langlive-line-oa" slug="topic-switch" theme="ai-flow" \
     date="2026-08-30" ua_changed_files="- foo.py" ua_blast_radius="- bar.py imports foo" \
     ua_raw_diff_report="raw diff here")
-  [[ "$out" =~ "R-042" ]]
-  [[ "$out" =~ "langlive-line-oa" ]]
-  [[ "$out" =~ "topic-switch" ]]
-  [[ "$out" =~ "ai-flow" ]]
-  [[ "$out" =~ "2026-08-30" ]]
-  [[ "$out" =~ "- foo.py" ]]
-  [[ "$out" =~ "- bar.py imports foo" ]]
+  [[ "$out" =~ "R-042" ]] || return 1
+  [[ "$out" =~ "langlive-line-oa" ]] || return 1
+  [[ "$out" =~ "topic-switch" ]] || return 1
+  [[ "$out" =~ "ai-flow" ]] || return 1
+  [[ "$out" =~ "2026-08-30" ]] || return 1
+  [[ "$out" =~ "- foo.py" ]] || return 1
+  [[ "$out" =~ "- bar.py imports foo" ]] || return 1
   [[ "$out" =~ "TODO" ]]  # human sections retain TODO markers
 }

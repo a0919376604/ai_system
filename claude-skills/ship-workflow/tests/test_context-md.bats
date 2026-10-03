@@ -99,6 +99,6 @@ EOF
 - **ghosted** — nowhere in code.
 EOF
   run context_md_orphan_terms
-  [[ "$output" == *"ghosted"* ]]
+  [[ "$output" == *"ghosted"* ]] || return 1
   [[ "$output" != *"adapter"* ]]
 }

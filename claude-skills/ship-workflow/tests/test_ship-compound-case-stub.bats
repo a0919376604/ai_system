@@ -24,10 +24,10 @@ teardown() { rm -rf "$SCRATCH"; }
     ua_blast_radius="- \`bar.py\` imports foo.py" \
     ua_raw_diff_report="## UA blast radius")
 
-  [[ "$stub" == *"R-042"* ]]
-  [[ "$stub" == *"foo.py"* ]]
-  [[ "$stub" == *"bar.py"* ]]
-  [[ "$stub" == *"ai-flow"* ]]
+  [[ "$stub" == *"R-042"* ]] || return 1
+  [[ "$stub" == *"foo.py"* ]] || return 1
+  [[ "$stub" == *"bar.py"* ]] || return 1
+  [[ "$stub" == *"ai-flow"* ]] || return 1
   [[ "$stub" == *"2026-08-30"* ]]
 }
 

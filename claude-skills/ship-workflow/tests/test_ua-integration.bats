@@ -77,7 +77,7 @@ teardown() {
   source "$SHIP_LIB/ua-integration.sh"
   run ua_check_drift
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "UA KG is stale" ]]
+  [[ "$output" =~ "UA KG is stale" ]] || return 1
   [[ "$output" =~ "3 file(s)" ]]
 }
 
@@ -93,7 +93,7 @@ teardown() {
   source "$SHIP_LIB/ua-integration.sh"
   run ua_check_drift
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "severely stale" ]]
+  [[ "$output" =~ "severely stale" ]] || return 1
   [[ "$output" =~ "60 file(s)" ]]
 }
 
@@ -127,8 +127,8 @@ teardown() {
   source "$SHIP_LIB/ua-integration.sh"
   run _ua_extract_callers "foo.py"
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "file:bar.py" ]]
-  [[ "$output" =~ "imports" ]]
+  [[ "$output" =~ "file:bar.py" ]] || return 1
+  [[ "$output" =~ "imports" ]] || return 1
   [[ "$output" =~ "weight 5" ]]
 }
 
@@ -150,9 +150,9 @@ EOF
   source "$SHIP_LIB/ua-integration.sh"
   run ua_get_pre_brainstorm_context "R-999"
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "UA pre-brainstorm context" ]]
-  [[ "$output" =~ "foo.py" ]]
-  [[ "$output" =~ "foo module" ]]
+  [[ "$output" =~ "UA pre-brainstorm context" ]] || return 1
+  [[ "$output" =~ "foo.py" ]] || return 1
+  [[ "$output" =~ "foo module" ]] || return 1
   [[ "$output" =~ "bar.py" ]]
 }
 
