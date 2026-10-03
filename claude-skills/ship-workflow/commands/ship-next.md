@@ -434,22 +434,13 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    ```bash
    mkdir -p .ship
 
-   # TDD discipline, rendered from the spec's ## Seams table
-   {
-     echo "# TDD rules for ${ID}"
-     echo
-     echo "1. Tests attach only to the seams listed below."
-     echo "2. \`Seam: none\` tasks add no tests. Behavior unchanged => tests unchanged."
-     echo "2b. Existing shared fixtures are READ-ONLY. Need a different shape? Add a"
-     echo "    new fixture. Editing a shared one edits every test that uses it —"
-     echo "    conftest.py was the most-churned test file in this project's history"
-     echo "    at 31 edits, and one such edit silently moved two counts in a"
-     echo "    fixture other tests were asserting against."
-     echo "3. One test, one behavior. Do not pack unrelated assertions into a single test."
-     echo
-     echo "## Declared seams"
-     sed -n '/^## Seams/,/^## /p' "docs/specs/${ID}-${SLUG}.md" | sed '$d'
-   } > .ship/tdd-rules.md
+   # TDD discipline: universal rules + this repo's learned rules + this
+   # ship's seams. The rules used to be hardcoded here, which made the layer
+   # that shapes what the executor writes the only one that could not
+   # compound — and shipped one repo's evidence to every other repo.
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/tdd-rules.sh
+   tdd_rules_render "${ID}" "docs/specs/${ID}-${SLUG}.md" > .ship/tdd-rules.md
 
    # ponytail ladder (silent no-op when ponytail is not installed)
    # shellcheck disable=SC1091

@@ -28,10 +28,16 @@ p5()  { awk '/^## Phase 5 /,/^## Phase 6 /' "$CMD"; }
     || { echo "the operator is given a number with no interpretation"; return 1; }
 }
 
-@test "Phase 5 tdd-rules forbids editing shared fixtures" {
+@test "the rendered tdd-rules forbid editing shared fixtures" {
   # conftest.py was the single most-churned test file in the real repo at 31
-  # edits; one fixture change ripples to every test using it.
-  p5 | grep -qiF 'fixture' || { echo "no fixture rule reaches the executor"; return 1; }
+  # edits; one fixture change ripples to every test using it. The rule is
+  # universal, so it lives in the lib — the 31 is this repo's evidence and
+  # does not travel with it.
+  run bash -c "cd '$BATS_TEST_TMPDIR' && git init -q && \
+    source '$SHIP_LIB/tdd-rules.sh' && tdd_rules_render R-001 /dev/null"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -qiF 'fixtures are READ-ONLY' \
+    || { echo "no fixture rule reaches the executor"; return 1; }
 }
 
 @test "Phase 8.5 bash parses" {

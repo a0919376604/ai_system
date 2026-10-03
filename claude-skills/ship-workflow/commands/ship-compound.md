@@ -156,6 +156,30 @@ source ~/.claude/skills/ship-workflow/lib/context-md.sh
    - "Promote `<pattern title>` to AIR-OS `40 Knowledge/Concepts/<slug>.md` or `30 Engineering/<slug>.md`?"
    - On confirm, write the promoted note with AIR-OS frontmatter (`type: concept` or `type: engineering`, ai-first preamble, related-projects wikilink back to current project).
 
+6b. **Promote a testing lesson into the repo's TDD rules.** If this ship's
+   learning is about *how to write tests here* — a seam that kept getting
+   violated, a fixture that kept rippling, an assertion shape that kept
+   lying — append it. The Phase 6 review tags are the trigger: a finding
+   tagged `[seam-violation]`, `[assertion-roulette]` or `[weak-assertion]`
+   is a candidate.
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/tdd-rules.sh
+   # One line, imperative, no repo-specific numbers that will go stale.
+   # tdd_rules_append "$ID" "Never assert on log output; assert on the return value."
+
+   if tdd_rules_over_cap; then
+     echo "WARN: docs/tdd-rules.md has $(tdd_rules_count) rules (cap ${TDD_RULES_MAX})." >&2
+     echo "      Review the oldest by their ← R-NNN source and drop what no longer applies." >&2
+   fi
+   UNSOURCED=$(tdd_rules_unsourced)
+   [ -n "$UNSOURCED" ] && printf 'WARN: rules with no source, so they can never be pruned:\n%s\n' "$UNSOURCED" >&2
+   ```
+
+   **A rule with no `← R-NNN` cannot be judged later.** Forty unprunable rules
+   is the context problem this workflow exists to prevent, wearing a new hat.
+
 7. **Update ROADMAP.** What "done" means depends on how Phase 7 landed it.
 
    ```bash
