@@ -261,6 +261,45 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    project's shared domain vocabulary; using its terms verbatim avoids
    re-deriving jargon and keeps naming consistent with what teammates read.
 
+   **Past learnings (what this project already got wrong here):**
+
+   Until now `docs/learnings/` was write-only — Phase 8 wrote it and nothing in
+   the flow ever read it. On one real repo that is 67 files and ~9,900 lines of
+   hard-won detail that never reached a single brainstorm.
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/learnings-lookup.sh
+
+   LEARN_CAP=3
+   # Terms come from the slug: specific enough to hit, cheap to derive. Generic
+   # verbs are dropped because they match almost every learning.
+   LEARN_TERMS=$(printf '%s' "$SLUG" | tr '-' '\n' \
+     | awk 'length($0) >= 4' \
+     | grep -vxE 'fix|add|update|remove|improve|unify|polish|show|make|into' || true)
+   LEARN_HITS=$(learnings_match $LEARN_TERMS)
+   # `grep -c . || echo 0` prints 0 AND exits 1, giving "00". Use `|| true`.
+   LEARN_N=$(printf '%s' "$LEARN_HITS" | grep -c . || true)
+   [ -n "$LEARN_N" ] || LEARN_N=0
+
+   if [ "$LEARN_N" -eq 0 ]; then
+     echo "learnings: no prior work matched ${LEARN_TERMS}"
+   elif [ "$LEARN_N" -le "$LEARN_CAP" ]; then
+     echo "learnings: $LEARN_N match(es) — Read each before the dialog:"
+     printf '%s\n' "$LEARN_HITS"
+   else
+     # Measured: a broad term like `bucket` matches 32 of 67 learnings and
+     # opening them costs ~100k tokens. Show titles; let the dialog pick.
+     echo "learnings: $LEARN_N matches — too many to open. Paths only:"
+     printf '%s\n' "$LEARN_HITS" | sed 's|^|  |'
+   fi
+   ```
+
+   At or under the cap, Read each hit before the dialog. Over the cap, the
+   filenames carry the slug of what each ship was about; open at most one that
+   is clearly about this change. The grep
+   itself returns filenames only and costs ~31 tokens — less than CONTEXT.md.
+
 0. **Resume detection.** Check what's already done in the worktree:
    - `ls docs/specs/${ID}-${SLUG}.md` exists → **first re-mirror spec to vault** (catch any post-write edits), then skip to Phase 4 (plan stage):
      ```bash
