@@ -261,6 +261,45 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    project's shared domain vocabulary; using its terms verbatim avoids
    re-deriving jargon and keeps naming consistent with what teammates read.
 
+   **Past learnings (what this project already got wrong here):**
+
+   Until now `docs/learnings/` was write-only — Phase 8 wrote it and nothing in
+   the flow ever read it. On one real repo that is 67 files and ~9,900 lines of
+   hard-won detail that never reached a single brainstorm.
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/learnings-lookup.sh
+
+   LEARN_CAP=3
+   # Terms come from the slug: specific enough to hit, cheap to derive. Generic
+   # verbs are dropped because they match almost every learning.
+   LEARN_TERMS=$(printf '%s' "$SLUG" | tr '-' '\n' \
+     | awk 'length($0) >= 4' \
+     | grep -vxE 'fix|add|update|remove|improve|unify|polish|show|make|into' || true)
+   LEARN_HITS=$(learnings_match $LEARN_TERMS)
+   # `grep -c . || echo 0` prints 0 AND exits 1, giving "00". Use `|| true`.
+   LEARN_N=$(printf '%s' "$LEARN_HITS" | grep -c . || true)
+   [ -n "$LEARN_N" ] || LEARN_N=0
+
+   if [ "$LEARN_N" -eq 0 ]; then
+     echo "learnings: no prior work matched ${LEARN_TERMS}"
+   elif [ "$LEARN_N" -le "$LEARN_CAP" ]; then
+     echo "learnings: $LEARN_N match(es) — Read each before the dialog:"
+     printf '%s\n' "$LEARN_HITS"
+   else
+     # Measured: a broad term like `bucket` matches 32 of 67 learnings and
+     # opening them costs ~100k tokens. Show titles; let the dialog pick.
+     echo "learnings: $LEARN_N matches — too many to open. Paths only:"
+     printf '%s\n' "$LEARN_HITS" | sed 's|^|  |'
+   fi
+   ```
+
+   At or under the cap, Read each hit before the dialog. Over the cap, the
+   filenames carry the slug of what each ship was about; open at most one that
+   is clearly about this change. The grep
+   itself returns filenames only and costs ~31 tokens — less than CONTEXT.md.
+
 0. **Resume detection.** Check what's already done in the worktree:
    - `ls docs/specs/${ID}-${SLUG}.md` exists → **first re-mirror spec to vault** (catch any post-write edits), then skip to Phase 4 (plan stage):
      ```bash
@@ -395,17 +434,13 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    ```bash
    mkdir -p .ship
 
-   # TDD discipline, rendered from the spec's ## Seams table
-   {
-     echo "# TDD rules for ${ID}"
-     echo
-     echo "1. Tests attach only to the seams listed below."
-     echo "2. \`Seam: none\` tasks add no tests. Behavior unchanged => tests unchanged."
-     echo "3. One test, one behavior. Do not pack unrelated assertions into a single test."
-     echo
-     echo "## Declared seams"
-     sed -n '/^## Seams/,/^## /p' "docs/specs/${ID}-${SLUG}.md" | sed '$d'
-   } > .ship/tdd-rules.md
+   # TDD discipline: universal rules + this repo's learned rules + this
+   # ship's seams. The rules used to be hardcoded here, which made the layer
+   # that shapes what the executor writes the only one that could not
+   # compound — and shipped one repo's evidence to every other repo.
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/tdd-rules.sh
+   tdd_rules_render "${ID}" "docs/specs/${ID}-${SLUG}.md" > .ship/tdd-rules.md
 
    # ponytail ladder (silent no-op when ponytail is not installed)
    # shellcheck disable=SC1091
@@ -913,36 +948,28 @@ CHECKS
 
    - **Interactive (`AUTO=0`):** list majors and ask per-finding `[F]ix-now / [I]dea-NNN-followup / [S]kip`.
 
-## Phase 7 — Squash merge
+## Phase 7 — Land the branch (squash merge, or open a review)
 
-1. **Build the commit message body**:
+`merge_mode` in `.claude/ship-config.yml` decides. Default `squash` — the
+behaviour every repo had before this existed. A repo whose work goes through
+review sets `merge_mode: mr`.
+
+1. **Build the body.** Both paths carry the same content: a squash commit
+   message, or an MR/PR description. Build it once.
 
    ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+   MERGE_MODE=$(merge_mode)
+
    ROADMAP_PATH="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/ROADMAP.md"
    ROW=$(grep "\*\*${ID}\*\*" "$ROADMAP_PATH" | head -1)
    DONE_WHEN=$(grep -A1 "\*\*${ID}\*\*" "$ROADMAP_PATH" | grep "↳ done when:" | sed 's/.*↳ done when: //' | head -1)
-   DESCRIPTION=$(extract row description after the ** id ** part)
-   ```
+   # DESCRIPTION = the row text after the ** id ** part.
 
-2. **cd back to original repo:**
-
-   ```bash
-   cd "$REPO"
-   git checkout "$ORIG_BRANCH"
-   ```
-
-3. **Squash merge:**
-
-   ```bash
-   git merge --squash "$BRANCH"
-   ```
-
-4. **Compose commit message** (heredoc to capture multi-line):
-
-   ```bash
-   git commit -m "$(cat <<EOF
-   feat: ${ID} ${DESCRIPTION}
-
+   SHIP_TITLE="feat: ${ID} ${DESCRIPTION}"
+   SHIP_BODY="/tmp/ship-body-${ID}.md"
+   cat > "$SHIP_BODY" <<EOF
    ↳ done when: ${DONE_WHEN}
 
    Tasks (from docs/plans/${ID}-${SLUG}.md):
@@ -960,10 +987,48 @@ CHECKS
    Notes: docs/roadmap-notes/${ID}-${SLUG}.md (if exists)
 
    🤖 ${BRANCH}
-   Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+   Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
    EOF
-   )"
    ```
+
+2. **Land it.**
+
+   ```bash
+   cd "$REPO"
+
+   case "$MERGE_MODE" in
+     squash)
+       git checkout "$ORIG_BRANCH"
+       git merge --squash "$BRANCH"
+       git commit -m "$(printf '%s\n\n%s' "$SHIP_TITLE" "$(cat "$SHIP_BODY")")"
+       SHIP_REVIEW_URL=""
+       ;;
+
+     mr)
+       # The branch must exist on the remote before a review can point at it.
+       git push -u origin "$BRANCH" || {
+         echo "push failed — not opening a review for a branch the remote cannot see" >&2
+         exit 1
+       }
+       MR_CMD=$(forge_mr_cmd "$BRANCH" "$ORIG_BRANCH" "$SHIP_TITLE" "$SHIP_BODY") || {
+         echo "unknown forge for origin — push succeeded, open the review by hand" >&2
+         exit 1
+       }
+       echo "opening review: $MR_CMD"
+       SHIP_REVIEW_URL=$(eval "$MR_CMD" | grep -oE 'https?://[^[:space:]]+' | tail -1)
+       [ -n "$SHIP_REVIEW_URL" ] || {
+         echo "the review command produced no URL — check it by hand before continuing" >&2
+         exit 1
+       }
+       echo "review open: $SHIP_REVIEW_URL"
+       ;;
+   esac
+   ```
+
+   **`mr` does not move `$ORIG_BRANCH`.** The work is shipped but not landed, so
+   Phase 8 marks the ROADMAP row `in-review` rather than Done, and Phase 9 keeps
+   the branch and worktree the review depends on. `/ship-land` finishes the job
+   once the review merges.
 
 ## Phase 8 — /ship-compound
 
@@ -976,6 +1041,31 @@ CHECKS
 ## Phase 8.5 — Test prune report
 
 **Report-only. This phase deletes nothing.**
+
+0. **Churn report.** The test budget counts ADDED lines only, so a ship that
+   rewrote forty existing tests and added none scores perfectly. Measured over
+   200 real commits: test files were added 376 times and **modified 456** —
+   more editing than writing, and nothing reported it.
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/test-churn.sh
+   tc_report "$ORIG_BRANCH" HEAD
+   ```
+
+   **Reading it.** A test edited alongside its source is tracking a real
+   behaviour change — that is correct and costs nothing to explain. A test
+   edited while its source stood still is the **change-detector** smell: it was
+   coupled to an implementation detail, or it was asserting something untrue.
+   On the real repo 32% of modifications are unpaired.
+
+   Lines-per-test is the volume signal. Counting tests points at the wrong
+   thing: that repo has only 1.92 tests per product function, which is thin,
+   but averages 24 lines per test. The bulk is setup, not test count.
+
+   **Report only.** Deciding whether a specific unpaired edit was wrong needs a
+   human, for the same reason the prune list below is a proposal: no mechanical
+   signal distinguishes a brittle test from a correctly-updated one.
 
 It was designed to prune redundant tests behind a coverage gate. Six review rounds found
 fourteen defects in that gate, and the last three established why: coverage records which
@@ -1061,6 +1151,14 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 
 ## Phase 9 — Cleanup
 
+0a. **Resolve the merge mode.** Phase 9 is a different shell from Phase 7.
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+   MERGE_MODE=$(merge_mode)
+   ```
+
 0. **Capture anything inside the worktree the summary needs.** Step 1 removes the
    worktree, so `.ship/` is gone by the time steps 3 and 4 run. Read it first —
    this is the step that makes the round history survive cleanup.
@@ -1093,11 +1191,19 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
    fi
    ```
 
-1. **Remove worktree:**
+1. **Remove worktree** — only when the work has actually landed.
 
    ```bash
-   git worktree remove "$WORKTREE"
+   if [ "$MERGE_MODE" = "mr" ]; then
+     echo "review open — the worktree is kept at $WORKTREE"
+   else
+     git worktree remove "$WORKTREE"
+   fi
    ```
+
+   In `mr` mode the worktree is kept: the review can come back with changes,
+   and rebuilding it costs more than the disk it occupies. `/ship-land` removes
+   it after the review merges.
 
    If this fails (e.g. uncommitted changes in worktree), print:
    ```
@@ -1106,11 +1212,19 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
          When ready: git worktree remove --force $WORKTREE
    ```
 
-2. **Delete worktree branch:**
+2. **Delete worktree branch** — never while a review points at it.
 
    ```bash
-   git branch -d "$BRANCH"
+   if [ "$MERGE_MODE" = "mr" ]; then
+     echo "review open — branch $BRANCH is kept (the remote review needs it)"
+   else
+     git branch -d "$BRANCH"
+   fi
    ```
+
+   This guard is the reason the mode is resolved in this phase at all. The
+   squash path's note below says to use `-D` when `-d` complains, which on an
+   unmerged review branch would throw the work away.
 
    The squash merge in Phase 7 doesn't update branch reachability, so `-d` may complain. Use `-D` if needed; the work is already squashed onto $ORIG_BRANCH.
 

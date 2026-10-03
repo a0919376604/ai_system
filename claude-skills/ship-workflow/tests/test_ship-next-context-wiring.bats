@@ -46,11 +46,14 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "P5 tdd-rules carries the three governing rules" {
-  run grep -F 'Tests attach only to the seams listed below.' "$CMD"
+@test "P5 tdd-rules carries the governing rules" {
+  # Asserted against the RENDERED output, not against ship-next.md. The rules
+  # moved into lib/tdd-rules.sh so a repo can add its own; pinning them to the
+  # command file pinned them to one location rather than to their effect.
+  run bash -c "cd '$BATS_TEST_TMPDIR' && git init -q && \
+    source '$SHIP_LIB/tdd-rules.sh' && tdd_rules_render R-001 /dev/null"
   [ "$status" -eq 0 ]
-  run grep -F 'Behavior unchanged => tests unchanged.' "$CMD"
-  [ "$status" -eq 0 ]
-  run grep -F 'One test, one behavior.' "$CMD"
-  [ "$status" -eq 0 ]
+  echo "$output" | grep -qF 'Tests attach only to the seams listed below.' || return 1
+  echo "$output" | grep -qF 'Behavior unchanged => tests unchanged.' || return 1
+  echo "$output" | grep -qF 'One test, one behavior.' || return 1
 }

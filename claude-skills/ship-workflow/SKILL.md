@@ -14,6 +14,7 @@ Per-repo product development workflow. Installs 9 slash commands into a target r
 - **`/ship-roadmap`** — Refresh ROADMAP.md via ce-strategy
 - **`/ship-next [R-NNN] | --adhoc <desc> | --discard R-NNN`** — End-to-end ship cycle: open worktree → brainstorm → spec → plan → execute → strict code-review gate → squash-merge → cleanup
 - **`/ship-compound`** — Write learning + promote patterns + close Roadmap item
+- **`/ship-land [R-NNN]`** — Finish an item shipped via `merge_mode: mr`: verify the review merged, move the row to Done, remove the branch + worktree Phase 9 kept
 
 **Knowledge bridges (3):**
 - **`/ship-research <topic>`** — Vault-first deep research (thin wrapper over `/obsidian-research-deep`)

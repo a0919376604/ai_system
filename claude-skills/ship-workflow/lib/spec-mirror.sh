@@ -31,6 +31,16 @@ if [ ! -f "$SRC" ]; then
   exit 2
 fi
 
+# The destination may be a symlink back to the source: that is how the vault
+# copy is made editable from Obsidian without a second file to keep in sync.
+# Copying over it would replace the link with a stale duplicate, and the next
+# Obsidian edit would stop reaching git. `-ef` compares device+inode, so it
+# catches symlinks, hardlinks and equivalent paths alike.
+if [ "$DST" -ef "$SRC" ]; then
+  echo "mirror: $DST is the same file as $SRC — nothing to copy" >&2
+  exit 0
+fi
+
 mkdir -p "$(dirname "$DST")"
 TMP="${DST}.tmp"
 

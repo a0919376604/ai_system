@@ -19,6 +19,12 @@
 #       Prefix the existing R-NNN line with WARN icon + add a flagged
 #       annotation on the next line. Idempotent.
 #
+#   roadmap-insert.sh <ROADMAP.md> <R-NNN> --mark-review "<mr-url>"
+#       Flip the row's status= to in-review and record the MR/PR link.
+#       Used by Phase 7 in merge_mode=mr, where the branch is pushed for
+#       review instead of squash-merged, so the row is NOT Done yet.
+#       Idempotent. /ship-land moves it to Done once the MR merges.
+#
 #   roadmap-insert.sh <ROADMAP.md> <R-NNN> --mark-epic
 #       Convert existing line to (epic) — strip warn icon + flagged annotation
 #       if present, append (epic) marker. Used when decomposition starts.
@@ -48,6 +54,7 @@ ADHOC=0
 EPIC=0
 CHILD_PARENT=""
 WARN_REASON=""
+REVIEW_URL=""
 DONE_WHEN=""
 EXPLAIN=""
 EST=""
@@ -60,17 +67,23 @@ else
   shift 2
 fi
 
+# shift2: `shift 2` aborts the whole script under `set -e` when only one arg
+# is left, so a flag given without its value died silently with exit 1 and no
+# message — every validation error below was unreachable. Shift what exists.
+_sh2() { if [ "$1" -gt 1 ]; then echo 2; else echo 1; fi; }
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --adhoc)        ADHOC=1; shift ;;
     --epic)         EPIC=1; shift ;;
-    --child)        MODE="child"; CHILD_PARENT="$2"; shift 2 ;;
-    --mark-warning) MODE="mark-warning"; WARN_REASON="${2:-}"; shift 2 ;;
+    --child)        MODE="child"; CHILD_PARENT="${2:-}"; shift "$(_sh2 $#)" ;;
+    --mark-warning) MODE="mark-warning"; WARN_REASON="${2:-}"; shift "$(_sh2 $#)" ;;
+    --mark-review)  MODE="mark-review"; REVIEW_URL="${2:-}"; shift "$(_sh2 $#)" ;;
     --mark-epic)    MODE="mark-epic"; shift ;;
-    --done-when)    DONE_WHEN="${2:-}"; shift 2 ;;
-    --explain)      EXPLAIN="${2:-}"; shift 2 ;;
-    --inject-explain) MODE="inject-explain"; EXPLAIN="${2:-}"; shift 2 ;;
-    --est)          EST="${2:-}"; shift 2 ;;
+    --done-when)    DONE_WHEN="${2:-}"; shift "$(_sh2 $#)" ;;
+    --explain)      EXPLAIN="${2:-}"; shift "$(_sh2 $#)" ;;
+    --inject-explain) MODE="inject-explain"; EXPLAIN="${2:-}"; shift "$(_sh2 $#)" ;;
+    --est)          EST="${2:-}"; shift "$(_sh2 $#)" ;;
     *)              shift ;;
   esac
 done
@@ -149,6 +162,41 @@ case "$MODE" in
     else
       echo "ERROR: parent $CHILD_PARENT not found in ROADMAP" >&2
       rm -f "$TMP"
+      exit 1
+    fi
+    ;;
+
+  mark-review)
+    # Phase 7 (merge_mode=mr) pushed the branch and opened an MR. The row is
+    # shipped but NOT landed, so it stays in Now with status=in-review and a
+    # link to the review. Marking it Done here would make the ROADMAP claim
+    # something that has not happened yet.
+    if [ -z "$REVIEW_URL" ]; then
+      echo "ERROR: --mark-review requires an MR/PR url" >&2
+      exit 2
+    fi
+    if awk -v rid="$RID" -v url="$REVIEW_URL" '
+      {
+        if (!modified && match($0, "^- \\[ \\] (⚠️ )?\\*\\*" rid "(\\*\\*| )")) {
+          line = $0
+          if (line ~ /status=[A-Za-z0-9._-]+/) {
+            sub(/status=[A-Za-z0-9._-]+/, "status=in-review", line)
+          } else {
+            line = line " · status=in-review"
+          }
+          if (index(line, url) == 0) { line = line " · mr=" url }
+          print line
+          modified = 1
+          next
+        }
+        print
+      }
+      END { exit !modified }
+    ' "$ROADMAP" > "$TMP"; then
+      mv "$TMP" "$ROADMAP"
+    else
+      rm -f "$TMP"
+      echo "ERROR: no row found for $RID in $ROADMAP" >&2
       exit 1
     fi
     ;;

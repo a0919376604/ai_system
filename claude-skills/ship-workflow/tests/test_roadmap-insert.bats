@@ -89,7 +89,7 @@ teardown() {
 
   run "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-014.1 "Orphan" --child R-099
   [ "$status" -ne 0 ]
-  [[ "$output" == *"parent R-099 not found"* ]]
+  [[ "$output" == *"parent R-099 not found"* ]] || return 1
   # Verify nothing was inserted under the comment line either
   ! grep -E '^  - \[ \] \*\*R-014\.1\*\* Orphan' "$ROADMAP"
 }
@@ -113,7 +113,7 @@ teardown() {
 
   run "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-777 --inject-explain "Roadmap-Notes/R-777-foo"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"R-777 not found"* ]]
+  [[ "$output" == *"R-777 not found"* ]] || return 1
   # Verify no annotation got injected near the comment line either
   ! grep -E '^[[:space:]]+↳ explain: \[\[Roadmap-Notes/R-777' "$ROADMAP"
 }
@@ -233,7 +233,7 @@ teardown() {
   "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-052 --inject-explain "Roadmap-Notes/R-052-old-slug"
   run "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-052 --inject-explain "Roadmap-Notes/R-052-new-slug"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"WARN: replacing explain annotation"* ]]
+  [[ "$output" == *"WARN: replacing explain annotation"* ]] || return 1
   grep -qF '↳ explain: [[Roadmap-Notes/R-052-new-slug]]' "$ROADMAP"
   ! grep -qF '↳ explain: [[Roadmap-Notes/R-052-old-slug]]' "$ROADMAP"
 }
@@ -246,4 +246,69 @@ teardown() {
   done_ln=$((entry_ln + 2))
   sed -n "${explain_ln}p" "$ROADMAP" | grep -qE '^    ↳ explain:'
   sed -n "${done_ln}p"    "$ROADMAP" | grep -qE '^    ↳ done when:'
+}
+
+@test "--mark-review: flips status to in-review and records the MR link" {
+  cd "$SCRATCH"
+  cat > R.md <<'EOF'
+## 🔥 Now (3-5 items)
+- [ ] **R-201** do a thing · est=2d · status=in-progress
+- [ ] **R-202** other thing · status=in-progress
+## ✅ Done
+EOF
+  run "$SHIP_LIB/roadmap-insert.sh" R.md R-201 --mark-review "https://gl/x/-/merge_requests/218"
+  [ "$status" -eq 0 ]
+  grep -q 'R-201.*status=in-review' R.md
+  grep -q 'merge_requests/218' R.md
+  # The neighbour must not be touched.
+  grep -q 'R-202.*status=in-progress' R.md
+  # est and description survive.
+  grep -q 'R-201.*do a thing' R.md
+  grep -q 'est=2d' R.md
+}
+
+@test "--mark-review: is idempotent" {
+  cd "$SCRATCH"
+  printf '## 🔥 Now\n- [ ] **R-201** t · status=in-progress\n## ✅ Done\n' > R.md
+  "$SHIP_LIB/roadmap-insert.sh" R.md R-201 --mark-review "https://gl/x/-/merge_requests/1"
+  "$SHIP_LIB/roadmap-insert.sh" R.md R-201 --mark-review "https://gl/x/-/merge_requests/1"
+  [ "$(grep -c 'status=in-review' R.md)" -eq 1 ]
+  [ "$(grep -c 'merge_requests/1' R.md)" -eq 1 ]
+}
+
+@test "--mark-review: requires an MR url" {
+  cd "$SCRATCH"
+  printf '## 🔥 Now\n- [ ] **R-201** t · status=in-progress\n## ✅ Done\n' > R.md
+  run "$SHIP_LIB/roadmap-insert.sh" R.md R-201 --mark-review
+  [ "$status" -ne 0 ]
+  # Must fail FOR THIS REASON. Before --mark-review existed the flag was
+  # ignored and the run failed as a malformed insert, so a bare status check
+  # passed without the feature being present at all.
+  [[ "$output" == *"--mark-review requires"* ]] || return 1
+  # And the row must be left alone.
+  grep -q 'status=in-progress' R.md
+}
+
+@test "--mark-review: a row with no status= still gets one" {
+  cd "$SCRATCH"
+  printf '## 🔥 Now\n- [ ] **R-201** t\n## ✅ Done\n' > R.md
+  run "$SHIP_LIB/roadmap-insert.sh" R.md R-201 --mark-review "https://gl/x/-/merge_requests/9"
+  [ "$status" -eq 0 ]
+  grep -q 'status=in-review' R.md
+}
+
+@test "a flag given without its value reports why, instead of dying silently" {
+  # Root cause: `shift 2` with one arg left aborts under set -e, so every
+  # validation message below the parse loop was unreachable. All six flags
+  # shared it; --child additionally leaked a raw 'unbound variable' trace.
+  cd "$SCRATCH"
+  printf '## 🔥 Now\n- [ ] **R-201** t · status=in-progress\n## ✅ Done\n' > R.md
+  for flag in --mark-warning --mark-review --child --done-when --explain --est; do
+    run "$SHIP_LIB/roadmap-insert.sh" R.md R-201 "$flag"
+    [ "$status" -ne 0 ] || { echo "$flag: should have failed"; return 1; }
+    [ -n "$output" ] || { echo "$flag: died silently with no message"; return 1; }
+    case "$output" in
+      *"unbound variable"*) echo "$flag: leaked a raw bash error"; return 1 ;;
+    esac
+  done
 }

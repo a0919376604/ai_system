@@ -33,7 +33,7 @@ teardown() { rm -rf "$SCRATCH"; }
   [ "$status" -eq 0 ]
   run git diff --name-only base...HEAD
   [ "$status" -ne 0 ]
-  [[ "$output" == *'bad boolean config value'* ]]
+  [[ "$output" == *'bad boolean config value'* ]] || return 1
 
   run prune_report base HEAD major
   printf 'status=%s output=%s\n' "$status" "$output"

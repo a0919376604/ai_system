@@ -103,3 +103,31 @@ EOF
   # Body content still copied
   grep -q "Some content." "$DST"
 }
+
+@test "spec-mirror: a dst that IS the src is left alone, not replaced by a copy" {
+  # The vault copy can be a symlink back into the repo, so Obsidian can both
+  # read and edit the one real file. Copying over it would silently replace
+  # the link with a stale duplicate, and the next edit in Obsidian would stop
+  # reaching git.
+  cd "$SCRATCH"
+  printf -- '---\ntype: context\n---\n- **term** — def\n' > CONTEXT.md
+  mkdir -p vault
+  ln -s "$SCRATCH/CONTEXT.md" vault/CONTEXT.md
+
+  run "$SHIP_LIB/spec-mirror.sh" CONTEXT.md vault/CONTEXT.md
+  [ "$status" -eq 0 ]
+  [ -L vault/CONTEXT.md ] || { echo "the symlink was replaced by a copy"; return 1; }
+  # And the real file is untouched — no mirror-source injected into itself.
+  ! grep -q 'mirror-source' CONTEXT.md
+}
+
+@test "spec-mirror: a normal dst is still mirrored" {
+  # Guard against the skip being too broad.
+  cd "$SCRATCH"
+  printf -- '---\ntype: context\n---\nbody\n' > CONTEXT.md
+  mkdir -p vault
+  run "$SHIP_LIB/spec-mirror.sh" CONTEXT.md vault/CONTEXT.md
+  [ "$status" -eq 0 ]
+  [ -f vault/CONTEXT.md ] && [ ! -L vault/CONTEXT.md ]
+  grep -q 'mirror-source' vault/CONTEXT.md
+}

@@ -144,9 +144,9 @@ p9_bash() {
 @test "Phase 9 log row records the codex round count and verdict" {
   row=$(grep -F '>> docs/learnings/_log.md' "$CMD")
   [ -n "$row" ]
-  [[ "$row" == *'${CODEX_LOG_FRAGMENT}'* ]]
+  [[ "$row" == *'${CODEX_LOG_FRAGMENT}'* ]] || return 1
   frag=$(p9_bash | grep -F 'CODEX_LOG_FRAGMENT=", codex:')
-  [[ "$frag" == *'${CODEX_ROUNDS}'* ]]
+  [[ "$frag" == *'${CODEX_ROUNDS}'* ]] || return 1
   [[ "$frag" == *'${CODEX_FINAL_VERDICT}'* ]]
 }
 

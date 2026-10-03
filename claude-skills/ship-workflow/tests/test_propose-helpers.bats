@@ -36,9 +36,9 @@ teardown() {
 @test "list-roadmap-items skips Done section" {
   run "$HELPER" list-roadmap-items "$ROADMAP"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Now"$'\t'"R-001"* ]]
-  [[ "$output" == *"Next"$'\t'"R-002"* ]]
-  [[ "$output" == *"Later"$'\t'"R-005"* ]]
+  [[ "$output" == *"Now"$'\t'"R-001"* ]] || return 1
+  [[ "$output" == *"Next"$'\t'"R-002"* ]] || return 1
+  [[ "$output" == *"Later"$'\t'"R-005"* ]] || return 1
   [[ "$output" != *"R-000"* ]]
 }
 
@@ -69,8 +69,8 @@ status: draft
 EOF
   run "$HELPER" list-active-proposals "$PROPDIR"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"R-001"* ]]
-  [[ "$output" == *"R-003"* ]]
+  [[ "$output" == *"R-001"* ]] || return 1
+  [[ "$output" == *"R-003"* ]] || return 1
   [[ "$output" != *"R-002"* ]]
 }
 

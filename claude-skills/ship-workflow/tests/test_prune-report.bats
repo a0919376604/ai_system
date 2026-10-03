@@ -48,7 +48,7 @@ teardown() { rm -rf "$SCRATCH"; }
 
 @test "prune_report: major with targets and no candidate file reports zero" {
   run prune_report "$BASE" "$HEAD_REF" major
-  [[ "$output" == "0 prune candidate(s)"* ]]
+  [[ "$output" == "0 prune candidate(s)"* ]] || return 1
   [[ "$output" == *"nothing deleted"* ]]
 }
 
@@ -147,10 +147,10 @@ teardown() { rm -rf "$SCRATCH"; }
                  '--output-indicator-new=X'; do
     run prune_report "$payload" "$BASE" major
     [ "$status" -eq 2 ]
-    [[ "$output" == *"invalid ref"* ]]
+    [[ "$output" == *"invalid ref"* ]] || return 1
     run prune_report "$BASE" "$payload" major
     [ "$status" -eq 2 ]
-    [[ "$output" == *"invalid ref"* ]]
+    [[ "$output" == *"invalid ref"* ]] || return 1
   done
   after=$(find . -path ./.git -prune -o -type f -print | sort)
   [ "$before" = "$after" ]

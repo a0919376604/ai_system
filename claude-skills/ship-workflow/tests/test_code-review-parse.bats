@@ -13,9 +13,9 @@ teardown() {
 @test "code-review-parse: emits all 4 counts" {
   run "$SHIP_LIB/code-review-parse.sh" "$FIXTURE"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"BLOCKING_COUNT=2"* ]]
-  [[ "$output" == *"MAJOR_COUNT=2"* ]]
-  [[ "$output" == *"MINOR_COUNT=2"* ]]
+  [[ "$output" == *"BLOCKING_COUNT=2"* ]] || return 1
+  [[ "$output" == *"MAJOR_COUNT=2"* ]] || return 1
+  [[ "$output" == *"MINOR_COUNT=2"* ]] || return 1
   [[ "$output" == *"PRAISE_COUNT=3"* ]]
 }
 
@@ -30,9 +30,9 @@ teardown() {
   echo "# nothing to see here" > "$empty"
   run "$SHIP_LIB/code-review-parse.sh" "$empty"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"BLOCKING_COUNT=0"* ]]
-  [[ "$output" == *"MAJOR_COUNT=0"* ]]
-  [[ "$output" == *"MINOR_COUNT=0"* ]]
+  [[ "$output" == *"BLOCKING_COUNT=0"* ]] || return 1
+  [[ "$output" == *"MAJOR_COUNT=0"* ]] || return 1
+  [[ "$output" == *"MINOR_COUNT=0"* ]] || return 1
   [[ "$output" == *"PRAISE_COUNT=0"* ]]
 }
 
@@ -69,9 +69,9 @@ EOF
 EOF
   run "$SHIP_LIB/code-review-parse.sh" "$emoji"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"BLOCKING_COUNT=2"* ]]
-  [[ "$output" == *"MAJOR_COUNT=3"* ]]
-  [[ "$output" == *"MINOR_COUNT=2"* ]]
+  [[ "$output" == *"BLOCKING_COUNT=2"* ]] || return 1
+  [[ "$output" == *"MAJOR_COUNT=3"* ]] || return 1
+  [[ "$output" == *"MINOR_COUNT=2"* ]] || return 1
   [[ "$output" == *"PRAISE_COUNT=2"* ]]
 }
 
@@ -115,9 +115,9 @@ EOF
 EOF
   run "$SHIP_LIB/code-review-parse.sh" "$mixed"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"BLOCKING_COUNT=3"* ]]
-  [[ "$output" == *"MAJOR_COUNT=2"* ]]
-  [[ "$output" == *"MINOR_COUNT=3"* ]]
+  [[ "$output" == *"BLOCKING_COUNT=3"* ]] || return 1
+  [[ "$output" == *"MAJOR_COUNT=2"* ]] || return 1
+  [[ "$output" == *"MINOR_COUNT=3"* ]] || return 1
   [[ "$output" == *"PRAISE_COUNT=2"* ]]
 }
 
@@ -161,9 +161,9 @@ EOF
   # doesn't match them. Inline `Severity levels: 🔴 / 🟡 ...` has the
   # emoji mid-line, also doesn't match. Example sentence has emoji mid-line
   # too. So only the 4 bare-emoji-prefixed finding lines count.
-  [[ "$output" == *"BLOCKING_COUNT=1"* ]]
-  [[ "$output" == *"MAJOR_COUNT=1"* ]]
-  [[ "$output" == *"MINOR_COUNT=1"* ]]
+  [[ "$output" == *"BLOCKING_COUNT=1"* ]] || return 1
+  [[ "$output" == *"MAJOR_COUNT=1"* ]] || return 1
+  [[ "$output" == *"MINOR_COUNT=1"* ]] || return 1
   [[ "$output" == *"PRAISE_COUNT=1"* ]]
 }
 
@@ -180,9 +180,9 @@ EOF
   [ "$status" -eq 0 ]
   # Inline `Legend: 🔴 ...` has emoji NOT at line start (mid-line), so shouldn't count
   # Only the bare `🔴 handler.py:45 ...` line at start counts
-  [[ "$output" == *"BLOCKING_COUNT=1"* ]]
-  [[ "$output" == *"MAJOR_COUNT=0"* ]]
-  [[ "$output" == *"MINOR_COUNT=0"* ]]
+  [[ "$output" == *"BLOCKING_COUNT=1"* ]] || return 1
+  [[ "$output" == *"MAJOR_COUNT=0"* ]] || return 1
+  [[ "$output" == *"MINOR_COUNT=0"* ]] || return 1
   [[ "$output" == *"PRAISE_COUNT=0"* ]]
 }
 
@@ -190,15 +190,15 @@ EOF
   CAT="$SHIP_SKILL_ROOT/tests/fixtures/code-review-categories.md"
   run "$SHIP_LIB/code-review-parse.sh" "$CAT"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"SEAM_VIOLATION_COUNT=1"* ]]
-  [[ "$output" == *"ASSERTION_ROULETTE_COUNT=1"* ]]
+  [[ "$output" == *"SEAM_VIOLATION_COUNT=1"* ]] || return 1
+  [[ "$output" == *"ASSERTION_ROULETTE_COUNT=1"* ]] || return 1
   [[ "$output" == *"WEAK_ASSERTION_COUNT=1"* ]]
 }
 
 @test "code-review-parse: category tags still count toward severity" {
   CAT="$SHIP_SKILL_ROOT/tests/fixtures/code-review-categories.md"
   run "$SHIP_LIB/code-review-parse.sh" "$CAT"
-  [[ "$output" == *"MAJOR_COUNT=1"* ]]
+  [[ "$output" == *"MAJOR_COUNT=1"* ]] || return 1
   [[ "$output" == *"MINOR_COUNT=2"* ]]
 }
 
@@ -211,11 +211,11 @@ EOF
 
 @test "code-review-parse: the shared fixture is unperturbed by this change" {
   run "$SHIP_LIB/code-review-parse.sh" "$FIXTURE"
-  [[ "$output" == *"BLOCKING_COUNT=2"* ]]
-  [[ "$output" == *"MAJOR_COUNT=2"* ]]
-  [[ "$output" == *"MINOR_COUNT=2"* ]]
-  [[ "$output" == *"PRAISE_COUNT=3"* ]]
-  [[ "$output" == *"SEAM_VIOLATION_COUNT=0"* ]]
-  [[ "$output" == *"ASSERTION_ROULETTE_COUNT=0"* ]]
+  [[ "$output" == *"BLOCKING_COUNT=2"* ]] || return 1
+  [[ "$output" == *"MAJOR_COUNT=2"* ]] || return 1
+  [[ "$output" == *"MINOR_COUNT=2"* ]] || return 1
+  [[ "$output" == *"PRAISE_COUNT=3"* ]] || return 1
+  [[ "$output" == *"SEAM_VIOLATION_COUNT=0"* ]] || return 1
+  [[ "$output" == *"ASSERTION_ROULETTE_COUNT=0"* ]] || return 1
   [[ "$output" == *"WEAK_ASSERTION_COUNT=0"* ]]
 }

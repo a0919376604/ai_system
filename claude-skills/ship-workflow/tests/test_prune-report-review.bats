@@ -113,7 +113,7 @@ assert_invalid_ref() {
   for ref in base-light base-annotated; do
     run prune_report "$ref" "$HEAD_REF" major
     [ "$status" -eq 0 ]
-    [[ "$output" == '1 prune candidate(s)'* ]]
+    [[ "$output" == '1 prune candidate(s)'* ]] || return 1
     [ "$(review_snapshot)" = "$before" ]
   done
 }
@@ -123,7 +123,7 @@ assert_invalid_ref() {
   for ref in HEAD~1 'HEAD^{/base source}' 'HEAD@{0}~1'; do
     run prune_report "$ref" "$HEAD_REF" major
     [ "$status" -eq 0 ]
-    [[ "$output" == '1 prune candidate(s)'* ]]
+    [[ "$output" == '1 prune candidate(s)'* ]] || return 1
     [ "$(review_snapshot)" = "$before" ]
   done
 }
@@ -150,7 +150,7 @@ assert_invalid_ref() {
       [ "$status" -eq 0 ]
       [ "$(review_snapshot)" = "$before" ]
       if [ "$verdict" = major ] && [ "$orig" = "$BASE" ]; then
-        [[ "$output" == '1 prune candidate(s)'* ]]
+        [[ "$output" == '1 prune candidate(s)'* ]] || return 1
       elif [ "$verdict" = major ]; then
         [ "$output" = 'no report (no scoped test targets)' ]
       else
@@ -164,7 +164,7 @@ assert_invalid_ref() {
   other=$(printf 'unrelated\n' | git commit-tree "HEAD^{tree}")
   run git diff --name-only "$other...$HEAD_REF"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"no merge base"* ]]
+  [[ "$output" == *"no merge base"* ]] || return 1
   before=$(review_snapshot)
   run prune_report "$other" "$HEAD_REF" major
   [ "$(review_snapshot)" = "$before" ]
