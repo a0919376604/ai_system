@@ -1,20 +1,33 @@
 # ai_system
 
-我的 AI 開發環境備份：Claude Code skills、全域 `CLAUDE.md`、devsync。新 Mac clone 下來跑一行就能裝回來。
+讓 AI 把一個功能從「一句話的需求」一路做到「merge 進主程式」的開發工作流。
 
 ## 1. 介紹
 
-| 部分 | 位置 | 安裝到 | 用途 |
-|---|---|---|---|
-| Skills | `claude-skills/` | `~/.claude/skills/` | 所有 slash command |
-| 全域指示 | `CLAUDE.md` | `~/.claude/CLAUDE.md` | 每個 session 都會載入 |
-| devsync | `devsync/` | `~/.local/bin/devsync` | 把 repo 即時同步到 dl01–dl04 並 SSH 進去 |
+**這套在做什麼**
 
-主要 skills：
+你只要說一句「幫我把 XXX 加到 Roadmap」，再下 `/ship-next`，AI 就會像一個守規矩的工程師，把這個功能從頭做完：
 
-- **ship-workflow**：從 Roadmap 到 merge 的開發流程，核心是 `/ship-next`，並整合 Understand-Anything 分析改動的影響範圍（見第 6 節）
-- **gstack**：`/browse`、`/qa`、`/review`、`/investigate` 等 40 多個 skill（上游套件，用 `/gstack-upgrade` 升級）
-- **其他**：`run-plan`（交給 codex 背景執行）、`obsidian-*`、`update-specification`、`defuddle`
+1. **先想清楚**：跟你確認需求，寫下設計
+2. **再排計畫**：把工作拆成一個個小任務
+3. **動手做**：逐一實作，一邊寫測試
+4. **自己把關**：做完先 code review，有嚴重問題就自己修，沒修好不會 merge
+5. **收尾**：merge 回主程式、更新 Roadmap、記下這次學到的事
+
+整個過程都在獨立的工作區裡進行，做壞了也不會影響主程式。
+
+**你負責什麼**
+
+只有兩件事：**決定要做什麼**，以及**說清楚怎樣算做完**。其他的交給 AI。想看過程，可以每一步都確認；不想看，可以讓它整晚自己跑。
+
+**經驗會累積**
+
+每做完一個功能，踩過的坑、專案用語、測試規則都會被記下來，下一個功能開始前先讀。同樣的錯不會一直犯。
+
+**附帶的功能**
+
+- **一行裝回整套環境**：換新電腦時，所有 AI 工具和設定一次還原。
+- **遠端開發**：在公司的 GPU server 上跑程式時，本機寫的 code 會即時同步過去。
 
 ## 2. Quick start
 
@@ -24,7 +37,13 @@ cd ~/Desktop/code/ai_system
 ./sync.sh restore
 ```
 
-`restore` 會把 skills 和設定檔複製到本機，再跑 `devsync/bootstrap.sh` 安裝 mutagen、uv、devsync 並設定 SSH。
+`restore` 會裝好這些東西：
+
+| repo 內 | 安裝到 | 內容 |
+|---|---|---|
+| `claude-skills/` | `~/.claude/skills/` | ship-workflow、gstack（`/browse`、`/qa`、`/review` 等 40 多個）、`run-plan`、Obsidian 工具 |
+| `CLAUDE.md` | `~/.claude/CLAUDE.md` | 每個 session 都會載入的全域規則 |
+| `devsync/` | `~/.local/bin/devsync` | 同步到 dl01–dl04 的 CLI，連同 mutagen、uv、SSH 設定 |
 
 > 已經在用的機器請加 `--update`，否則本機比較新的檔案（例如升級過的 gstack）會被 repo 的舊版蓋掉。
 
