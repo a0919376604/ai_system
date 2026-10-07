@@ -39,7 +39,7 @@ git clone https://github.com/awesome-skills/code-review-skill ~/.claude/skills/c
 
 ## 3. 使用範例
 
-**同步 skills**
+### 同步 skills
 
 ```bash
 ./sync.sh status     # 看差異
@@ -47,18 +47,88 @@ git clone https://github.com/awesome-skills/code-review-skill ~/.claude/skills/c
 ./sync.sh restore    # repo → 本機
 ```
 
-**開發一個功能**
+### 用 Roadmap 開發功能
+
+**R-xxx 是什麼**
+
+Roadmap 上每個要做的項目都有一個編號 `R-NNN`（例如 `R-012`），從目前最大的號碼往上加。太大的項目會拆成 `R-012.1`、`R-012.2` 這樣的子項目，原本的 `R-012` 變成 epic，`/ship-next` 自動挑選時會跳過它。
+
+這個編號會貫穿整個流程：worktree、branch、spec、plan、learning 都用它命名，事後從任何一個檔案都能追回同一個項目。另外還有兩種編號：`IDEA-NNN` 是還沒排進 Roadmap 的想法，`D-NNN` 是架構決策。
+
+**Roadmap 長什麼樣**
+
+`ROADMAP.md` 的正本放在 Obsidian vault 的 `10 Projects/<repo>/`，repo 裡的 `docs/product/ROADMAP.md` 是自動同步的副本。內容分成四區：
+
+| 區塊 | 意思 |
+|---|---|
+| 🔥 Now | 正在做的 3–5 項，`/ship-next` 從這裡挑 |
+| 🔜 Next | 已經想清楚，隨時可以開始 |
+| 🕐 Later | 有價值但還沒排程 |
+| ✅ Done | 做完的項目，保留當歷史 |
+
+一列的寫法如下。描述用動詞開頭，`↳ done when:` 寫一個看得到的完成條件：
+
+```markdown
+- [ ] **R-012** 讓客服可以批次關閉工單 · est=3d
+    ↳ explain: [[Roadmap-Notes/R-012-bulk-close-tickets]]
+    ↳ done when: 一次選 50 張工單關閉，全部狀態更新並寫入 audit log
+```
+
+**怎麼提一個項目**
+
+| 方式 | 適合的情況 |
+|---|---|
+| `/ship-idea <描述>`，之後跑 `/ship-roadmap` | 一般情況。先記成 IDEA，整理 Roadmap 時再由 `/ship-roadmap` 建議把成熟的想法升級成 R-NNN |
+| 直接在 Obsidian 編輯 `ROADMAP.md` | 你已經很清楚要做什麼 |
+| `/ship-next --adhoc "<描述>"` | 臨時插單：配一個新編號放進 Now，然後馬上開始做 |
+
+**開發機制**
+
+```
+/ship-idea ──▶ IDEA-NNN
+                  │ /ship-roadmap 建議升級
+                  ▼
+     Later ──▶ Next ──▶ Now      ← /ship-roadmap 排序；太大的標 ⚠️ 並建議拆成子項目
+                         │ （選用）/ship-explain 寫白話說明、/ship-propose 寫提案
+                         ▼
+                 /ship-next R-NNN  ← brainstorm → spec → plan → 實作 → review → merge
+                         │
+                         ▼
+                      ✅ Done      ← review 留下的問題變成新的 IDEA，回到最上面
+```
+
+`/ship-roadmap` 每次都會重新讀策略文件、還沒擱置的 IDEA、已接受的決策和最近 30 天的 learning，依「影響 × 相依性」重新排序。Now 最多放 5 項，缺少 `↳ done when:` 的項目會被特別標出來。
+
+**實際操作**
 
 ```text
-/ship-idea 讓客服可以批次關閉工單     # 記下想法
-/ship-roadmap                      # 重排 Roadmap
+/ship-idea 讓客服可以批次關閉工單     # 記下想法 → IDEA-NNN
+/ship-roadmap                      # 升級成 R-NNN、重新排序
 /ship-next                         # 取 Now 第一項，做到 merge
 /ship-next R-012 --auto:yes        # 指定項目，全自動
 /ship-next --adhoc "修 token 外洩"  # 臨時插單
 /ship-next --discard R-012         # 放棄並清掉 worktree
 ```
 
-**遠端開發**
+**走完一套流程後**
+
+- 主 branch 上多一個 squash commit，訊息裡有 done-when、task 清單和 review 結果。
+- `docs/` 下多一組文件：brainstorm、spec、plan、learning。
+- Roadmap 那一列移到 ✅ Done 並標上日期（`mr` 模式先標成 `in-review`）。
+- `CONTEXT.md` 補上這次新出現的專案用語；可重用的 pattern 會問你要不要推升到 vault。
+- review 時延後處理的 major 問題變成新的 IDEA-NNN（auto 模式全部都會開）。
+- worktree 和 branch 都已刪除（`mr` 模式會保留到 `/ship-land`），可以直接接下一個 `/ship-next`。
+
+**Roadmap 機制的好處和缺點**
+
+| 好處 | 缺點 |
+|---|---|
+| 一個編號追到底：從想法、spec、commit 到 learning 都能用 R-NNN 串起來 | 很吃紀律：描述和 done-when 寫得越模糊，brainstorm 和全自動模式就越容易做偏 |
+| 「做完」有明確定義：done-when 讓你和 AI 用同一個標準驗收，全自動模式也有依據 | 排序品質看 `ce-strategy`：沒裝 compound-engineering 時改由 Claude 在對話中排序，結果比較不穩定 |
+| 項目會被逼著變小：太大的會被標 ⚠️，拆出來的每個子項目都必須能驗收 | IDEA 會越積越多：review 自動開的 IDEA 需要定期整理，或標成 `shelved` 擱置 |
+| 問題不會被遺忘：延後處理的 review 問題會變成 IDEA，下次排 Roadmap 時再被看到 | 編號在本機分配：兩台機器在 Roadmap 同步之前各自開新項目，可能拿到同一個號碼 |
+
+### 遠端開發
 
 ```bash
 devsync start dl02     # 同步目前目錄到 dl02 並 SSH 進去
