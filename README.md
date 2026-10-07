@@ -53,7 +53,7 @@ git clone https://github.com/awesome-skills/code-review-skill ~/.claude/skills/c
 
 Roadmap 上每個要做的項目都有一個編號 `R-NNN`（例如 `R-012`），從目前最大的號碼往上加。太大的項目會拆成 `R-012.1`、`R-012.2` 這樣的子項目，原本的 `R-012` 變成 epic，`/ship-next` 自動挑選時會跳過它。
 
-這個編號會貫穿整個流程：worktree、branch、spec、plan、learning 都用它命名，事後從任何一個檔案都能追回同一個項目。另外還有兩種編號：`IDEA-NNN` 是還沒排進 Roadmap 的想法，`D-NNN` 是架構決策。
+這個編號會貫穿整個流程：worktree、branch、spec、plan、learning 都用它命名，事後從任何一個檔案都能追回同一個項目。另外還有兩種編號：`IDEA-NNN` 是還沒排進 Roadmap 的想法（多半是 review 時延後處理的問題），`D-NNN` 是架構決策。
 
 **Roadmap 長什麼樣**
 
@@ -76,25 +76,29 @@ Roadmap 上每個要做的項目都有一個編號 `R-NNN`（例如 `R-012`）�
 
 **怎麼提一個項目**
 
-| 方式 | 適合的情況 |
-|---|---|
-| `/ship-idea <描述>`，之後跑 `/ship-roadmap` | 一般情況。先記成 IDEA，整理 Roadmap 時再由 `/ship-roadmap` 建議把成熟的想法升級成 R-NNN |
-| 直接在 Obsidian 編輯 `ROADMAP.md` | 你已經很清楚要做什麼 |
-| `/ship-next --adhoc "<描述>"` | 臨時插單：配一個新編號放進 Now，然後馬上開始做 |
+直接用一句話跟 Claude 說就好：
+
+```text
+幫我把「客服可以批次關閉工單」加到 Roadmap
+```
+
+Claude 會配一個新的 R-NNN 並寫進 Roadmap。順便說清楚怎樣算做完（例如「一次關 50 張都要成功」），它會一起寫成 `↳ done when:`，之後才能用 `--auto:yes` 全自動跑。
+
+要馬上開始做的臨時需求，用 `/ship-next --adhoc "<描述>"`：配好編號放進 Now 之後，直接進入開發。
 
 **開發機制**
 
 ```
-/ship-idea ──▶ IDEA-NNN
-                  │ /ship-roadmap 建議升級
-                  ▼
-     Later ──▶ Next ──▶ Now      ← /ship-roadmap 排序；太大的標 ⚠️ 並建議拆成子項目
-                         │ （選用）/ship-explain 寫白話說明、/ship-propose 寫提案
-                         ▼
-                 /ship-next R-NNN  ← brainstorm → spec → plan → 實作 → review → merge
-                         │
-                         ▼
-                      ✅ Done      ← review 留下的問題變成新的 IDEA，回到最上面
+「幫我把 XXX 加到 Roadmap」
+  │ 配一個新的 R-NNN
+  ▼
+Later → Next → Now     ← /ship-roadmap 排序；太大的標 ⚠️ 並建議拆成子項目
+  │ （選用）/ship-explain 寫白話說明、/ship-propose 寫提案
+  ▼
+/ship-next R-NNN       ← brainstorm → spec → plan → 實作 → review → merge
+  │
+  ▼
+✅ Done                ← review 延後處理的問題變成 IDEA，下次 /ship-roadmap 會建議排進來
 ```
 
 `/ship-roadmap` 每次都會重新讀策略文件、還沒擱置的 IDEA、已接受的決策和最近 30 天的 learning，依「影響 × 相依性」重新排序。Now 最多放 5 項，缺少 `↳ done when:` 的項目會被特別標出來。
@@ -102,12 +106,12 @@ Roadmap 上每個要做的項目都有一個編號 `R-NNN`（例如 `R-012`）�
 **實際操作**
 
 ```text
-/ship-idea 讓客服可以批次關閉工單     # 記下想法 → IDEA-NNN
-/ship-roadmap                      # 升級成 R-NNN、重新排序
-/ship-next                         # 取 Now 第一項，做到 merge
-/ship-next R-012 --auto:yes        # 指定項目，全自動
-/ship-next --adhoc "修 token 外洩"  # 臨時插單
-/ship-next --discard R-012         # 放棄並清掉 worktree
+幫我把「客服批次關閉工單」加到 Roadmap  # 配好 R-NNN
+/ship-roadmap                           # 重新排序
+/ship-next                              # 取 Now 第一項，做到 merge
+/ship-next R-012 --auto:yes             # 指定項目，全自動
+/ship-next --adhoc "修 token 外洩"      # 臨時插單
+/ship-next --discard R-012              # 放棄並清掉 worktree
 ```
 
 **走完一套流程後**
