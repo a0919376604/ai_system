@@ -15,7 +15,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 - `--adhoc <description>` — same as today: allocate next R-NNN, insert into "Now", continue.
 - `--discard R-NNN` — force-remove the worktree + branch for this R-NNN, exit. Use when brainstorm went off the rails.
 - `--resume R-NNN` — explicit "I know the worktree exists, just continue". Equivalent to invoking `/ship-next R-NNN` and answering `Y` to the resume prompt.
-- `--auto:yes` (alias `--auto`) — **fire-and-forget mode**. Runs the entire 9-phase cycle without interactive prompts: brainstorm clarifying questions auto-pick option 1; spec/plan review gates auto-approve; executor auto = subagent; review loop iterates fix-plans automatically up to cap=3; major findings auto-forwarded to `IDEA-NNN` follow-ups. On cap=3 failure: abort with worktree retained + Discord push. Requires the ROADMAP row to have a `↳ done when:` annotation. Records every auto decision to `.claude/.ship-auto-decisions.md` (gitignored) in the worktree.
+- `--auto:yes` (alias `--auto`) — **fire-and-forget mode**. Runs the entire 9-phase cycle without interactive prompts: brainstorm clarifying questions auto-pick option 1; spec/plan review gates auto-approve; executor auto = codex /run-plan (subagent-driven if the `codex` CLI is missing, never inline); review loop iterates fix-plans automatically up to cap=3; major findings auto-forwarded to `IDEA-NNN` follow-ups. On cap=3 failure: abort with worktree retained + Discord push. Requires the ROADMAP row to have a `↳ done when:` annotation. Records every auto decision to `.claude/.ship-auto-decisions.md` (gitignored) in the worktree.
 
   **Mutually exclusive with `--discard`** (deletion is destructive; auto must never delete).
 
@@ -411,16 +411,25 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
 ## Phase 5 — Choose executor + run
 
 1. **Choose executor.**
-   - **In auto mode (`AUTO=1`):** auto-pick `1` (subagent-driven). Log:
+   - **In auto mode (`AUTO=1`):** auto-pick `3` (codex /run-plan). Fall back to `1`
+     only when the `codex` CLI is missing. Do **not** downgrade to `2` (inline) on
+     plan-size or cost grounds — that override is what made inline the de-facto
+     auto default.
      ```bash
-     ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P5" "executor → auto-picked: 1 (subagent-driven)"
+     if command -v codex >/dev/null 2>&1; then
+       EXECUTOR_CHOICE=3
+       ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P5" "executor → auto-picked: 3 (codex /run-plan)"
+     else
+       EXECUTOR_CHOICE=1
+       ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P5" "executor → auto-picked: 1 (subagent-driven)" "codex CLI not found"
+     fi
      ```
    - **Interactive:** prompt
      ```
      Plan ready at docs/plans/${ID}-${SLUG}.md. Choose executor:
-       1. Subagent-driven (recommended) — fresh subagent per task, review between
+       1. Subagent-driven — fresh subagent per task, review between
        2. Inline executing-plans — sequential in this session, batch with checkpoints
-       3. Codex /run-plan — autonomous in background
+       3. Codex /run-plan (recommended) — autonomous in background
      ```
 
 2. **Record executor choice** to a stash file in the worktree (used by Phase 6 fix-plan re-invoke):
