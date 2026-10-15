@@ -53,6 +53,10 @@ bats tests/
 
 # Local install for development
 ln -sf $(pwd) ~/.claude/skills/ship-workflow
+# Link every command. Re-run after adding one — /ship-land existed for weeks
+# without a link and so could not be invoked.
+mkdir -p ~/.claude/commands
+for f in commands/*.md; do ln -sf ~/.claude/skills/ship-workflow/"$f" ~/.claude/commands/; done
 ```
 
 ## Specification

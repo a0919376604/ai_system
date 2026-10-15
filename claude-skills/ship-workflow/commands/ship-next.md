@@ -1004,6 +1004,11 @@ review sets `merge_mode: mr`.
 
    ```bash
    cd "$REPO"
+   # Each block runs in its own shell: resolve the mode here, never rely on a
+   # MERGE_MODE set by an earlier block.
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+   MERGE_MODE=$(merge_mode)
 
    case "$MERGE_MODE" in
      squash)
@@ -1043,7 +1048,11 @@ review sets `merge_mode: mr`.
 
 1. **Invoke `/ship-compound`** for this R-NNN. It writes the learning, promotes patterns to AIR-OS, marks the ROADMAP row ✅.
 
-   `/ship-compound` runs from the original repo cwd (Phase 7 already cd'd back), so it touches the canonical ROADMAP in the vault directly.
+   Where it runs depends on the merge mode. `squash`: from the original repo cwd
+   (Phase 7 already cd'd back), on `$ORIG_BRANCH`. `mr`: from `$WORKTREE`, on the
+   review branch — the learning and the queued `CONTEXT.md` entries belong to the
+   review, and `/ship-compound` refuses to run its mr path anywhere else. Either way
+   it edits the canonical ROADMAP in the vault directly.
 
    `/ship-compound` now also updates `CONTEXT.md` and exports `CONTEXT_MD_STATUS`.
 
@@ -1203,6 +1212,11 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 1. **Remove worktree** — only when the work has actually landed.
 
    ```bash
+   # Each block runs in its own shell: resolve the mode here, never rely on a
+   # MERGE_MODE set by an earlier block.
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+   MERGE_MODE=$(merge_mode)
    if [ "$MERGE_MODE" = "mr" ]; then
      echo "review open — the worktree is kept at $WORKTREE"
    else
@@ -1224,6 +1238,11 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 2. **Delete worktree branch** — never while a review points at it.
 
    ```bash
+   # Each block runs in its own shell: resolve the mode here, never rely on a
+   # MERGE_MODE set by an earlier block.
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+   MERGE_MODE=$(merge_mode)
    if [ "$MERGE_MODE" = "mr" ]; then
      echo "review open — branch $BRANCH is kept (the remote review needs it)"
    else
@@ -1237,19 +1256,49 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 
    The squash merge in Phase 7 doesn't update branch reachability, so `-d` may complain. Use `-D` if needed; the work is already squashed onto $ORIG_BRANCH.
 
-3. **Log + commit (repo side, on $ORIG_BRANCH):**
+3. **Log + commit.** `squash`: in `$REPO`, on `$ORIG_BRANCH`. `mr`: in
+   `$WORKTREE`, on the review branch — `ship_log` turns the row into a
+   `Ship-Log:` commit trailer there, so it reaches the base branch's history with
+   the review and parallel MRs never touch a shared file (R-001).
 
    ```bash
-   # Only ships that actually ran codex carry a codex fragment. Auto mode picks
-   # executor 1, so most ships never run it, and an empty "codex:  round(s)" on
+   # Only ships that actually ran codex carry a codex fragment. Ships that ran
+   # executor 1 or 2 have no codex state, and an empty "codex:  round(s)" on
    # every row is noise that hides the rows where it means something.
    CODEX_LOG_FRAGMENT=""
    if [ "${CODEX_ROUNDS:-0}" -gt 0 ] 2>/dev/null; then
      CODEX_LOG_FRAGMENT=", codex: ${CODEX_ROUNDS} round(s) ${CODEX_FINAL_VERDICT}"
    fi
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}${CODEX_LOG_FRAGMENT}) | n |" >> docs/learnings/_log.md
-   git add docs/learnings/_log.md
-   git commit -m "log: ship ${ID}"
+   SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}${CODEX_LOG_FRAGMENT}) | n |"
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/ship-log.sh
+   # Each block runs in its own shell: resolve the mode here, never rely on a
+   # MERGE_MODE set by an earlier block.
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+   MERGE_MODE=$(merge_mode)
+   if [ "$MERGE_MODE" = "mr" ]; then
+     # Log and push from the review branch only. `cd ""` succeeds silently in
+     # bash and zsh, so an unset $WORKTREE would otherwise leave this in $REPO on
+     # the base branch — and the push would send the base branch to origin.
+     (
+       [ -n "$WORKTREE" ] && cd "$WORKTREE" \
+         || { echo "Phase 9: WORKTREE is not set — nothing logged or pushed" >&2; exit 1; }
+       CUR=$(git branch --show-current)
+       # This ship's branch only: a WORKTREE left over from an earlier ship in the
+       # same session would otherwise push this row into that ship's review.
+       case "$CUR" in
+         "ship/${ID}-"*) : ;;
+         *) echo "Phase 9: refusing to log or push from '$CUR' — expected ship/${ID}-*" >&2
+            exit 1 ;;
+       esac
+       ship_log "$SHIP_LOG_ROW" && git push origin "$CUR"
+     )
+   else
+     ship_log "$SHIP_LOG_ROW"
+     git add docs/learnings/_log.md
+     git commit -m "log: ship ${ID}"
+   fi
    ```
 
 4. **Auto-mode success notification** (only if `AUTO=1`):

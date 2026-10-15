@@ -61,3 +61,9 @@ code() { sed 's/[[:space:]]*#.*$//' | grep -v '^[[:space:]]*$'; }
     bash -n "$BATS_TEST_TMPDIR/$f.sh" || { echo "$f does not parse"; return 1; }
   done
 }
+
+@test "Phase 8 says where /ship-compound runs in each mode" {
+  sec=$(awk '/^## Phase 8 — \/ship-compound/,/^## Phase 8\.5/' "$CMD")
+  echo "$sec" | grep -qF '`mr`: from `$WORKTREE`' \
+    || { echo "Phase 8 still sends mr-mode /ship-compound to the base checkout"; return 1; }
+}

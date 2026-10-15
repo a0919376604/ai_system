@@ -90,7 +90,35 @@ You are wrapping up a Roadmap item.
 ```bash
 # shellcheck disable=SC1091
 source ~/.claude/skills/ship-workflow/lib/context-md.sh
+# shellcheck disable=SC1091
+source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+MERGE_MODE=$(merge_mode)
 ```
+
+**`mr` mode: queue, do not edit.** A review branch must not touch `CONTEXT.md` —
+every ship editing it is what made parallel MRs conflict (R-001). Do sub-step 1,
+then queue each entry instead of doing sub-steps 2–4:
+
+```bash
+# shellcheck disable=SC1091
+source ~/.claude/skills/ship-workflow/lib/context-md.sh
+# shellcheck disable=SC1091
+source ~/.claude/skills/ship-workflow/lib/ship-log.sh
+# The queue belongs on the review branch. From the base checkout it would be
+# committed to base by step 9 — refuse instead (see step 9).
+ship_log_defers || {
+  echo "ship-compound: mr mode — run this from the ship's worktree (a ship/* branch)" >&2
+  exit 1
+}
+# Once per qualifying entry (continuation lines, if any, indented):
+# context_pending_add "$ID" "- **<term>** — <definition>"
+CONTEXT_MD_STATUS="queued for /ship-land"
+```
+
+Step 9 commits the queue file `docs/ship-pending/${ID}-context.md` on the review
+branch, so the entries are reviewed with the work. `/ship-land` folds them into
+`CONTEXT.md`, runs the cap check and mirrors to the vault after the MR merges.
+Sub-steps 2–4 below are the `squash` path.
 
 1. **Extract terms.** From this ship's diff and `docs/specs/${ID}-${SLUG}.md`,
    identify domain terms this work **introduced or clarified**. A term qualifies
@@ -170,7 +198,7 @@ source ~/.claude/skills/ship-workflow/lib/context-md.sh
    # tdd_rules_append "$ID" "Never assert on log output; assert on the return value."
 
    if tdd_rules_over_cap; then
-     echo "WARN: docs/tdd-rules.md has $(tdd_rules_count) rules (cap ${TDD_RULES_MAX})." >&2
+     echo "WARN: this repo has $(tdd_rules_count) learned TDD rules in docs/tdd-rules.md + docs/tdd-rules.d/ (cap ${TDD_RULES_MAX})." >&2
      echo "      Review the oldest by their ← R-NNN source and drop what no longer applies." >&2
    fi
    UNSOURCED=$(tdd_rules_unsourced)
@@ -235,23 +263,57 @@ source ~/.claude/skills/ship-workflow/lib/context-md.sh
    so it is reviewed and merged with the work it describes. Committing it to
    the base branch would put a learning for unmerged code on main.
 
+   In `mr` mode the review branch stages only paths that carry this ship's own
+   ID. The shared files — `_log.md`, the `docs/product/` and `docs/proposals/`
+   vault mirror, `CONTEXT.md` — are what made parallel MRs conflict (R-001).
+   `ship_log` turns the row into a `Ship-Log:` commit trailer there, and the
+   mirror is regenerated from the vault by every `sync.sh` run anyway.
+
    ```bash
+   # Each step runs in its own shell, so resolve the mode here rather than
+   # trusting a MERGE_MODE left over from step 6 or 7.
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/ship-log.sh
+   MERGE_MODE=$(merge_mode)
    STATUS_WORD=shipped
    [ "$MERGE_MODE" = "mr" ] && STATUS_WORD=in-review
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-compound | $ID | $STATUS_WORD | n |" >> docs/learnings/_log.md
-   git add docs/learnings/${ID}-${slug}.md docs/product/ROADMAP.md docs/proposals/ docs/learnings/_log.md
-   git commit -m "compound: $ID — $STATUS_WORD + learning + ROADMAP update"
+
+   # mr mode writes to the review branch, so it must be standing on one. Run
+   # from the base checkout it would commit the learning to base and push it.
+   if [ "$MERGE_MODE" = "mr" ] && ! ship_log_defers; then
+     echo "ship-compound: merge_mode is mr but this is '$(git branch --show-current)', not a ship/* review branch — cd into the ship's worktree" >&2
+     exit 1
+   fi
+
+   ship_log "| $(date +%Y-%m-%d\ %H:%M) | ship-compound | $ID | $STATUS_WORD | n |"
 
    if [ "$MERGE_MODE" = "mr" ]; then
+     git add "docs/learnings/${ID}-${slug}.md" || exit 1
+     for p in docs/tdd-rules.d docs/ship-pending; do
+       if [ -e "$p" ]; then git add "$p" || exit 1; fi
+     done
+     git commit -m "compound: $ID — $STATUS_WORD + learning" || exit 1
      # The review is already open; push the learning onto the same branch.
-     git push origin HEAD
+     git push origin "$(git branch --show-current)"
+   else
+     # One add for the required paths: if any is missing, stop here rather than
+     # commit a partial set under a title that claims all of it.
+     git add "docs/learnings/${ID}-${slug}.md" docs/product/ROADMAP.md docs/proposals/ docs/learnings/_log.md || exit 1
+     if [ -e docs/tdd-rules.d ]; then git add docs/tdd-rules.d || exit 1; fi
+     git commit -m "compound: $ID — $STATUS_WORD + learning + ROADMAP update"
    fi
    ```
+
+   `docs/tdd-rules.d/` is staged in both modes: step 6b writes this ship's rule
+   fragment there, and no other step commits it.
 
 10. **Report:**
     - Learning path
     - Patterns promoted to AIR-OS (paths, if any)
-    - ROADMAP item moved to Done
+    - `squash`: ROADMAP item moved to Done
+    - `mr`: row marked in-review — run `/ship-land ${ID}` after the review merges
     - Next suggested command: `/ship-next`
 
 ## Failure modes

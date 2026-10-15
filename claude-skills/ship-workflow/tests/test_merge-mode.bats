@@ -106,3 +106,30 @@ teardown() { rm -rf "$SCRATCH"; }
     done
   done
 }
+
+@test "merge_mode: a worktree without the config falls back to the main checkout's" {
+  # /ship-init --custom writes .claude/ship-config.yml but never stages it, so a
+  # ship worktree may not have it. Reading only the cwd then made mr mode turn
+  # into squash inside the worktree — where every R-001 mr guard runs.
+  rm -rf "$SCRATCH/mm" && mkdir -p "$SCRATCH/mm" && cd "$SCRATCH/mm"
+  git init -q -b main
+  git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+  mkdir -p .claude && echo 'merge_mode: mr' > .claude/ship-config.yml   # untracked
+  git worktree add -q -b ship/R-1-x "$SCRATCH/mm-wt"
+  cd "$SCRATCH/mm-wt"
+  [ ! -e .claude/ship-config.yml ]
+  run merge_mode
+  [ "$output" = "mr" ]
+}
+
+@test "merge_mode: the cwd's own config still wins over the main checkout's" {
+  rm -rf "$SCRATCH/mm2" && mkdir -p "$SCRATCH/mm2" && cd "$SCRATCH/mm2"
+  git init -q -b main
+  mkdir -p .claude && echo 'merge_mode: squash' > .claude/ship-config.yml
+  git add -A && git -c user.email=t@t -c user.name=t commit -q -m base
+  git worktree add -q -b ship/R-1-x "$SCRATCH/mm2-wt"
+  echo 'merge_mode: mr' > .claude/ship-config.yml          # main checkout drifts
+  cd "$SCRATCH/mm2-wt"
+  run merge_mode
+  [ "$output" = "squash" ]
+}

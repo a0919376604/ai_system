@@ -114,7 +114,9 @@ You are running the Roadmap refresh ritual.
 
 10. **Log + commit (repo side):**
    ```bash
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-roadmap | - | refresh | n |" >> docs/learnings/_log.md
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/ship-log.sh
+   ship_log "| $(date +%Y-%m-%d\ %H:%M) | ship-roadmap | - | refresh | n |"
    git add docs/product/ROADMAP.md docs/learnings/_log.md
    git commit -m "chore: refresh ROADMAP.md"
    ```

@@ -65,7 +65,7 @@ p85_bash() {
 }
 
 @test "Phase 9 log row carries the prune status, not only the summary" {
-  row=$(grep -F '>> docs/learnings/_log.md' "$CMD")
+  row=$(grep -F 'SHIP_LOG_ROW="|' "$CMD")
   [ -n "$row" ]
   [[ "$row" == *'prune: ${PRUNE_STATUS}'* ]]
 }
@@ -153,5 +153,8 @@ p85_bash() {
   cmd_row=$(grep -F 'shipped (review: blocking=0, major=' "$CMD" | head -1)
   plan_row=$(grep -F 'shipped (review: blocking=0, major=' "$PLAN" | head -1)
   [ -n "$cmd_row" ] && [ -n "$plan_row" ]
-  [ "$(echo "$cmd_row" | sed 's/^[[:space:]]*//')" = "$(echo "$plan_row" | sed 's/^[[:space:]]*//')" ]
+  # Compare the quoted row text, not the whole line: the command file holds it in
+  # SHIP_LOG_ROW="…" for ship_log (R-001), older plans show `echo "…" >> _log.md`.
+  row_of() { sed 's/^[^"]*"//; s/"[^"]*$//'; }
+  [ "$(echo "$cmd_row" | row_of)" = "$(echo "$plan_row" | row_of)" ]
 }

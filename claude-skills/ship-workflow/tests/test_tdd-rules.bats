@@ -93,16 +93,66 @@ mkrules() { printf '%s\n' "$@" > docs/tdd-rules.md; }
   [[ "$output" != *"31"* ]] || { echo "a repo's measurement leaked into the skill"; return 1; }
 }
 
-@test "tdd_rules_append: adds a sourced rule, idempotently" {
+@test "tdd_rules_append: adds a sourced rule to the ship's fragment, idempotently" {
   tdd_rules_append R-042 "Never assert on log output."
   tdd_rules_append R-042 "Never assert on log output."
   run tdd_rules_count
   [ "$output" = "1" ]
-  grep -q '← R-042' docs/tdd-rules.md
+  grep -qxF -- '- Never assert on log output. ← R-042' docs/tdd-rules.d/R-042.md
+  [ ! -f docs/tdd-rules.md ] || { echo "append wrote the shared legacy file"; return 1; }
 }
 
 @test "tdd_rules_append: refuses a rule with no R-NNN" {
   run tdd_rules_append "" "orphan rule"
   [ "$status" -ne 0 ]
   [ ! -f docs/tdd-rules.md ]
+  [ ! -d docs/tdd-rules.d ]
+}
+
+@test "tdd_rules_append: never modifies the legacy file, and dedupes against it" {
+  # Every ship appending to one file is what made parallel MRs conflict.
+  mkrules '- Old rule. ← R-001'
+  cp docs/tdd-rules.md "$BATS_TEST_TMPDIR/legacy.before"
+  tdd_rules_append R-002 "Old rule."
+  [ ! -e docs/tdd-rules.d/R-002.md ] || { echo "duplicated a legacy rule"; return 1; }
+  tdd_rules_append R-002 "New rule."
+  grep -qxF -- '- New rule. ← R-002' docs/tdd-rules.d/R-002.md
+  cmp -s docs/tdd-rules.md "$BATS_TEST_TMPDIR/legacy.before"
+}
+
+@test "tdd rule readers see the legacy file first, then fragments by name" {
+  mkrules '- Legacy. ← R-001'
+  mkdir -p docs/tdd-rules.d
+  printf -- '- Frag B. ← R-003\n' > docs/tdd-rules.d/R-003.md
+  printf -- '- Frag A.\n' > docs/tdd-rules.d/R-002.md
+  run tdd_rules_count
+  [ "$output" = "3" ]
+  run tdd_rules_unsourced
+  [ "$output" = "- Frag A." ]
+  printf '## Seams\n| a | b | c |\n' > spec.md
+  run tdd_rules_render R-123 spec.md
+  l=$(echo "$output" | grep -n -- '- Legacy.' | cut -d: -f1)
+  a=$(echo "$output" | grep -n -- '- Frag A.' | cut -d: -f1)
+  b=$(echo "$output" | grep -n -- '- Frag B.' | cut -d: -f1)
+  [ -n "$l" ] && [ -n "$a" ] && [ -n "$b" ]
+  [ "$l" -lt "$a" ] && [ "$a" -lt "$b" ]
+}
+
+@test "tdd_rules_render: a repo with only the legacy file renders exactly as before" {
+  mkrules '# Learned TDD rules' '' '- One. ← R-001' '- Two. ← R-002'
+  printf '## Seams\n| a | b | c |\n' > spec.md
+  run tdd_rules_render R-123 spec.md
+  learned=$(echo "$output" | sed -n '/^## Learned in this repo$/,/^## Declared seams$/p')
+  expected=$(printf '%s\n' '## Learned in this repo' '- One. ← R-001' '- Two. ← R-002' '' '## Declared seams')
+  [ "$learned" = "$expected" ]
+}
+
+@test "zsh: rule readers work with and without a fragment directory" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  mkrules '- Legacy. ← R-001'
+  run zsh -c "source '$SHIP_LIB/tdd-rules.sh'; tdd_rules_count"
+  [ "$output" = "1" ]
+  mkdir -p docs/tdd-rules.d
+  run zsh -c "source '$SHIP_LIB/tdd-rules.sh'; tdd_rules_count"
+  [ "$output" = "1" ]
 }

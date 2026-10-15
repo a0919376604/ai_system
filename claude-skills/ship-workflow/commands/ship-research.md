@@ -54,13 +54,17 @@ You are running vault-first deep research to fill a knowledge gap.
 5. **Append log line (repo side):**
    ```bash
    scope=$([ "$ARG_SCOPE" = "global" ] && echo "global" || echo "$PROJECT")
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-research | - | $TOPIC ($scope) | n |" >> docs/learnings/_log.md
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/ship-log.sh
+   ship_log "| $(date +%Y-%m-%d\ %H:%M) | ship-research | - | $TOPIC ($scope) | n |"
    ```
 
 6. **Commit the log entry (repo side):**
    ```bash
    git add docs/learnings/_log.md
-   git commit -m "chore: ship-research on '$TOPIC'"
+   # On a merge_mode=mr review branch ship_log already committed the row as a
+   # trailer, so there may be nothing staged here.
+   git diff --cached --quiet || git commit -m "chore: ship-research on '$TOPIC'"
    ```
 
 7. **Report:**

@@ -12,7 +12,15 @@
 
 # merge_mode — echo squash|mr
 merge_mode() {
-  local cfg="$(pwd)/.claude/ship-config.yml" v
+  local cfg="$(pwd)/.claude/ship-config.yml" v common
+  if [ ! -f "$cfg" ]; then
+    # A ship worktree may not carry the config: /ship-init --custom writes it
+    # but never stages it. Reading the cwd alone then turned mr into squash
+    # inside the worktree, where every mr-mode guard runs. Fall back to the
+    # main checkout's copy; a config in the cwd still wins.
+    common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) \
+      && cfg="$(dirname "$common")/.claude/ship-config.yml"
+  fi
   [ -f "$cfg" ] || { echo squash; return 0; }
   v=$(sed -n 's/^merge_mode:[[:space:]]*//p' "$cfg" | head -1 \
       | tr -d '"'"'"' \t\r')

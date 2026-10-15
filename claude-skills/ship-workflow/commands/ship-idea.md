@@ -74,7 +74,9 @@ You are capturing a new idea into `docs/ideas/IDEA-NNN-<slug>.md`.
 
 7. **Append log line:**
    ```bash
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-idea | $ID | $description | n |" >> docs/learnings/_log.md
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/ship-log.sh
+   ship_log "| $(date +%Y-%m-%d\ %H:%M) | ship-idea | $ID | $description | n |"
    ```
 
 8. **Commit:**
