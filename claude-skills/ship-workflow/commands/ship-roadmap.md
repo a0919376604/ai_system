@@ -150,6 +150,8 @@ You are running the Roadmap refresh ritual.
       (or specify: /ship-propose <R-NNN>)
       ```
 
+12. **Refresh the human-facing overview.** Follow `/ship-brief` (`~/.claude/skills/ship-workflow/commands/ship-brief.md`) with no arguments, so `<project>/Overview/brief.html` matches the ROADMAP just written. It never edits ROADMAP.md. Print its one-line headline and the path as the last lines of the report.
+
 ## Fallback
 
 If `compound-engineering:ce-strategy` is unavailable, do the re-ranking yourself in-conversation and explain your reasoning before showing the diff.

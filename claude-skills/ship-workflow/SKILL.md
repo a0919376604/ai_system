@@ -1,11 +1,11 @@
 ---
 name: ship-workflow
-description: Per-repo product development workflow integrating Superpowers (brainstorm/spec/plan/build) with Compound Engineering (roadmap/decision/learnings). Installs 9 ship-* slash commands. Use when starting product development in a new repo, capturing ideas/decisions, planning roadmap, or shipping features through the /ship-next mega-command (worktree → brainstorm → spec → plan → execute → review → merge).
+description: Per-repo product development workflow integrating Superpowers (brainstorm/spec/plan/build) with Compound Engineering (roadmap/decision/learnings). Installs 11 ship-* slash commands. Use when starting product development in a new repo, capturing ideas/decisions, planning roadmap, or shipping features through the /ship-next mega-command (worktree → brainstorm → spec → plan → execute → review → merge).
 ---
 
 # Ship Workflow
 
-Per-repo product development workflow. Installs 9 slash commands into a target repo's `.claude/commands/`:
+Per-repo product development workflow. Installs 11 slash commands into a target repo's `.claude/commands/`:
 
 **Core lifecycle (6):**
 - **`/ship-init`** — Bootstrap workflow (folders, commands, AIR-OS Product Brain stub)
@@ -16,10 +16,11 @@ Per-repo product development workflow. Installs 9 slash commands into a target r
 - **`/ship-compound`** — Write learning + promote patterns + close Roadmap item
 - **`/ship-land [R-NNN]`** — Finish an item shipped via `merge_mode: mr`: verify the review merged, move the row to Done, remove the branch + worktree Phase 9 kept
 
-**Knowledge bridges (3):**
+**Knowledge bridges (4):**
 - **`/ship-research <topic>`** — Vault-first deep research (thin wrapper over `/obsidian-research-deep`)
 - **`/ship-propose [R-NNN]`** — Produce **prescriptive** proposal doc for a Roadmap item; orchestrates ship-research as sub-step; Self-FAQ pattern is the forcing function
 - **`/ship-explain [R-NNN | --all-now]`** — Generate plain-language explainer note for a ROADMAP row (so non-domain readers understand what a row actually does); auto-invoked during decompose and `/ship-next` pre-flight
+- **`/ship-brief [--refresh-arch]`** — Render the **human-facing** overview: `<project>/Overview/brief.html` (roadmap in plain zh-TW, grouped by theme, with decisions waiting on you) + `architecture.html` (one metaphor + "follow one request" steps, from UA layers/tour and POCKET/JOURNEY). `lib/brief.py` owns numbers/IDs/markup and rejects R-ids missing from the ROADMAP; Claude only writes the words. Auto-run at the end of `/ship-roadmap`
 
 - **UA integration**: `/ship-next` auto-detects `.ua/knowledge-graph.json` in the target repo and injects UA blast-radius context into Phase 3 (brainstorm), Phase 6 (review), and Phase 8 (compound). Silent no-op when UA absent. See `docs/superpowers/specs/2026-08-30-ua-ship-workflow-integration-design.md`.
 

@@ -35,12 +35,13 @@ cd /path/to/your/repo
 | `/ship-next` | End-to-end ship cycle: worktree → brainstorm → spec → plan → execute → review → merge |
 | `/ship-compound` | Learnings + promote patterns + close |
 
-**Knowledge-input bridges (2):**
+**Knowledge-input bridges (3):**
 
 | Command | Purpose |
 |---|---|
 | `/ship-research <topic>` | Vault-first deep research via `/obsidian-research-deep` |
 | `/ship-propose [R-NNN]` | Produce prescriptive proposal docs for roadmap items |
+| `/ship-brief [--refresh-arch]` | Plain-language HTML overview for humans (`Overview/brief.html` + `architecture.html`); runs after `/ship-roadmap` |
 
 **UA integration** — `/ship-next` auto-picks up `.ua/knowledge-graph.json` if present in the target repo. See spec `docs/superpowers/specs/2026-08-30-ua-ship-workflow-integration-design.md`.
 

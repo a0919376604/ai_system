@@ -113,6 +113,7 @@ Claude 會配一個新的 R-NNN 並寫進 Roadmap。順便說清楚怎樣算做�
   ▼
 Later → Next → Now     ← /ship-roadmap 排序；太大的標 ⚠️ 並建議拆成子項目
   │ （選用）/ship-explain 寫白話說明、/ship-propose 寫提案
+  │ /ship-roadmap 跑完會自動 /ship-brief：產生給人看的白話 Roadmap 和架構頁
   ▼
 /ship-next R-NNN       ← brainstorm → spec → plan → 實作 → review → merge
   │
@@ -120,13 +121,16 @@ Later → Next → Now     ← /ship-roadmap 排序；太大的標 ⚠️ 並建
 ✅ Done                ← review 延後處理的問題變成 IDEA，下次 /ship-roadmap 會建議排進來
 ```
 
+**給人看的頁面**：ROADMAP 和 spec 是寫給 AI 的，`/ship-brief` 另外在 vault 的 `10 Projects/<repo>/Overview/` 產生兩個單檔 HTML：`brief.html`（這兩週做完什麼、依主題分組的進行中項目、需要你決定的事）和 `architecture.html`（用一個比喻講系統怎麼運作，加上「跟一則訊息走一遍」）。編號、日期、數字由 `lib/brief.py` 從 ROADMAP 抽出來，Claude 只寫白話；引用了 ROADMAP 裡不存在的編號就不會產生。架構頁只在 knowledge graph 更新或加 `--refresh-arch` 時重寫。
+
 `/ship-roadmap` 每次都會重新讀策略文件、還沒擱置的 IDEA、已接受的決策和最近 30 天的 learning，依「影響 × 相依性」重新排序。Now 最多放 5 項，缺少 `↳ done when:` 的項目會被特別標出來。
 
 **實際操作**
 
 ```text
 幫我把「客服批次關閉工單」加到 Roadmap  # 配好 R-NNN
-/ship-roadmap                           # 重新排序
+/ship-roadmap                           # 重新排序（結尾自動更新給人看的頁面）
+/ship-brief                             # 只重產給人看的頁面
 /ship-next                              # 取 Now 第一項，做到 merge
 /ship-next R-012 --auto:yes             # 指定項目，全自動
 /ship-next --adhoc "修 token 外洩"      # 臨時插單
