@@ -219,3 +219,82 @@ EOF
   [[ "$output" == *"ASSERTION_ROULETTE_COUNT=0"* ]] || return 1
   [[ "$output" == *"WEAK_ASSERTION_COUNT=0"* ]]
 }
+
+# --- R-003: several files, pre-existing findings, single-integer counts -------
+
+@test "code-review-parse: counts are single integers, never 00" {
+  # `grep -c … || echo 0` printed "0" twice when nothing matched, giving "00".
+  printf 'nothing here\n' > "$SCRATCH/none.md"
+  run "$SHIP_LIB/code-review-parse.sh" "$SCRATCH/none.md"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -qx 'BLOCKING_COUNT=0' || return 1
+  echo "$output" | grep -qx 'PRE_EXISTING_COUNT=0' || return 1
+  if echo "$output" | grep -q '=00'; then echo "a counter printed 00"; return 1; fi
+}
+
+@test "code-review-parse: [pre-existing] findings never count as blocking or important" {
+  cat > "$SCRATCH/pre.md" <<'EOF'
+🔴 [blocking] [pre-existing] a.py:3 — existed before this diff
+   Base evidence: a.py:3 exists unchanged on main
+🔴 [blocking] b.py:4 — introduced here
+🟡 [important] [pre-existing] [security:prompt_injection] c.py:9 — old flat prompt
+EOF
+  run "$SHIP_LIB/code-review-parse.sh" "$SCRATCH/pre.md"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -qx 'BLOCKING_COUNT=1' || return 1
+  echo "$output" | grep -qx 'MAJOR_COUNT=0' || return 1
+  echo "$output" | grep -qx 'PRE_EXISTING_COUNT=2'
+}
+
+@test "code-review-parse: counts sum across several files" {
+  printf '🔴 [blocking] a.py:1 — x\n' > "$SCRATCH/r1.md"
+  printf '🔴 [blocking] [security:sql_injection] b.py:2 — y\n🟡 [important] [security:xss] c.py:3 — z\n' > "$SCRATCH/r2.md"
+  run "$SHIP_LIB/code-review-parse.sh" "$SCRATCH/r1.md" "$SCRATCH/r2.md"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -qx 'BLOCKING_COUNT=2' || return 1
+  echo "$output" | grep -qx 'MAJOR_COUNT=1' || return 1
+  echo "$output" | grep -qx 'SECURITY_COUNT=2'
+}
+
+@test "code-review-parse: SECURITY_COUNT leaves out pre-existing security findings" {
+  printf '🔴 [blocking] [security:sqli] a.py:1 — x\n🔴 [blocking] [pre-existing] [security:sqli] b.py:2 — y\n' > "$SCRATCH/s.md"
+  run "$SHIP_LIB/code-review-parse.sh" "$SCRATCH/s.md"
+  echo "$output" | grep -qx 'SECURITY_COUNT=1'
+}
+
+@test "code-review-parse: exits 2 when any of several files is missing" {
+  printf 'x\n' > "$SCRATCH/ok.md"
+  run "$SHIP_LIB/code-review-parse.sh" "$SCRATCH/ok.md" "$SCRATCH/missing.md"
+  [ "$status" -eq 2 ]
+}
+
+# --- R-003 review round 1 ------------------------------------------------------
+
+@test "code-review-parse: a report without a trailing newline does not swallow the next one's first finding" {
+  # Claude's Write tool leaves no trailing newline when content lacks one; `cat`
+  # then glued the security report's HIGH onto the review's last line (fail open).
+  printf '🟢 [nit] a.sh:3 — style' > "$SCRATCH/rev.md"
+  printf '🔴 [blocking] [security:command_injection] b.sh:1 — x\n' > "$SCRATCH/sec.md"
+  run "$SHIP_LIB/code-review-parse.sh" "$SCRATCH/rev.md" "$SCRATCH/sec.md"
+  echo "$output" | grep -qx 'BLOCKING_COUNT=1'
+}
+
+@test "code-review-parse: a description that quotes the tag still counts as this ship's finding" {
+  printf '%s\n' '🔴 [blocking] b.py:4 — user text can forge the [pre-existing] marker the gate trusts' > "$SCRATCH/q.md"
+  run "$SHIP_LIB/code-review-parse.sh" "$SCRATCH/q.md"
+  echo "$output" | grep -qx 'BLOCKING_COUNT=1' || return 1
+  echo "$output" | grep -qx 'PRE_EXISTING_COUNT=0'
+}
+
+@test "code-review-parse: a mixed-case or misplaced tag fails closed" {
+  printf '%s\n' '🔴 [blocking] [Pre-Existing] c.py:1 — x' '🔴 [blocking] src/[pre-existing]/run.sh:2 — y' > "$SCRATCH/m.md"
+  run "$SHIP_LIB/code-review-parse.sh" "$SCRATCH/m.md"
+  echo "$output" | grep -qx 'BLOCKING_COUNT=2' || return 1
+  echo "$output" | grep -qx 'PRE_EXISTING_COUNT=0'
+}
+
+@test "code-review-parse: SECURITY_COUNT counts finding lines only" {
+  printf '%s\n' 'Notes: see [security:xss] above' '🟡 [important] [security:xss] v.js:9 — innerHTML' '   Recommendation: escape it, [security:xss] style' > "$SCRATCH/n.md"
+  run "$SHIP_LIB/code-review-parse.sh" "$SCRATCH/n.md"
+  echo "$output" | grep -qx 'SECURITY_COUNT=1'
+}
