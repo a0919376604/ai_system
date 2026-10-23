@@ -35,7 +35,9 @@ You are recording a decision into `docs/decisions/D-NNN-<slug>.md`.
 
 7. **Append log:**
    ```bash
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-decision | $ID | $topic | n |" >> docs/learnings/_log.md
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/ship-log.sh
+   ship_log "| $(date +%Y-%m-%d\ %H:%M) | ship-decision | $ID | $topic | n |"
    ```
 
 8. **Commit:**

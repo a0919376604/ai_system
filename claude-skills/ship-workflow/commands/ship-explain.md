@@ -103,7 +103,9 @@ You are generating a plain-language **Roadmap Explainer Note** for a ROADMAP row
 
 12. **Log + commit (repo side):**
     ```bash
-    echo "| $(date +%Y-%m-%d\ %H:%M) | ship-explain | ${ID} | $(basename $NOTE_PATH) | n |" >> docs/learnings/_log.md
+    # shellcheck disable=SC1091
+    source ~/.claude/skills/ship-workflow/lib/ship-log.sh
+    ship_log "| $(date +%Y-%m-%d\ %H:%M) | ship-explain | ${ID} | $(basename $NOTE_PATH) | n |"
     git add docs/product/ROADMAP.md docs/roadmap-notes/ docs/learnings/_log.md
     git commit -m "explain: ${ID} ${slug}"
     ```

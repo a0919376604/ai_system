@@ -765,6 +765,10 @@ categories by appending the literal tag to the finding line:
 - `[seam-violation]` — a test asserts something not declared in the spec's `## Seams`
 - `[assertion-roulette]` — one test bundles multiple unrelated assertions
 - `[weak-assertion]` — an assertion that cannot fail for any valid input
+- `[pre-existing]` — the defect exists on the base branch already, and this diff
+  neither introduces nor worsens it. Put the tag right after the severity tag and add
+  an indented line `Base evidence: <file>:<line> exists unchanged on <base branch>`.
+  A pre-existing finding is reported but never blocks this ship.
 
 Keep your usual severity tag as well; these categories are orthogonal to severity.
 CHECKS
@@ -783,6 +787,72 @@ CHECKS
    fi
    ```
 
+1.5. **Security pass (every review attempt)** — a separate review, next to
+   code-review-skill, as in Anthropic's own pipeline (R-003). It is a vendored copy of
+   Anthropic's open-source `/security-review` prompt, rendered for this ship's diff, with
+   prompt-injection and LLM-output checks added. Its HIGH findings block exactly like
+   code-review blockers. Run this block inside the loop below, after code-review-skill
+   has written `$REVIEW_OUT`:
+
+   ```bash
+   # Each block runs in its own shell: these come from the surrounding phase.
+   : "${ORIG_BRANCH:?ORIG_BRANCH is not set}" "${ID:?ID is not set}" "${attempt:?attempt is not set}"
+   SEC_OUT="/tmp/ship-next-security-${ID}-${attempt}.md"
+   # A report left by an earlier run must never stand in for this one: removing it
+   # first, on every exit path, means step 1.6 catches a pass that produced nothing.
+   rm -f "$SEC_OUT"
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/security-review.sh || {
+     echo "ERROR: the security-review lib is missing (stale ship-workflow checkout?) — not skipping the review." >&2
+     exit 1
+   }
+   mkdir -p .ship
+   if security_review_enabled "$ORIG_BRANCH"; then
+     echo on > .ship/security-review-state
+     security_review_render "$ORIG_BRANCH" .ship/security-review-prompt.md >/dev/null || {
+       echo "ERROR: the security review could not be rendered — not skipping it." >&2
+       echo "       A missing lib or template usually means the local ship-workflow checkout is stale." >&2
+       exit 1
+     }
+     echo "security review: follow .ship/security-review-prompt.md and write its report to $SEC_OUT"
+   else
+     echo off > .ship/security-review-state
+     echo "No security findings." > "$SEC_OUT"
+     echo "security review: off (ship-config on $ORIG_BRANCH)"
+   fi
+   ```
+
+   Then **follow `.ship/security-review-prompt.md`**: one finder sub-task, one parallel
+   filter sub-task per candidate, drop anything below confidence 8. Write the final
+   report, and nothing else, to `$SEC_OUT`. Before accepting a `[pre-existing]`
+   finding from either review, confirm with `git show ${ORIG_BRANCH}:<file>` that the
+   cited code exists there; if it does not, delete the tag so the finding counts.
+
+1.6. **Check the security report** — the pass must never fail open:
+
+   ```bash
+   : "${ORIG_BRANCH:?ORIG_BRANCH is not set}" "${REVIEW_OUT:?REVIEW_OUT is not set}" \
+     "${ID:?ID is not set}" "${attempt:?attempt is not set}"
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/security-review.sh || { echo "ERROR: security-review lib missing" >&2; exit 1; }
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/pre-existing.sh || { echo "ERROR: pre-existing lib missing" >&2; exit 1; }
+   SEC_OUT="/tmp/ship-next-security-${ID}-${attempt}.md"
+   if ! security_review_output_check "$SEC_OUT"; then
+     echo "security report is not in the required format: $SEC_OUT" >&2
+     echo "Re-run step 1.5 once. If this check fails again, stop Phase 6 here." >&2
+     exit 3
+   fi
+   # A file this diff created cannot hold a pre-existing defect: drop the tag from
+   # any [pre-existing] finding whose cited file does not exist on the base branch,
+   # in both reports, so it counts as this ship's own.
+   pre_existing_strip_unverified "$ORIG_BRANCH" "$REVIEW_OUT" "$SEC_OUT"
+   ```
+
+   An upstream-format report (`# Vuln 1 … * Severity: High`), or any line outside the
+   ship-next finding format, could hold a finding that parses as zero and passes the
+   gate silently. This check exists to stop that.
+
 2. **Loop:**
    ```
    # Phase 6 is a different shell from Phase 5 — Phase 7 cd's back to the main
@@ -795,6 +865,8 @@ CHECKS
    source ~/.claude/skills/ship-workflow/lib/codex-rounds.sh
    # shellcheck disable=SC1091
    source ~/.claude/skills/ship-workflow/lib/codex-supervise-state.sh
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/pre-existing.sh   # PRE_EXISTING_RE
 
    attempt=1
    while [ "$attempt" -le 3 ]; do
@@ -805,10 +877,17 @@ CHECKS
      # See R-084.1 learning (2026-07-30) for the burn.
      REVIEW_TARGET=$(git diff ${ORIG_BRANCH}...HEAD)
      REVIEW_OUT=/tmp/ship-next-review-${ID}-${attempt}.md
+     SEC_OUT=/tmp/ship-next-security-${ID}-${attempt}.md
+     rm -f "$REVIEW_OUT" "$SEC_OUT"   # never parse a report left by an earlier run
      # Invoke awesome-skills/code-review-skill on REVIEW_TARGET; capture output to $REVIEW_OUT
      # Read .ship/review-extra-checks.md alongside .ship/ua-diff-report.md when present.
+     # Then run steps 1.5 and 1.6 (the security pass); they write SEC_OUT.
 
-     eval "$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh $REVIEW_OUT)"
+     # A failed parse (a missing report) must stop the gate, not pass it: eval of an
+     # empty string succeeds and leaves BLOCKING_COUNT unset.
+     PARSED=$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh "$REVIEW_OUT" "$SEC_OUT") \
+       || { echo "review parse failed — not passing the gate" >&2; exit 1; }
+     eval "$PARSED"
      BLOCKING_COUNT=$((BLOCKING_COUNT + MECH_BLOCKERS))
 
      # Auto mode: log every attempt
@@ -823,7 +902,10 @@ CHECKS
      # Print blockers ONLY in interactive mode (auto mode keeps quiet)
      if [ "$AUTO" = "0" ]; then
        echo "🛑 ${BLOCKING_COUNT} blocking finding(s):"
-       grep -B1 -A3 -E '(\*\*Severity:\*\*[[:space:]]*blocking|\[blocking\]|🔴)' $REVIEW_OUT
+       # Drop each pre-existing finding together with its indented detail lines (ENVIRON,
+       # not awk -v, which mangles the \[ escapes), then print the blockers with context.
+       PE="$PRE_EXISTING_RE" awk '$0 ~ ENVIRON["PE"] {skip=1; next} skip && /^[[:space:]]+[^[:space:]]/ {next} {skip=0; print}' "$REVIEW_OUT" "$SEC_OUT" \
+         | grep -B1 -A3 -E '(\*\*Severity:\*\*[[:space:]]*blocking|\[blocking\]|🔴)'
      fi
 
      attempt=$((attempt + 1))
@@ -832,6 +914,8 @@ CHECKS
      # Build inline fix-plan
      FIX_PLAN=docs/plans/${ID}-${SLUG}-review-fix-${attempt}.md
      # ... (existing logic: write fix-plan, invoke subagent on it)
+     # The fix-plan covers the blocking findings from both $REVIEW_OUT and $SEC_OUT,
+     # never the [pre-existing] ones.
 
      if [ "$AUTO" = "1" ]; then
        ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P6" \
@@ -934,12 +1018,18 @@ CHECKS
    - **In auto mode (`AUTO=1`):** every major finding becomes an `IDEA-NNN` follow-up (NEVER skip; quality-debt must be visible).
      ```bash
      if [ "$MAJOR_COUNT" -gt 0 ]; then
-       # Extract major findings from $REVIEW_OUT — grab the line + 1-2 lines context
-       MAJOR_LINES=$(grep -B0 -A2 -E '(\*\*Severity:\*\*[[:space:]]*major|\[major\]|🟡)' $REVIEW_OUT)
+       # shellcheck disable=SC1091
+       source ~/.claude/skills/ship-workflow/lib/pre-existing.sh   # PRE_EXISTING_RE
+       # Majors from BOTH reports (security MEDIUMs are importants), minus the
+       # pre-existing ones — MAJOR_COUNT excludes those, and step 4.5 files them.
+       MAJOR_LINES=$(grep -h -B0 -A2 -E '(\*\*Severity:\*\*[[:space:]]*major|\[major\]|🟡)' "$REVIEW_OUT" "$SEC_OUT" \
+                     | grep -vE "$PRE_EXISTING_RE")
 
        # Parse each finding into a 1-line description
        IFS=$'\n'
-       for finding in $(echo "$MAJOR_LINES" | awk 'NR==1 || /^[🟡]|\[major\]|\*\*Severity/' | head -$MAJOR_COUNT); do
+       # Finding lines only: a removed pre-existing finding leaves its detail lines
+       # (`Base evidence: …`) behind, and none of those is a major.
+       for finding in $(echo "$MAJOR_LINES" | awk '/^[🟡]|\[major\]|\*\*Severity/' | head -$MAJOR_COUNT); do
          finding_desc=$(echo "$finding" | sed 's/^[🟡[:space:]]*//' | head -c 120)
          /ship-idea --during-build \
            "P6 major from $ID: $finding_desc" \
@@ -956,6 +1046,29 @@ CHECKS
      ```
 
    - **Interactive (`AUTO=0`):** list majors and ask per-finding `[F]ix-now / [I]dea-NNN-followup / [S]kip`.
+
+4.5. **Pre-existing findings** — reported by either review, tagged `[pre-existing]`.
+   They never block and are never asked about as this ship's own importants. Each
+   becomes one follow-up, and a defect that is already tracked is not filed again:
+
+   ```bash
+   : "${REVIEW_OUT:?REVIEW_OUT is not set}" "${SEC_OUT:?SEC_OUT is not set}"
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/pre-existing.sh || { echo "ERROR: pre-existing lib missing" >&2; exit 1; }
+   pre_existing_lines "$REVIEW_OUT" "$SEC_OUT" | while IFS= read -r finding; do
+     key=$(pre_existing_key "$finding") || continue
+     if pre_existing_tracked "$key"; then
+       echo "already tracked: $key"
+     else
+       echo "new pre-existing: $key — $finding"
+     fi
+   done
+   ```
+
+   For each `new pre-existing` line, make the description end with
+   `(pre-existing-key: <key>)` so the next ship that meets the same defect skips it:
+   - **Auto (`AUTO=1`):** `/ship-idea --during-build "P6 pre-existing from $ID: <finding> (pre-existing-key: <key>)" --source "ship-next Phase 6" --related-roadmap-item "$ID"`.
+   - **Interactive (`AUTO=0`):** ask per finding `[I]dea-NNN-followup / [S]kip`.
 
 ## Phase 7 — Land the branch (squash merge, or open a review)
 
@@ -990,6 +1103,8 @@ review sets `merge_mode: mr`.
    - minor:    ${MINOR_COUNT}
    - praise:   ${PRAISE_COUNT}
 
+   Security review: $(if [ "$(cat "$WORKTREE/.ship/security-review-state" 2>/dev/null)" = off ]; then echo "off (ship-config on ${ORIG_BRANCH})"; else echo "blocking 0 ✓ (security findings: ${SECURITY_COUNT:-0}, pre-existing: ${PRE_EXISTING_COUNT:-0})"; fi)
+
    Tests: +${TEST_LINES_ADDED} / Src: +${SRC_LINES_ADDED}  (ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp)
    Spec:  docs/specs/${ID}-${SLUG}.md
    Plan:  docs/plans/${ID}-${SLUG}.md
@@ -1004,6 +1119,11 @@ review sets `merge_mode: mr`.
 
    ```bash
    cd "$REPO"
+   # Each block runs in its own shell: resolve the mode here, never rely on a
+   # MERGE_MODE set by an earlier block.
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+   MERGE_MODE=$(merge_mode)
 
    case "$MERGE_MODE" in
      squash)
@@ -1043,7 +1163,11 @@ review sets `merge_mode: mr`.
 
 1. **Invoke `/ship-compound`** for this R-NNN. It writes the learning, promotes patterns to AIR-OS, marks the ROADMAP row ✅.
 
-   `/ship-compound` runs from the original repo cwd (Phase 7 already cd'd back), so it touches the canonical ROADMAP in the vault directly.
+   Where it runs depends on the merge mode. `squash`: from the original repo cwd
+   (Phase 7 already cd'd back), on `$ORIG_BRANCH`. `mr`: from `$WORKTREE`, on the
+   review branch — the learning and the queued `CONTEXT.md` entries belong to the
+   review, and `/ship-compound` refuses to run its mr path anywhere else. Either way
+   it edits the canonical ROADMAP in the vault directly.
 
    `/ship-compound` now also updates `CONTEXT.md` and exports `CONTEXT_MD_STATUS`.
 
@@ -1178,6 +1302,12 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
    # shellcheck disable=SC1091
    source ~/.claude/skills/ship-workflow/lib/codex-rounds.sh
 
+   # Whether Phase 6 ran the security review (step 1.5 wrote it). Step 4 is its own
+   # shell and runs after step 1 removed the worktree, so copy the file out — a shell
+   # variable set here would be gone by then. No state → no copy, never a stale one.
+   cp "$WORKTREE/.ship/security-review-state" "/tmp/ship-${ID}-security-review-state" 2>/dev/null \
+     || rm -f "/tmp/ship-${ID}-security-review-state"
+
    CODEX_ROUNDS_ARCHIVE=""
    CODEX_LAST_FINDINGS=""
    if [ -f "$WORKTREE/.ship/codex-rounds.md" ]; then
@@ -1203,6 +1333,11 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 1. **Remove worktree** — only when the work has actually landed.
 
    ```bash
+   # Each block runs in its own shell: resolve the mode here, never rely on a
+   # MERGE_MODE set by an earlier block.
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+   MERGE_MODE=$(merge_mode)
    if [ "$MERGE_MODE" = "mr" ]; then
      echo "review open — the worktree is kept at $WORKTREE"
    else
@@ -1224,6 +1359,11 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 2. **Delete worktree branch** — never while a review points at it.
 
    ```bash
+   # Each block runs in its own shell: resolve the mode here, never rely on a
+   # MERGE_MODE set by an earlier block.
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+   MERGE_MODE=$(merge_mode)
    if [ "$MERGE_MODE" = "mr" ]; then
      echo "review open — branch $BRANCH is kept (the remote review needs it)"
    else
@@ -1237,19 +1377,49 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 
    The squash merge in Phase 7 doesn't update branch reachability, so `-d` may complain. Use `-D` if needed; the work is already squashed onto $ORIG_BRANCH.
 
-3. **Log + commit (repo side, on $ORIG_BRANCH):**
+3. **Log + commit.** `squash`: in `$REPO`, on `$ORIG_BRANCH`. `mr`: in
+   `$WORKTREE`, on the review branch — `ship_log` turns the row into a
+   `Ship-Log:` commit trailer there, so it reaches the base branch's history with
+   the review and parallel MRs never touch a shared file (R-001).
 
    ```bash
-   # Only ships that actually ran codex carry a codex fragment. Auto mode picks
-   # executor 1, so most ships never run it, and an empty "codex:  round(s)" on
+   # Only ships that actually ran codex carry a codex fragment. Ships that ran
+   # executor 1 or 2 have no codex state, and an empty "codex:  round(s)" on
    # every row is noise that hides the rows where it means something.
    CODEX_LOG_FRAGMENT=""
    if [ "${CODEX_ROUNDS:-0}" -gt 0 ] 2>/dev/null; then
      CODEX_LOG_FRAGMENT=", codex: ${CODEX_ROUNDS} round(s) ${CODEX_FINAL_VERDICT}"
    fi
-   echo "| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}${CODEX_LOG_FRAGMENT}) | n |" >> docs/learnings/_log.md
-   git add docs/learnings/_log.md
-   git commit -m "log: ship ${ID}"
+   SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}${CODEX_LOG_FRAGMENT}) | n |"
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/ship-log.sh
+   # Each block runs in its own shell: resolve the mode here, never rely on a
+   # MERGE_MODE set by an earlier block.
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+   MERGE_MODE=$(merge_mode)
+   if [ "$MERGE_MODE" = "mr" ]; then
+     # Log and push from the review branch only. `cd ""` succeeds silently in
+     # bash and zsh, so an unset $WORKTREE would otherwise leave this in $REPO on
+     # the base branch — and the push would send the base branch to origin.
+     (
+       [ -n "$WORKTREE" ] && cd "$WORKTREE" \
+         || { echo "Phase 9: WORKTREE is not set — nothing logged or pushed" >&2; exit 1; }
+       CUR=$(git branch --show-current)
+       # This ship's branch only: a WORKTREE left over from an earlier ship in the
+       # same session would otherwise push this row into that ship's review.
+       case "$CUR" in
+         "ship/${ID}-"*) : ;;
+         *) echo "Phase 9: refusing to log or push from '$CUR' — expected ship/${ID}-*" >&2
+            exit 1 ;;
+       esac
+       ship_log "$SHIP_LOG_ROW" && git push origin "$CUR"
+     )
+   else
+     ship_log "$SHIP_LOG_ROW"
+     git add docs/learnings/_log.md
+     git commit -m "log: ship ${ID}"
+   fi
    ```
 
 4. **Auto-mode success notification** (only if `AUTO=1`):
@@ -1270,6 +1440,7 @@ ${CODEX_LAST_FINDINGS}
    • major: ${MAJOR_COUNT} → IDEA-NNN auto-logged
    • minor: ${MINOR_COUNT}
    • praise: ${PRAISE_COUNT}
+   • security review: $(if [ "$(cat "/tmp/ship-${ID}-security-review-state" 2>/dev/null)" = off ]; then echo "off (ship-config on ${ORIG_BRANCH})"; else echo "${SECURITY_COUNT:-0} finding(s), pre-existing ${PRE_EXISTING_COUNT:-0} → IDEA-NNN"; fi)
    • CONTEXT.md: ${CONTEXT_MD_STATUS}
    • Test budget: ship ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp (${TEST_BUDGET_VERDICT})
    • Test pruning: ${PRUNE_STATUS}

@@ -5,12 +5,16 @@
 # compare them without bc. Every function echoes 0 / returns cleanly when
 # it is outside a git repo or has no data.
 #
-# Shadow mode is DERIVED, never stored: it reads how many prior rows in
-# docs/learnings/_log.md already carry a "ratio " field.
+# Shadow mode is DERIVED, never stored: it counts how many prior ships recorded
+# a "ratio " field — rows in docs/learnings/_log.md plus `Ship-Log:` commit
+# trailers (see lib/ship-log.sh).
 
 TB_MAJOR_MULT=2
 TB_BLOCKING_MULT=4
 TB_SHADOW_SHIPS=3
+
+command -v ship_log_ratio_count >/dev/null 2>&1 \
+  || . "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/ship-log.sh"
 
 # _tb_is_test_path <path> — exit 0 if the path is test code.
 _tb_is_test_path() {
@@ -97,15 +101,13 @@ tb_verdict() {
 }
 
 # tb_shadow_active — exit 0 while fewer than TB_SHADOW_SHIPS prior ships
-# recorded a ratio in docs/learnings/_log.md.
+# recorded a ratio. Counts `_log.md` rows AND `Ship-Log:` trailers: in
+# merge_mode=mr the row is a commit trailer, so counting the file alone would
+# keep an mr-only repo in shadow mode forever.
 tb_shadow_active() {
-  local root log n
-  root=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
-  log="$root/docs/learnings/_log.md"
-  [ -f "$log" ] || return 0
-  n=$(grep -cF "ratio " "$log" 2>/dev/null || true)
-  n=$(echo -n "$n" | tr -d '[:space:]')
-  [ -n "$n" ] || n=0
+  local n
+  git rev-parse --show-toplevel >/dev/null 2>&1 || return 0
+  n=$(ship_log_ratio_count)
   [ "$n" -lt "$TB_SHADOW_SHIPS" ] && return 0
   return 1
 }

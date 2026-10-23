@@ -287,7 +287,9 @@ This file currently covers:
 14. **Log:**
 
     ```bash
-    echo "| $(date +%Y-%m-%d\ %H:%M) | ship-propose | $ID | draft ($SIZE) | n |" >> docs/learnings/_log.md
+    # shellcheck disable=SC1091
+    source ~/.claude/skills/ship-workflow/lib/ship-log.sh
+    ship_log "| $(date +%Y-%m-%d\ %H:%M) | ship-propose | $ID | draft ($SIZE) | n |"
     ```
 
 15. **Commit (repo side):**

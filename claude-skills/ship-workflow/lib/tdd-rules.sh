@@ -14,7 +14,10 @@
 # product repo, shipped to every other.
 #
 #   universal  — true everywhere; lives here, in the skill
-#   learned    — this repo's own scars; docs/tdd-rules.md, git-tracked
+#   learned    — this repo's own scars, git-tracked: one fragment per ship in
+#                docs/tdd-rules.d/<R-NNN>.md, plus the legacy docs/tdd-rules.md
+#                if the repo has one. Fragments exist because every ship used to
+#                append to the one file, and parallel MRs conflicted on its tail.
 #   seams      — this ship only; from the spec's ## Seams table
 #
 # Caps exist for the same reason CONTEXT.md has them: rules accumulate and
@@ -23,6 +26,7 @@
 
 TDD_RULES_MAX=20
 TDD_RULES_REL="docs/tdd-rules.md"
+TDD_RULES_DIR_REL="docs/tdd-rules.d"
 
 # tdd_rules_path — echo the repo's learned-rules file, or nothing.
 tdd_rules_path() {
@@ -33,12 +37,33 @@ tdd_rules_path() {
   echo "$root/$TDD_RULES_REL"
 }
 
-# tdd_rules_count — echo how many learned rules, 0 when absent.
+# tdd_rules_files — every learned-rule file: the legacy file first, then the
+# per-ship fragments by name. `find`, not a glob: an unmatched glob is an error
+# in zsh, and these helpers run under the operator's zsh.
+tdd_rules_files() {
+  local root
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
+  [ -n "$root" ] || return 0
+  if [ -f "$root/$TDD_RULES_REL" ]; then echo "$root/$TDD_RULES_REL"; fi
+  if [ -d "$root/$TDD_RULES_DIR_REL" ]; then
+    find "$root/$TDD_RULES_DIR_REL" -maxdepth 1 -type f -name '*.md' | sort
+  fi
+  return 0
+}
+
+# tdd_rules_bullets — every learned rule line (`- ...`), in tdd_rules_files order.
+tdd_rules_bullets() {
+  local f
+  tdd_rules_files | while IFS= read -r f; do
+    grep '^- ' "$f" 2>/dev/null || true
+  done
+  return 0
+}
+
+# tdd_rules_count — echo how many learned rules, 0 when none.
 tdd_rules_count() {
-  local f n
-  f=$(tdd_rules_path)
-  if [ -z "$f" ]; then echo 0; return 0; fi
-  n=$(grep -c '^- ' "$f" || true)
+  local n
+  n=$(tdd_rules_bullets | grep -c '^- ' || true)
   n=$(printf '%s' "$n" | tr -d '[:space:]')
   [ -n "$n" ] || n=0
   echo "$n"
@@ -55,13 +80,13 @@ tdd_rules_over_cap() {
 # Without a source a rule cannot be judged still-relevant, so it can never be
 # pruned. That is how the file silently becomes unprunable.
 tdd_rules_unsourced() {
-  local f
-  f=$(tdd_rules_path)
-  [ -n "$f" ] || return 0
-  grep '^- ' "$f" 2>/dev/null | grep -v '← R-[0-9]' || true
+  tdd_rules_bullets | grep -v '← R-[0-9]' || true
 }
 
-# tdd_rules_append <R-NNN> <rule text> — add a sourced rule. Idempotent.
+# tdd_rules_append <R-NNN> <rule text> — add a sourced rule to this ship's
+# fragment, docs/tdd-rules.d/<R-NNN>.md. Idempotent across every rule file.
+# Never writes the legacy docs/tdd-rules.md: a file every ship appends to is a
+# file every pair of parallel MRs conflicts on.
 tdd_rules_append() {
   local id="$1" text="$2" root f
   case "$id" in
@@ -70,20 +95,9 @@ tdd_rules_append() {
   esac
   [ -n "$text" ] || { echo "tdd_rules_append: empty rule" >&2; return 2; }
   root=$(git rev-parse --show-toplevel 2>/dev/null) || return 2
-  f="$root/$TDD_RULES_REL"
+  tdd_rules_bullets | grep -qF -- "$text" && return 0
+  f="$root/$TDD_RULES_DIR_REL/$id.md"
   mkdir -p "$(dirname "$f")" || return 2
-  if [ ! -f "$f" ]; then
-    {
-      echo "# Learned TDD rules"
-      echo
-      echo "Rules this repo earned the hard way. Rendered into \`.ship/tdd-rules.md\`"
-      echo "for every Phase 5 executor, after the universal rules and before this"
-      echo "ship's seams. Every rule carries the R-NNN that produced it, so an old"
-      echo "one can be judged and dropped."
-      echo
-    } > "$f"
-  fi
-  grep -qF -- "$text" "$f" && return 0
   printf -- '- %s ← %s\n' "$text" "$id" >> "$f"
 }
 
@@ -100,11 +114,11 @@ tdd_rules_render() {
   echo "5. Assert on behavior at the seam, never on how it is implemented. A test that"
   echo "   must change when the implementation changes, while the behavior did not,"
   echo "   reports churn instead of regressions."
-  learned=$(tdd_rules_path)
-  if [ -n "$learned" ] && [ -s "$learned" ]; then
+  learned=$(tdd_rules_bullets)
+  if [ -n "$learned" ]; then
     echo
     echo "## Learned in this repo"
-    grep '^- ' "$learned" 2>/dev/null || true
+    printf '%s\n' "$learned"
   fi
   echo
   echo "## Declared seams"

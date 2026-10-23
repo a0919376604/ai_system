@@ -142,7 +142,7 @@ p9_bash() {
 }
 
 @test "Phase 9 log row records the codex round count and verdict" {
-  row=$(grep -F '>> docs/learnings/_log.md' "$CMD")
+  row=$(grep -F 'SHIP_LOG_ROW="|' "$CMD")
   [ -n "$row" ]
   [[ "$row" == *'${CODEX_LOG_FRAGMENT}'* ]] || return 1
   frag=$(p9_bash | grep -F 'CODEX_LOG_FRAGMENT=", codex:')
@@ -151,7 +151,7 @@ p9_bash() {
 }
 
 @test "Phase 9 omits the codex fragment on ships that never ran codex" {
-  # Auto mode picks executor 1, so most ships have no codex state at all.
+  # Ships that ran executor 1 or 2 have no codex state at all.
   # An unguarded "codex:  round(s)" on every row hides the rows that matter.
   body=$(p9_bash)
   echo "$body" | grep -qF 'CODEX_LOG_FRAGMENT=""' || { echo "fragment is not defaulted empty"; return 1; }
