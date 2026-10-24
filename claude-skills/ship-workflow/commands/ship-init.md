@@ -74,7 +74,7 @@ You are bootstrapping the Ship Workflow in the user's current repo.
    mr-mode repo. Skip the rest.
 
 3. **Scaffold repo side.** Create:
-   - `docs/ideas/`, `docs/decisions/`, `docs/brainstorms/`, `docs/specs/`, `docs/plans/`, `docs/learnings/`, `docs/product/`, `docs/proposals/`
+   - `docs/ideas/`, `docs/decisions/`, `docs/specs/`, `docs/plans/`, `docs/learnings/`, `docs/product/`, `docs/proposals/`
    - `docs/learnings/_log.md` with header:
      ```markdown
      # Ship Workflow Log

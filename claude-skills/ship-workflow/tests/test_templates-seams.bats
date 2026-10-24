@@ -48,3 +48,18 @@ load helpers
   run grep -F 'ponytail' "$SHIP_SKILL_ROOT/SKILL.md"
   [ "$status" -eq 0 ]
 }
+
+@test "SPEC template has a Decisions section" {
+  grep -qF '## Decisions' "$SHIP_SKILL_ROOT/templates/repo/SPEC.md"
+}
+
+@test "LEARNING template has a Key Decisions section" {
+  grep -qF '## Key Decisions' "$SHIP_SKILL_ROOT/templates/repo/LEARNING.md"
+}
+
+@test "ship-next Phase 3 writes no brainstorm file and asks for Decisions in the spec" {
+  p3=$(awk '/^## Phase 3/,/^## Phase 4/' "$SHIP_SKILL_ROOT/commands/ship-next.md")
+  [ -n "$p3" ]
+  if echo "$p3" | grep -qF 'docs/brainstorms/'; then echo "Phase 3 still writes a brainstorm file"; return 1; fi
+  echo "$p3" | grep -qF '## Decisions'
+}

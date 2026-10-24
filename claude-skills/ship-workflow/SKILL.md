@@ -23,7 +23,7 @@ them into `~/.claude/commands/` — and every repo uses those. A repo carries no
   - VISION / STRATEGY / ROADMAP / QUARTERLY_GOALS (edited by hand; `--adhoc` inserts ROADMAP rows)
   - `Architecture/` (hand-written POCKET/JOURNEY/GLOSSARY/REMINDERS + cases/; optional `.ua/knowledge-graph.json` in target repo for descriptive code graph via UA plugin)
 - **Repo Execution Brain** at `<repo>/docs/`:
-  - `ideas/` `decisions/` `brainstorms/` `specs/` `plans/` `learnings/`
+  - `ideas/` `decisions/` `specs/` `plans/` `learnings/`
   - `product/` (mirror of vault strategy + roadmap)
 - One-way sync (Obsidian → repo) on every ship-* command invocation, with 60-second freshness window
 

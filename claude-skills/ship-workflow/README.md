@@ -9,7 +9,7 @@ Roadmap → /ship-next mega-command → Worktree → Brainstorm → Spec → Pla
 ```
 
 - Strategy lives in Obsidian (AIR-OS `10 Projects/<repo>/`)
-- Per-Roadmap-item artifacts live in the repo (`docs/{ideas,decisions,brainstorms,specs,plans,learnings}/`)
+- Per-Roadmap-item artifacts live in the repo (`docs/{ideas,decisions,specs,plans,learnings}/`)
 - Auto-pull strategy from Obsidian into repo on every command
 
 ## Installation

@@ -29,6 +29,7 @@ You are wrapping up a Roadmap item.
 
 4. **Delegate to `compound-engineering:ce-compound`** to draft the learning content:
    - What Shipped
+   - Key Decisions — from the spec's `## Decisions`; the spec leaves the repo in step 9
    - What Changed From Plan
    - Bugs
    - Reusable Patterns
@@ -159,7 +160,7 @@ Sub-steps 2–4 below are the `squash` path.
    In interactive mode when over cap, **prune to <= 150 lines** in this order:
    merge semantically duplicate entries; delete terms reported by
    `context_md_orphan_terms`; if still over, delete the entries least recently
-   cited by any file under `docs/specs/` or `docs/plans/`.
+   cited by any file under `docs/learnings/`.
 
    **There is no archive section.** `CONTEXT.md` is read in full every Phase 3, so
    an archive heading would keep paying the token cost. Deleted terms are recovered
@@ -287,9 +288,18 @@ Sub-steps 2–4 below are the `squash` path.
      exit 1
    fi
 
+   # Only the learning outlives the ship (R-005, R-006). The spec's latest text goes to
+   # the vault first — review rounds edit it after Phase 3's mirror. Best-effort: with
+   # no vault binding the spec still leaves, and git history keeps it.
+   if [ -f "docs/specs/${ID}-${slug}.md" ]; then
+     VAULT_PROJECT=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path 2>/dev/null) \
+       && ~/.claude/skills/ship-workflow/lib/spec-mirror.sh "docs/specs/${ID}-${slug}.md" "$VAULT_PROJECT/Specs/${ID}-${slug}.md" \
+       || echo "WARN: spec not mirrored to the vault — it stays in git history" >&2
+   fi
    # Before ship_log: a failure here must leave nothing written. -f because the
    # plan may carry an uncommitted Execution log note that steps 2-4 already read.
-   git rm -q -f --ignore-unmatch -- "docs/plans/${ID}-${slug}.md" "docs/plans/${ID}-${slug}-review-fix-*.md" || exit 1
+   git rm -q -f --ignore-unmatch -- "docs/plans/${ID}-${slug}.md" "docs/plans/${ID}-${slug}-review-fix-*.md" \
+     "docs/specs/${ID}-${slug}.md" "docs/brainstorms/${ID}-${slug}.md" || exit 1
 
    ship_log "| $(date +%Y-%m-%d\ %H:%M) | ship-compound | $ID | $STATUS_WORD | n |"
 
@@ -310,10 +320,11 @@ Sub-steps 2–4 below are the `squash` path.
    fi
    ```
 
-   Both modes remove this ship's plan and fix-plans in the commit above (`ship_log`
-   commits with `--only`, so the staged removal waits for it): steps 2–4
-   were the plan's last reader, and plans left behind piled up to 321 files with no
-   reader on one repo (R-005). Specs, brainstorms and learnings stay.
+   Both modes remove this ship's plan, fix-plans, spec and (legacy) brainstorm in the
+   commit above (`ship_log` commits with `--only`, so the staged removal waits for it).
+   Steps 2–6 were their last readers. Left behind, they piled up on one repo and AI
+   greps took superseded designs for current ones (R-005, R-006). Only the learning
+   stays in the repo; the spec's full text is in the vault `Specs/`.
 
    `docs/tdd-rules.d/` is staged in both modes: step 6b writes this ship's rule
    fragment there, and no other step commits it.

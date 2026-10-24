@@ -133,7 +133,7 @@ Later → Next → Now     ← 順序由你決定；brainstorm 會建議把太�
 **走完一套流程後**
 
 - 主 branch 上多一個 squash commit，訊息裡有 done-when、task 清單和 review 結果。
-- `docs/` 下多一組文件：brainstorm、spec、plan、learning。
+- `docs/learnings/` 多一份 learning（含 Key Decisions）。spec 和 plan 只在進行中存在，收尾時移除；spec 全文留在 vault `Specs/` 和 git 歷史（R-005、R-006）。
 - Roadmap 那一列移到 ✅ Done 並標上日期（`mr` 模式先標成 `in-review`）。
 - `CONTEXT.md` 補上這次新出現的專案用語；可重用的 pattern 會問你要不要推升到 vault。
 - review 時延後處理的 major 問題變成新的 IDEA-NNN（auto 模式全部都會開）。
@@ -164,7 +164,7 @@ devsync stop my-repo   # 結束
 - **Review 是硬門檻**：blocking 沒歸零就不能 merge。除了 LLM review，還會機械檢查純重構有沒有偷加測試、測試量有沒有超過 repo 自己的基準。
 - **經驗會累積**：過去的 learning 會在下次 brainstorm 時被讀回來，專案用語（`CONTEXT.md`）和測試規則（`docs/tdd-rules.md`）也會隨著每個 repo 一起成長。
 - **可以無人值守**：`--auto:yes` 可以整晚自己跑，每個自動做的決定都有紀錄，失敗時保留現場並通知你。
-- **每一步都留紀錄**：每個項目都有 brainstorm、spec、plan、learning，事後查得到當初為什麼這樣做。
+- **每一步都留紀錄**：每個項目留一份 learning（含當初的決定和理由）在 repo，spec 全文在 vault，過程在 git 歷史；repo 裡不會堆過時的設計文件。
 - **看得到影響範圍**：搭配 Understand-Anything，review 時知道這次改動會波及哪些模組。
 
 **缺點**

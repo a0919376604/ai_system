@@ -13,6 +13,14 @@ roadmap-item: {{id}}
 > {{id}}: spec for <topic>.
 > The contract that the plan + build implement.
 
+## Decisions
+
+What the operator decided in the brainstorm dialogue, and why. Mark your own calls
+as yours. There is no separate brainstorm file: `/ship-compound` carries these into
+the learning's `## Key Decisions` before the spec leaves the repo (R-006).
+
+- <decision> — <why> (operator | my call)
+
 ## Seams
 
 Declare every boundary this work introduces or changes. Tests may assert a

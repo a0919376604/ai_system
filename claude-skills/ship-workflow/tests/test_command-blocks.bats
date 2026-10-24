@@ -169,6 +169,50 @@ compound_step9() { block ship-compound.md '^9\. \*\*Log \+ commit' '^10\. \*\*Re
   [ "$(git ls-files docs/plans)" = "docs/plans/R-1.1-z.md" ]
 }
 
+@test "ship-compound step 9 (mr) removes this ship's spec, brainstorm and plan, not another ship's spec" {
+  git worktree add -q -b ship/R-1-x "$SCRATCH/wt"
+  cd "$SCRATCH/wt"
+  mkdir -p docs/specs docs/brainstorms docs/plans
+  touch docs/specs/R-1-x.md docs/brainstorms/R-1-x.md docs/plans/R-1-x.md docs/specs/R-2-y.md
+  git add docs && git commit -q -m "ship docs"
+  echo "learning" > docs/learnings/R-1-x.md
+  compound_step9 > "$SCRATCH/s9.sh"
+  run env ID=R-1 slug=x bash "$SCRATCH/s9.sh"
+  [ "$status" -eq 0 ]
+  [ "$(git ls-files docs/specs docs/brainstorms docs/plans)" = "docs/specs/R-2-y.md" ]
+}
+
+@test "ship-compound step 9 mirrors the spec's latest text to the vault before removing it" {
+  printf 'airos_vault: %s\nairos_projects_dir: "10 Projects"\n' "$SCRATCH/vault" > "$HOME/.claude/ship-workflow.yml"
+  git worktree add -q -b ship/R-1-x "$SCRATCH/wt"
+  cd "$SCRATCH/wt"
+  mkdir -p docs/specs
+  echo v1 > docs/specs/R-1-x.md
+  git add docs && git commit -q -m spec
+  echo v2-after-review > docs/specs/R-1-x.md
+  git commit -q -am "spec edited in review"
+  echo "learning" > docs/learnings/R-1-x.md
+  compound_step9 > "$SCRATCH/s9.sh"
+  run env ID=R-1 slug=x bash "$SCRATCH/s9.sh"
+  [ "$status" -eq 0 ]
+  VP=$("$HOME/.claude/skills/ship-workflow/lib/airos-binding.sh" project_path)
+  grep -q v2-after-review "$VP/Specs/R-1-x.md"
+  [ -z "$(git ls-files docs/specs)" ]
+}
+
+@test "ship-compound step 9 (squash) removes the spec with no vault configured" {
+  echo 'merge_mode: squash' > .claude/ship-config.yml
+  mkdir -p docs/specs docs/proposals
+  echo p > docs/proposals/p.md
+  echo spec > docs/specs/R-1-x.md
+  git add -A && git commit -q -m "squash mode + spec"
+  echo "learning" > docs/learnings/R-1-x.md
+  compound_step9 > "$SCRATCH/s9.sh"
+  run env ID=R-1 slug=x bash "$SCRATCH/s9.sh"
+  [ "$status" -eq 0 ]
+  [ -z "$(git ls-files docs/specs)" ]
+}
+
 land_step5() { block ship-land.md '^5\. \*\*Clean up' '^6\. \*\*Report'; }
 
 @test "ship-land step 5 removes a worktree whose vault mirror sync dirtied" {

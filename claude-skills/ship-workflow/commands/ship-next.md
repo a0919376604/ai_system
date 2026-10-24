@@ -321,6 +321,12 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    it. This instruction travels in the invocation context; no `superpowers`
    file is modified.
 
+   Also required: a **`## Decisions`** section — what the operator decided in the
+   dialogue and why, with your own calls marked as yours. There is no separate
+   brainstorm file (R-006): the spec carries the decisions, `/ship-compound` copies
+   them into the learning's `## Key Decisions`, then mirrors the spec to the vault and
+   removes it from the repo.
+
    **In auto mode (`AUTO=1`):** the brainstorming skill is still invoked, but **every clarifying question is auto-answered by picking option 1**. The brainstorming skill convention is to lead with the recommended option, so option 1 = recommended.
 
    After each auto-answered question, log:
@@ -333,7 +339,7 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P3" "spec review → auto-approved"
    ```
 
-2. **Verify outputs**: `docs/brainstorms/${ID}-${SLUG}.md` + `docs/specs/${ID}-${SLUG}.md` exist.
+2. **Verify output**: `docs/specs/${ID}-${SLUG}.md` exists and has `## Decisions`.
 
 2.5. **Dual-write spec to vault** (Obsidian visibility):
 
@@ -356,8 +362,8 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
 
 3. **Commit:**
    ```bash
-   git add docs/brainstorms/${ID}-${SLUG}.md docs/specs/${ID}-${SLUG}.md
-   git commit -m "brainstorm+spec: ${ID} ${SLUG}"
+   git add docs/specs/${ID}-${SLUG}.md
+   git commit -m "spec: ${ID} ${SLUG}"
    ```
 
 ## Phase 4 — Writing plans
@@ -1105,7 +1111,7 @@ review sets `merge_mode: mr`.
    Security review: $(if [ "$(cat "$WORKTREE/.ship/security-review-state" 2>/dev/null)" = off ]; then echo "off (ship-config on ${ORIG_BRANCH})"; else echo "blocking 0 ✓ (security findings: ${SECURITY_COUNT:-0}, pre-existing: ${PRE_EXISTING_COUNT:-0})"; fi)
 
    Tests: +${TEST_LINES_ADDED} / Src: +${SRC_LINES_ADDED}  (ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp)
-   Spec:  docs/specs/${ID}-${SLUG}.md
+   Spec:  docs/specs/${ID}-${SLUG}.md (removed by /ship-compound; kept in the "spec: ${ID}" commit and the vault Specs/)
    Plan:  docs/plans/${ID}-${SLUG}.md (removed by /ship-compound; kept in the "plan: ${ID}" commit)
    Notes: docs/roadmap-notes/${ID}-${SLUG}.md (if exists)
 

@@ -16,6 +16,9 @@ shipped-date: {{date}}
 > What worked, what didn't, what to remember next time.
 
 ## What Shipped
+## Key Decisions
+> Carry the spec's `## Decisions` forward, one line each with its why. The spec leaves the repo at compound; this is what stays.
+
 ## What Changed From Plan
 ## Bugs
 ## Reusable Patterns

@@ -52,10 +52,9 @@ Obsidian AIR-OS (source of truth)              Repo (mirror + execution)
                                                <repo>/docs/
                                                  ├── ideas/IDEA-NNN-*.md
                                                  ├── decisions/D-NNN-*.md
-                                                 ├── brainstorms/R-NNN-*.md
-                                                 ├── specs/R-NNN-*.md
-                                                 ├── plans/R-NNN-*.md
-                                                 └── learnings/R-NNN-*.md
+                                                 ├── specs/R-NNN-*.md      (in flight only)
+                                                 ├── plans/R-NNN-*.md      (in flight only)
+                                                 └── learnings/R-NNN-*.md  (what a shipped R-NNN leaves)
 ```
 
 Sync direction is **strictly one-way** (Obsidian → repo). To edit strategy, edit in Obsidian.

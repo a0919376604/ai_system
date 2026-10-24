@@ -7,7 +7,7 @@
 | `ship-next` | `superpowers:brainstorming` + `superpowers:writing-plans` + user-chosen executor + code-review-skill | Required — no fallback for brainstorm/spec/plan/review |
 | `ship-compound` | `compound-engineering:ce-compound` + `ce-promote` | Hand-write learning sections |
 
-`/ship-next` now spans the former brainstorm/spec plus plan/execute range: it opens the worktree, produces brainstorm/spec artifacts, writes the plan, runs the chosen executor, enforces the strict code-review gate, squash-merges, and then invokes `/ship-compound`.
+`/ship-next` now spans the former brainstorm/spec plus plan/execute range: it opens the worktree, produces the spec (decisions included), writes the plan, runs the chosen executor, enforces the strict code-review gate, squash-merges, and then invokes `/ship-compound`.
 
 ## Detection
 
