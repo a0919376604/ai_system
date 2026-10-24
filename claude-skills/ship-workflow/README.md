@@ -1,6 +1,6 @@
 # Ship Workflow
 
-A Claude Code skill that installs a 10-command product development workflow into any repo.
+A Claude Code skill: a product development workflow built around `/ship-next`, with five commands installed once per machine.
 
 ## What it gives you
 
@@ -14,9 +14,15 @@ Roadmap → /ship-next mega-command → Worktree → Brainstorm → Spec → Pla
 
 ## Installation
 
-This skill is distributed via `ai_system/claude-skills/`. After `devsync`, it lives at `~/.claude/skills/ship-workflow/`.
+This skill lives in `ai_system/claude-skills/ship-workflow/`. In the ai_system checkout,
+on `main`, run once per machine:
 
-Bootstrap in any repo:
+```bash
+./sync.sh restore   # links ship-workflow, run-plan, code-review-skill and the 5 commands
+./sync.sh status    # every line should say ok
+```
+
+Bootstrap a repo (folders and vault stub only — no command copies):
 ```bash
 cd /path/to/your/repo
 /ship-init
@@ -24,23 +30,13 @@ cd /path/to/your/repo
 
 ## Commands
 
-**Core lifecycle (6):**
-
 | Command | Purpose |
 |---|---|
-| `/ship-init` | Scaffold workflow in current repo |
-| `/ship-idea` | Capture idea (IDEA-NNN) |
-| `/ship-decision` | Record decision (D-NNN) |
-| `/ship-roadmap` | Refresh ROADMAP.md |
 | `/ship-next` | End-to-end ship cycle: worktree → brainstorm → spec → plan → execute → review → merge |
-| `/ship-compound` | Learnings + promote patterns + close |
-
-**Knowledge-input bridges (2):**
-
-| Command | Purpose |
-|---|---|
-| `/ship-research <topic>` | Vault-first deep research via `/obsidian-research-deep` |
-| `/ship-propose [R-NNN]` | Produce prescriptive proposal docs for roadmap items |
+| `/ship-compound` | Learning + promote patterns + close (ship-next Phase 8) |
+| `/ship-idea` | Capture idea (IDEA-NNN); ship-next files review findings with it |
+| `/ship-land` | Finish an item shipped with `merge_mode: mr` |
+| `/ship-init` | Scaffold a repo; `--upgrade` removes old per-repo command copies |
 
 **UA integration** — `/ship-next` auto-picks up `.ua/knowledge-graph.json` if present in the target repo. See spec `docs/superpowers/specs/2026-08-30-ua-ship-workflow-integration-design.md`.
 
@@ -79,12 +75,9 @@ filters also see that category, and it may report pre-existing issues tagged
 cd claude-skills/ship-workflow
 bats tests/
 
-# Local install for development
-ln -sf $(pwd) ~/.claude/skills/ship-workflow
-# Link every command. Re-run after adding one — /ship-land existed for weeks
-# without a link and so could not be invoked.
-mkdir -p ~/.claude/commands
-for f in commands/*.md; do ln -sf ~/.claude/skills/ship-workflow/"$f" ~/.claude/commands/; done
+# Install for development, from the main checkout on main (it refuses in a worktree);
+# the links point at this checkout, so edits are live
+cd ../.. && ./sync.sh restore
 ```
 
 ## Specification

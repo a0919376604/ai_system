@@ -1,3 +1,0 @@
-[project]
-name = "test-pipeline"
-dependencies = ["openai>=1.0", "anthropic>=0.20"]

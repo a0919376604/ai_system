@@ -13,11 +13,7 @@ Not every ship-* command makes sense from Discord. Frontmatter `discord-visible:
 | Command | Discord-visible | Why |
 |---|---|---|
 | `/ship-idea <description>` | ✅ true | Fast capture, perfect for mobile |
-| `/ship-decision <topic>` | ✅ true | Record ADR from any conversation |
-| `/ship-roadmap` | ✅ true | Bounded, async-friendly |
 | `/ship-compound` | ✅ true | One-shot wrap-up |
-| `/ship-research <topic>` | ✅ true | Async, perfect for Discord |
-| `/ship-propose [R-NNN]` | ✅ true | Async proposal drafting before implementation |
 | `/ship-init` | ❌ false | Filesystem bootstrap; do on terminal |
 | `/ship-next` | ❌ false | Interactive brainstorming; doesn't fit Discord roundtrips |
 
@@ -86,7 +82,7 @@ After updating ship-workflow:
 2. **Restart the bot.** It re-runs discovery on startup.
 
 3. **In Discord, type `/`.** You should see:
-   - `/ship-idea`, `/ship-decision`, `/ship-roadmap`, `/ship-compound`, `/ship-research`, `/ship-propose` (6 visible)
+   - `/ship-idea`, `/ship-compound` (2 visible)
    - NOT `/ship-init`, `/ship-next` (2 hidden by `discord-visible: false`)
 
 4. **In a registered channel, try `/ship-idea test from discord`.** Bot should respond with streaming Claude Code output, and `docs/ideas/IDEA-NNN-test-from-discord.md` should appear in the repo.

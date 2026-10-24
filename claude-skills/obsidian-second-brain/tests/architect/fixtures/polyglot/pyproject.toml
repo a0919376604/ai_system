@@ -1,4 +1,0 @@
-[project]
-name = "polyglot-fixture"
-version = "0.1.0"
-dependencies = ["click>=8.0"]

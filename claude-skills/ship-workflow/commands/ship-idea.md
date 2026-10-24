@@ -85,7 +85,7 @@ You are capturing a new idea into `docs/ideas/IDEA-NNN-<slug>.md`.
    git commit -m "idea: $ID $description"
    ```
 
-9. **Report:** Tell the user the ID + file path + 1-line summary, and offer "Want to graduate this into a Roadmap item via /ship-roadmap?" if confidence is medium+ or impact is high.
+9. **Report:** Tell the user the ID + file path + 1-line summary, and offer to add it to ROADMAP.md as a Roadmap item if confidence is medium+ or impact is high.
 
 ## Failure modes
 

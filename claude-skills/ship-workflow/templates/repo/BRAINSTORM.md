@@ -18,7 +18,7 @@ parent: null   # if this is a child of an epic R-NNN, set to that R-NNN
 #   them against. Re-sync this string back to ROADMAP after the spec lands.
 success-criteria: "<one observable line — CI green, metric threshold, or user-visible behavior>"
 # estimated-effort: rough size. d = days, w = weeks. If > 1w, the item is
-#   probably still too big and should be decomposed (see /ship-roadmap step 6).
+#   probably still too big and should be decomposed into several ROADMAP rows.
 estimated-effort: "<Nd | Nw>"
 ---
 

@@ -18,6 +18,13 @@ set -euo pipefail
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# At a ship-next worktree's root the mirror is the main checkout's job (R-004 review):
+# writing it here dirtied the worktree's tracked docs/product/ files, so Phase 9's
+# `git worktree remove` refused.
+if "$LIB_DIR/airos-binding.sh" in_linked_worktree 2>/dev/null; then
+  exit 0
+fi
+
 VAULT="$("$LIB_DIR/airos-binding.sh" vault)"
 PROJECT_PATH="$("$LIB_DIR/airos-binding.sh" project_path)"
 REPO_ROOT="$(pwd)"

@@ -95,6 +95,15 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    fi
    ```
 
+0.5. **Which ship-workflow is live?** Every session on this machine runs the checkout
+   behind `~/.claude/skills/ship-workflow`, uncommitted edits included. Off `main`, or
+   dirty, that is not what shipped (R-004). This only warns:
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/live-checkout.sh && live_checkout_warning
+   ```
+
 1. **Handle `--discard`** (now safely after mutex check):
 
    ```bash
@@ -169,21 +178,14 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
       if [ -z "$DONE_WHEN" ]; then
         echo "ERROR: --auto:yes refused — R-NNN $ID has no ↳ done when: annotation." >&2
         echo "       fire-and-forget mode requires an explicit success criterion." >&2
-        echo "       Run /ship-roadmap (or edit ROADMAP.md to add ↳ done when: <criterion>)," >&2
+        echo "       Add a ↳ done when: <criterion> line under the row in ROADMAP.md," >&2
         echo "       then re-invoke /ship-next $ID --auto:yes." >&2
         exit 2
       fi
-
-      # Recommended (warn only): explainer + proposal
-      EXPLAIN=$(echo "$ROW" | grep "↳ explain:" || true)
-      [ -z "$EXPLAIN" ] && echo "WARN: $ID has no ↳ explain: annotation — brainstorm may pick defaults that don't match your intent" >&2
-
-      PROPOSAL=$(ls "$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/Proposals/"*"${ID}"*"-proposal.md" 2>/dev/null | head -1)
-      [ -z "$PROPOSAL" ] && echo "WARN: $ID has no proposal — brainstorm design space is less constrained" >&2
     fi
     ```
 
-5. **Derive slug.** From ROADMAP row description, kebab-case English slug 3-5 words, leading imperative verb when possible. Example: "Wire SceneEngine into dialogue.py..." → `wire-scene-engine`. Same convention as `/ship-explain`.
+5. **Derive slug.** From ROADMAP row description, kebab-case English slug 3-5 words, leading imperative verb when possible. Example: "Wire SceneEngine into dialogue.py..." → `wire-scene-engine`.
 
 6. **Compute worktree path:**
    ```bash
@@ -311,9 +313,7 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    - `ls docs/plans/${ID}-${SLUG}.md` exists → skip to Phase 5 (executor).
    - `git log --oneline ${ORIG_BRANCH}..HEAD | wc -l` > 2 → executor has committed; skip to Phase 6 (review).
 
-1. **Proposal check** (same as existing /ship-next pre-step): look for `<vault>/Proposals/*-${ID}-*-proposal.md`. If `status: accepted`, load §1-§7 as brainstorm context.
-
-2. **Invoke `superpowers:brainstorming`** with context: spec target `docs/specs/${ID}-${SLUG}.md`, project `<project_name>`, proposal context (if loaded).
+1. **Invoke `superpowers:brainstorming`** with context: spec target `docs/specs/${ID}-${SLUG}.md`, project `<project_name>`.
 
    Also pass a **required output section: `## Seams`** — a three-column table
    (Seam | Interface | Guaranteed behavior) declaring every boundary this work
@@ -333,9 +333,9 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P3" "spec review → auto-approved"
    ```
 
-3. **Verify outputs**: `docs/brainstorms/${ID}-${SLUG}.md` + `docs/specs/${ID}-${SLUG}.md` exist.
+2. **Verify outputs**: `docs/brainstorms/${ID}-${SLUG}.md` + `docs/specs/${ID}-${SLUG}.md` exist.
 
-3.5. **Dual-write spec to vault** (Obsidian visibility):
+2.5. **Dual-write spec to vault** (Obsidian visibility):
 
     ```bash
     VAULT_SPECS_DIR="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/Specs"
@@ -354,7 +354,7 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
     fi
     ```
 
-4. **Commit:**
+3. **Commit:**
    ```bash
    git add docs/brainstorms/${ID}-${SLUG}.md docs/specs/${ID}-${SLUG}.md
    git commit -m "brainstorm+spec: ${ID} ${SLUG}"
@@ -779,10 +779,9 @@ CHECKS
 1. **Verify code-review-skill installed:**
    ```bash
    if [ ! -f ~/.claude/skills/code-review-skill/SKILL.md ]; then
-     echo "ERROR: awesome-skills/code-review-skill not installed."
-     echo "Install: git clone https://github.com/awesome-skills/code-review-skill \\"
-     echo "         ~/.claude/skills/code-review-skill"
-     echo "Then re-invoke /ship-next ${ID} to resume from this phase."
+     echo "ERROR: code-review-skill is not installed."
+     echo "It ships with ai_system: run ./sync.sh restore in the ai_system checkout (on main),"
+     echo "then re-invoke /ship-next ${ID} to resume from this phase."
      exit 1
    fi
    ```

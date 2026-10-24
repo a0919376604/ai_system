@@ -1,6 +1,6 @@
 ---
 name: ship-init
-description: Bootstrap Ship Workflow in current repo (folders + commands + AIR-OS Product Brain stub)
+description: Bootstrap Ship Workflow in current repo (folders + AIR-OS Product Brain stub)
 argument-hint: "[<repo>]"
 discord-visible: true
 ---
@@ -16,7 +16,7 @@ You are bootstrapping the Ship Workflow in the user's current repo.
   - **Absolute path** (starts with `/`) — `cd` there, use basename as project name.
   - **Omitted** — use current working directory; project name = basename(pwd) or `.claude/ship-config.yml` override.
 - `--custom` — interactively prompt for per-repo config overrides and write `.claude/ship-config.yml`
-- `--upgrade` — only re-copy `.claude/commands/ship-*.md` from the skill (preserves docs/ and Obsidian content)
+- `--upgrade` — only remove this repo's old `.claude/commands/ship-*.md` copies (preserves docs/ and Obsidian content). The commands are installed once per machine by ai_system's `./sync.sh restore`; a repo needs no copy.
 - `--with-ua` — after scaffolding completes, if Understand-Anything plugin is detected at `~/.claude/plugins/cache/understand-anything/`, prompt to run `/understand` in the target repo (or skip prompt with this flag). Recommended when initializing on a mature repo (≥ 10 source files). For a brand new / empty repo, this is a no-op (no code to index yet).
 
 ## Steps
@@ -62,12 +62,18 @@ You are bootstrapping the Ship Workflow in the user's current repo.
 
    If the global config (`~/.claude/ship-workflow.yml`) is missing, STOP and ask the user to create it with `airos_vault: /path/to/SecondBrain` and `code_root: /path/to/code/workspace`.
 
-2. **`--upgrade` short-circuit.** If `--upgrade`:
-   - `cp ~/.claude/skills/ship-workflow/commands/*.md .claude/commands/`
-   - Done. Skip the rest.
+2. **`--upgrade` short-circuit.** If `--upgrade`, remove the old copies, then stop:
+
+   ```bash
+   # shellcheck disable=SC1091
+   source ~/.claude/skills/ship-workflow/lib/command-copies.sh || exit 1
+   remove_command_copies "$(pwd)"
+   ```
+
+   Tracked copies are left staged as deletions: commit them, or open an MR in an
+   mr-mode repo. Skip the rest.
 
 3. **Scaffold repo side.** Create:
-   - `.claude/commands/` and copy all 9 `ship-*.md` from `~/.claude/skills/ship-workflow/commands/` (7 core + 2 bridges: ship-research, **ship-propose**)
    - `docs/ideas/`, `docs/decisions/`, `docs/brainstorms/`, `docs/specs/`, `docs/plans/`, `docs/learnings/`, `docs/product/`, `docs/proposals/`
    - `docs/learnings/_log.md` with header:
      ```markdown
@@ -97,15 +103,14 @@ You are bootstrapping the Ship Workflow in the user's current repo.
 
 7. **Verify.** Run:
    ```bash
-   ls .claude/commands/   # should have 9 ship-*.md files
    ls docs/               # should have 8 subdirs
    ls "<project_path>"    # should have 4 strategy .md files
    ```
 
 8. **Commit.** Run:
    ```bash
-   git add .claude/commands .claude/.gitignore docs/
-   git commit -m "chore: initialize ship-workflow (9 commands + 7 folders)"
+   git add .claude/.gitignore docs/
+   git commit -m "chore: initialize ship-workflow (folders)"
    ```
    If the user is in a worktree on a feature branch, mention it. Don't push.
 
@@ -161,7 +166,6 @@ EOF
 10. **Report.** Tell the user:
     - Project name resolved
     - AIR-OS project path
-    - Number of commands installed
     - Whether VISION / R-001 were seeded
     - **Repo-state hint** — count source files quickly:
       ```bash
@@ -171,14 +175,14 @@ EOF
     - Next suggested commands (in priority order):
       - **If source count ≥ 10**: recommend running `/understand src/<core-module>` (scoped) in a fresh Claude Code session to build a KG. Skip if UA plugin not installed.
       - **If source count < 10** (new / empty repo): no code understanding action — write code first, revisit UA when the codebase has structure worth indexing.
-      - `/ship-roadmap` to plan items
+      - add rows to ROADMAP.md, or start one with `/ship-next --adhoc "<description>"`
       - `/ship-next` to start work
 
 ## Idempotency
 
 Every step must be safe to re-run:
 - Creating an existing directory: silently skip
-- Copying a file that exists in target: skip (unless `--upgrade`, then overwrite commands only)
+- Copying a file that exists in target: skip
 - AIR-OS strategy files: NEVER overwrite
 
 ## Failure modes

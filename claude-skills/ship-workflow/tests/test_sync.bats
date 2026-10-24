@@ -88,3 +88,18 @@ EOF
   cd "$REPO" && HOME="$HOME_OVERRIDE" "$SHIP_LIB/sync.sh" --force
   ! ls "$REPO/docs/roadmap-notes/"*.tmp 2>/dev/null
 }
+
+@test "sync: does nothing at a linked worktree's root — the mirror is the main checkout's job" {
+  # R-004 fixed airos-binding inside a worktree; this sync then started writing the vault
+  # files over a worktree's tracked docs/product/, which blocked Phase 9's worktree removal.
+  cd "$REPO" && git init -q -b main && git add -A \
+    && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+  mkdir -p docs/product && echo "committed" > docs/product/ROADMAP.md
+  git add -A && git -c user.email=t@t -c user.name=t commit -q -m roadmap
+  git worktree add -q -b ship/R-9-x "$SCRATCH/test-repo-wt"
+  cd "$SCRATCH/test-repo-wt" || return 1
+  run env HOME="$HOME_OVERRIDE" "$SHIP_LIB/sync.sh" --force
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(cat docs/product/ROADMAP.md)" = "committed" ] || return 1
+  [ -z "$(git status --porcelain --untracked-files=no)" ]
+}

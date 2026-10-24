@@ -1,50 +1,41 @@
 ---
 name: ship-workflow
-description: Per-repo product development workflow integrating Superpowers (brainstorm/spec/plan/build) with Compound Engineering (roadmap/decision/learnings). Installs 9 ship-* slash commands. Use when starting product development in a new repo, capturing ideas/decisions, planning roadmap, or shipping features through the /ship-next mega-command (worktree → brainstorm → spec → plan → execute → review → merge).
+description: Per-repo product development workflow integrating Superpowers (brainstorm/spec/plan/build) with Compound Engineering (roadmap/decision/learnings). Five ship-* slash commands, installed once per machine. Use when bootstrapping a repo for it, capturing an idea, or shipping a ROADMAP row through the /ship-next mega-command (worktree → brainstorm → spec → plan → execute → review → merge).
 ---
 
 # Ship Workflow
 
-Per-repo product development workflow. Installs 9 slash commands into a target repo's `.claude/commands/`:
+Product development workflow built around one mega-command, `/ship-next`. Its five
+commands are installed **once per machine** — `ai_system`'s `./sync.sh restore` links
+them into `~/.claude/commands/` — and every repo uses those. A repo carries no copies.
 
-**Core lifecycle (6):**
-- **`/ship-init`** — Bootstrap workflow (folders, commands, AIR-OS Product Brain stub)
-- **`/ship-idea <description>`** — Capture an idea (IDEA-NNN)
-- **`/ship-decision <topic>`** — Record an architectural decision (D-NNN)
-- **`/ship-roadmap`** — Refresh ROADMAP.md via ce-strategy
-- **`/ship-next [R-NNN] | --adhoc <desc> | --discard R-NNN`** — End-to-end ship cycle: open worktree → brainstorm → spec → plan → execute → strict code-review gate → squash-merge → cleanup
-- **`/ship-compound`** — Write learning + promote patterns + close Roadmap item
+- **`/ship-next [R-NNN] | --adhoc <desc> | --discard R-NNN`** — End-to-end ship cycle: open worktree → brainstorm → spec → plan → execute → strict code-review + security gate → squash-merge (or open an MR) → cleanup
+- **`/ship-compound`** — Write learning + promote patterns + close the Roadmap item (ship-next Phase 8 runs it)
+- **`/ship-idea <description>`** — Capture an idea (IDEA-NNN); ship-next Phase 6 files major and pre-existing findings with it
 - **`/ship-land [R-NNN]`** — Finish an item shipped via `merge_mode: mr`: verify the review merged, move the row to Done, remove the branch + worktree Phase 9 kept
-
-**Knowledge bridges (3):**
-- **`/ship-research <topic>`** — Vault-first deep research (thin wrapper over `/obsidian-research-deep`)
-- **`/ship-propose [R-NNN]`** — Produce **prescriptive** proposal doc for a Roadmap item; orchestrates ship-research as sub-step; Self-FAQ pattern is the forcing function
-- **`/ship-explain [R-NNN | --all-now]`** — Generate plain-language explainer note for a ROADMAP row (so non-domain readers understand what a row actually does); auto-invoked during decompose and `/ship-next` pre-flight
+- **`/ship-init`** — Bootstrap a repo (folders, AIR-OS Product Brain stub); `--upgrade` removes old per-repo command copies
 
 - **UA integration**: `/ship-next` auto-detects `.ua/knowledge-graph.json` in the target repo and injects UA blast-radius context into Phase 3 (brainstorm), Phase 6 (review), and Phase 8 (compound). Silent no-op when UA absent. See `docs/superpowers/specs/2026-08-30-ua-ship-workflow-integration-design.md`.
 
 ## Dual-Brain Architecture
 
 - **Obsidian Product Brain** at AIR-OS `10 Projects/<repo-name>/`:
-  - VISION / STRATEGY / ROADMAP / QUARTERLY_GOALS (manual + ship-roadmap)
+  - VISION / STRATEGY / ROADMAP / QUARTERLY_GOALS (edited by hand; `--adhoc` inserts ROADMAP rows)
   - `Architecture/` (hand-written POCKET/JOURNEY/GLOSSARY/REMINDERS + cases/; optional `.ua/knowledge-graph.json` in target repo for descriptive code graph via UA plugin)
-  - `Proposals/` (ship-propose, prescriptive)
-  - `Research/` (ship-research, external grounding)
 - **Repo Execution Brain** at `<repo>/docs/`:
   - `ideas/` `decisions/` `brainstorms/` `specs/` `plans/` `learnings/`
   - `product/` (mirror of vault strategy + roadmap)
-  - `proposals/` (mirror of vault Proposals/)
 - One-way sync (Obsidian → repo) on every ship-* command invocation, with 60-second freshness window
 
 ## Usage
 
 ```bash
-# Install (once, in ai_system repo via devsync)
-$ devsync push          # makes ~/.claude/skills/ship-workflow/ available
+# Install (once per machine, in the ai_system checkout, on main)
+$ ./sync.sh restore     # links ship-workflow, run-plan, code-review-skill + the 5 commands
 
 # Per-repo init
 $ cd /path/to/your/repo
-$ /ship-init            # adds .claude/commands/ + docs/ + AIR-OS strategy files
+$ /ship-init            # adds docs/ + AIR-OS strategy files (no command copies)
 
 # Daily flow
 $ /ship-next            # pick from Roadmap → end-to-end ship cycle (auto-calls /ship-compound at Phase 8)
@@ -71,7 +62,7 @@ The shadow-mode ship count is derived from `docs/learnings/_log.md` and is delib
 ## Standing rule: background agents do not survive a session boundary
 
 Measured on this machine, not assumed. Across two sampled sessions, nine
-dispatched background agents produced nothing: a `/ship-research` run lost two
+dispatched background agents produced nothing: a research run lost two
 full research rounds at Phase 3 and had to redo them inline, and a
 `subagent-driven-development` run lost six agents, twice re-dispatching the
 *identical* fix before the work was finally done inline. Every one of them
@@ -87,7 +78,7 @@ So, before dispatching any background agent:
    work inline. A second dispatch of the same task is the single most expensive
    mistake in the sampled history.
 3. **Checkpoint multi-phase work to disk after every phase**, not at the end.
-   The `/ship-research` loss was two completed phases thrown away because
+   The research-run loss was two completed phases thrown away because
    nothing was written until Phase 4.
 
 `/ship-next` Phase 5 executor 1 (`subagent-driven-development`) is subject to

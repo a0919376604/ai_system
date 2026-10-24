@@ -60,7 +60,31 @@ if [ -f "$PER_REPO_CFG" ]; then
   ROADMAP_MODE_OVERRIDE="$(read_yaml_key "$PER_REPO_CFG" roadmap_mode)"
 fi
 
-PROJECT_NAME="${PROJECT_NAME_OVERRIDE:-$(basename "$(pwd)")}"
+# At the root of a linked worktree (ship-next's ship/R-NNN-* checkouts), basename(pwd)
+# is the worktree's own name, and R-001/R-003 mirrored their specs into bogus
+# "10 Projects/R-00N-…" vault folders that way (R-004 §3.8). There, name the project
+# after the main checkout. Anywhere else — the main checkout, a subdirectory, a plain
+# directory nested inside some checkout — keep basename(pwd).
+# _at_linked_worktree_root — exit 0 when the cwd is the root of a linked worktree whose
+# main checkout has an ordinary .git directory.
+_at_linked_worktree_root() {
+  local top gd common
+  top=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+  [ "$top" = "$(pwd -P)" ] || return 1
+  gd=$(git rev-parse --path-format=absolute --git-dir 2>/dev/null)
+  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+  [ -n "$common" ] && [ "$gd" != "$common" ] && [ "$(basename "$common")" = .git ]
+}
+
+_project_dir_name() {
+  if _at_linked_worktree_root; then
+    basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+  else
+    basename "$(pwd)"
+  fi
+}
+
+PROJECT_NAME="${PROJECT_NAME_OVERRIDE:-$(_project_dir_name)}"
 ROADMAP_MODE="${ROADMAP_MODE_OVERRIDE:-$ROADMAP_MODE_GLOBAL}"
 
 case "${1:-}" in
@@ -69,8 +93,9 @@ case "${1:-}" in
   project_name)  echo "$PROJECT_NAME" ;;
   roadmap_mode)  echo "$ROADMAP_MODE" ;;
   code_root)     echo "$CODE_ROOT" ;;
+  in_linked_worktree) _at_linked_worktree_root ;;
   *)
-    echo "Usage: $0 {vault|project_path|project_name|roadmap_mode|code_root}" >&2
+    echo "Usage: $0 {vault|project_path|project_name|roadmap_mode|code_root|in_linked_worktree}" >&2
     exit 2
     ;;
 esac

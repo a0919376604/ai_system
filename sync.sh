@@ -1,198 +1,263 @@
 #!/usr/bin/env bash
+# sync.sh — install ai_system on this machine, and back up the two config files it keeps.
 #
-# sync.sh — Bidirectional sync for Claude skills
+# ai_system is ship-workflow's home (R-004). `restore` links its three skills and
+# ship-workflow's five commands into ~/.claude, so every session runs this checkout;
+# `backup` copies the global CLAUDE.md and the devsync config into the repo.
+#
+# It used to mirror all of ~/.claude/skills with rsync. That mirror drifted: its
+# restore would have reinstalled 40 removed skills, overwritten a newer global
+# CLAUDE.md with an old copy, and replaced the ship-workflow symlink with a copy.
 #
 # Usage:
-#   ./sync.sh backup            # ~/.claude/skills/  ->  ./claude-skills/
-#   ./sync.sh restore           # ./claude-skills/   ->  ~/.claude/skills/
-#   ./sync.sh status            # show diff summary between the two
-#   ./sync.sh backup --dry-run  # preview without copying
+#   ./sync.sh restore [--yes] [--dry-run]   links + config files + devsync bootstrap
+#   ./sync.sh backup [--dry-run]             ~/.claude/CLAUDE.md, devsync config -> repo
+#   ./sync.sh status                         link and config state; exit 1 if a link is wrong
 #
+# Tests set AI_SYSTEM_SKIP_DEVSYNC=1 to skip the devsync bootstrap.
 
 set -euo pipefail
 
-# ---------- Config ----------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOCAL_DIR="$SCRIPT_DIR/claude-skills"
-CLAUDE_DIR="$HOME/.claude/skills"
-
-# Single-file syncs: source -> repo path
-declare -a SYNC_FILES=(
-  "$HOME/.claude/CLAUDE.md::$SCRIPT_DIR/CLAUDE.md"
+CLAUDE_HOME="$HOME/.claude"
+DISPLACED="$CLAUDE_HOME/.ai_system-displaced"
+SKILLS=(ship-workflow run-plan code-review-skill)
+COMMANDS=(ship-next ship-compound ship-idea ship-land ship-init)
+# live::repo
+CONFIG_FILES=(
+  "$HOME/.claude/CLAUDE.md::$SCRIPT_DIR/config/claude/CLAUDE.md"
   "$HOME/.config/devsync/config.toml::$SCRIPT_DIR/devsync/config.toml"
 )
 
-EXCLUDES=(
-  --exclude='node_modules'
-  --exclude='.git'
-  --exclude='dist'
-  --exclude='build'
-  --exclude='.DS_Store'
-  --exclude='*.log'
-  --exclude='bin/'
-  --exclude='.cache'
-  --exclude='.next'
-  --exclude='__pycache__'
-)
-
-# ---------- Colors ----------
 if [[ -t 1 ]]; then
   C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'
   C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'; C_RED=$'\033[31m'; C_BLUE=$'\033[34m'
 else
   C_RESET=''; C_BOLD=''; C_GREEN=''; C_YELLOW=''; C_RED=''; C_BLUE=''
 fi
-
 log()  { printf "%s\n" "$*"; }
 info() { printf "%b\n" "${C_BLUE}==>${C_RESET} ${C_BOLD}$*${C_RESET}"; }
 ok()   { printf "%b\n" "${C_GREEN}✓${C_RESET} $*"; }
 warn() { printf "%b\n" "${C_YELLOW}!${C_RESET} $*"; }
 err()  { printf "%b\n" "${C_RED}✗${C_RESET} $*" >&2; }
-
-# ---------- Helpers ----------
 confirm() {
-  local prompt="$1"
-  read -r -p "$(printf "%b" "${C_YELLOW}?${C_RESET} ${prompt} [y/N] ")" reply
+  local reply
+  read -r -p "$(printf "%b" "${C_YELLOW}?${C_RESET} $1 [y/N] ")" reply || return 1
   [[ "$reply" =~ ^[Yy]$ ]]
 }
 
-ensure_dir() {
-  local dir="$1"
-  if [[ ! -d "$dir" ]]; then
-    err "Directory does not exist: $dir"
-    exit 1
-  fi
+DRY=0
+YES=0
+
+# The links restore manages, as "link::target" lines.
+links() {
+  local s c
+  for s in "${SKILLS[@]}"; do
+    echo "$CLAUDE_HOME/skills/$s::$SCRIPT_DIR/claude-skills/$s"
+  done
+  for c in "${COMMANDS[@]}"; do
+    echo "$CLAUDE_HOME/commands/$c.md::$CLAUDE_HOME/skills/ship-workflow/commands/$c.md"
+  done
 }
 
-post_restore_hook() {
-  # Re-install npm deps for skills that need them
-  local gstack="$CLAUDE_DIR/gstack"
-  if [[ -f "$gstack/package.json" ]] && [[ ! -d "$gstack/node_modules" ]]; then
-    warn "gstack has no node_modules"
-    if confirm "Run 'npm install' in $gstack now?"; then
-      ( cd "$gstack" && npm install ) && ok "gstack npm install complete"
-    else
-      warn "Skipped. Run manually later: cd $gstack && npm install"
+# link_state <link> <target> — ok | target missing | missing | wrong target | blocked by a real file
+link_state() {
+  if [[ -L "$1" ]]; then
+    if [[ "$(readlink "$1")" != "$2" ]]; then echo "wrong target"
+    elif [[ -e "$1" ]]; then echo ok
+    else echo "target missing"
     fi
-  fi
-
-  devsync_post_restore "$@"
-}
-
-devsync_post_restore() {
-  local bootstrap="$SCRIPT_DIR/devsync/bootstrap.sh"
-  if [[ ! -x "$bootstrap" ]]; then
-    warn "devsync/bootstrap.sh missing or not executable — skip"
-    return
-  fi
-  info "Running devsync bootstrap..."
-  log ""
-  if [[ " $* " =~ " --yes " ]]; then
-    "$bootstrap" --yes
+  elif [[ -e "$1" ]]; then
+    echo "blocked by a real file"
   else
-    "$bootstrap"
+    echo missing
   fi
 }
 
-# ---------- Commands ----------
-sync_files() {
-  # direction: "backup" (src->dst) or "restore" (dst->src)
-  local direction="$1"; shift
-  local extra_flags=("${@:-}")
-  for entry in "${SYNC_FILES[@]}"; do
-    local src="${entry%%::*}"
-    local dst="${entry##*::}"
-    if [[ "$direction" == "backup" ]]; then
-      [[ -f "$src" ]] || { warn "Skip: $src (not found)"; continue; }
-      rsync -av ${extra_flags[*]:-} "$src" "$dst"
+# Move a real file or directory out of a link's way — never delete it.
+displace() {
+  local path="$1" dest
+  dest="$DISPLACED/$(basename "$path")-$(date -u +%Y%m%dT%H%M%SZ)"
+  while [[ -e "$dest" ]]; do dest="${dest}-1"; done
+  mkdir -p "$DISPLACED"
+  mv "$path" "$dest"
+  warn "moved $path -> $dest (not deleted)"
+}
+
+ensure_link() {
+  local link="$1" target="$2" state
+  state=$(link_state "$link" "$target")
+  [[ "$state" == ok ]] && return 0
+  if [[ "$state" == "target missing" ]]; then
+    # The link is right; what it points at is not there (yet). Relinking cannot help.
+    (( DRY )) || warn "$link: target missing ($target)"
+    return 0
+  fi
+  if (( DRY )); then
+    log "would link $link -> $target ($state)"
+    return 0
+  fi
+  case "$state" in
+    "blocked by a real file") displace "$link" ;;
+    "wrong target")           rm "$link" ;;
+  esac
+  mkdir -p "$(dirname "$link")"
+  ln -s "$target" "$link"
+  ok "linked $link"
+}
+
+# Remove ~/.claude/commands/ship-*.md links that point into ship-workflow's commands/
+# at a file that no longer exists (a removed command). Nothing else is touched.
+remove_dangling() {
+  local f t
+  [[ -d "$CLAUDE_HOME/commands" ]] || return 0
+  for f in "$CLAUDE_HOME/commands"/ship-*.md; do
+    [[ -L "$f" && ! -e "$f" ]] || continue
+    # A kept command's link only dangles until its skill link is fixed; ensure_link owns it.
+    case " ${COMMANDS[*]} " in *" $(basename "$f" .md) "*) continue ;; esac
+    t=$(readlink "$f")
+    [[ "$t" == */ship-workflow/commands/* ]] || continue
+    if (( DRY )); then
+      log "would remove dangling $f -> $t"
     else
-      [[ -f "$dst" ]] || { warn "Skip: $dst (not found)"; continue; }
-      rsync -av ${extra_flags[*]:-} "$dst" "$src"
+      rm "$f"
+      ok "removed dangling $f"
     fi
   done
 }
 
-cmd_backup() {
-  ensure_dir "$CLAUDE_DIR"
-  mkdir -p "$LOCAL_DIR"
-  info "Backup: $CLAUDE_DIR  ->  $LOCAL_DIR"
-  # -L: follow symlinks and copy the actual target files (so the repo is
-  #     portable across machines — local symlinks point to absolute paths
-  #     like ~/.claude/plugins/... that don't exist on other machines).
-  rsync -avL --delete "${EXCLUDES[@]}" "$@" "$CLAUDE_DIR/" "$LOCAL_DIR/"
-  info "Backup config files"
-  sync_files backup "$@"
-  ok "Backup complete ($(du -sh "$LOCAL_DIR" | awk '{print $1}'))"
+restore_configs() {
+  local entry live repo n
+  for entry in "${CONFIG_FILES[@]}"; do
+    live="${entry%%::*}"; repo="${entry##*::}"
+    [[ -f "$repo" ]] || { warn "skip: $repo (not in the repo)"; continue; }
+    [[ -f "$live" ]] && cmp -s "$live" "$repo" && continue
+    if (( DRY )); then
+      log "would restore $repo -> $live"
+      continue
+    fi
+    if [[ -f "$live" ]]; then
+      n=$( { diff -u "$live" "$repo" || true; } | wc -l | tr -d ' ')   # diff exits 1 when they differ
+      diff -u "$live" "$repo" | head -40 || true
+      if (( n > 40 )); then log "… ($((n - 40)) more diff lines)"; fi
+    fi
+    if (( ! YES )) && ! confirm "Overwrite $live with the repo copy? (the live file is kept under $DISPLACED)"; then
+      warn "kept $live"
+      continue
+    fi
+    # The live file may hold edits the last backup missed: move it aside, never lose it.
+    if [[ -f "$live" ]]; then displace "$live"; fi
+    mkdir -p "$(dirname "$live")"
+    cp "$repo" "$live"
+    ok "restored $live"
+  done
+}
+
+devsync_bootstrap() {
+  local bootstrap="$SCRIPT_DIR/devsync/bootstrap.sh"
+  if (( DRY )) || [[ "${AI_SYSTEM_SKIP_DEVSYNC:-0}" == 1 ]]; then return 0; fi
+  if [[ ! -x "$bootstrap" ]]; then
+    warn "devsync/bootstrap.sh missing or not executable — skip"
+    return 0
+  fi
+  info "Running devsync bootstrap..."
+  if (( YES )); then "$bootstrap" --yes; else "$bootstrap"; fi
+}
+
+# Links point at this checkout. A ship-next worktree is removed after it lands, so links
+# into one would dangle machine-wide: refuse. Off main, every session runs that branch.
+checkout_guard() {
+  local top gd common branch
+  top=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null) || return 0
+  [[ "$top" == "$(cd "$SCRIPT_DIR" && pwd -P)" ]] || return 0   # not a checkout root
+  gd=$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-dir)
+  common=$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir)
+  if [[ "$gd" != "$common" ]]; then
+    err "refusing: $SCRIPT_DIR is a linked worktree — run ./sync.sh restore from the main checkout"
+    exit 2
+  fi
+  branch=$(git -C "$SCRIPT_DIR" branch --show-current)
+  [[ "$branch" == main ]] || warn "this checkout is on '${branch:-detached HEAD}', not main — every session on this machine will run it"
 }
 
 cmd_restore() {
-  ensure_dir "$LOCAL_DIR"
-  mkdir -p "$CLAUDE_DIR"
-  info "Restore: $LOCAL_DIR  ->  $CLAUDE_DIR"
-  warn "This will OVERWRITE files in $CLAUDE_DIR and ~/.claude/CLAUDE.md (preserves node_modules, bin/, etc.)"
-  if [[ ! " $* " =~ " --dry-run " ]] && [[ ! " $* " =~ " --yes " ]]; then
-    confirm "Continue?" || { log "Aborted."; exit 0; }
-  fi
-  local restore_flags=()
-  local arg
+  local arg pair
   for arg in "$@"; do
-    [[ "$arg" == "--yes" ]] && continue
-    restore_flags+=("$arg")
+    case "$arg" in
+      --yes) YES=1 ;;
+      --dry-run) DRY=1 ;;
+      *) err "unknown option: $arg"; exit 2 ;;
+    esac
   done
-  # Note: no --delete here so we don't nuke node_modules/bin/ on the target
-  if [[ ${#restore_flags[@]} -gt 0 ]]; then
-    rsync -av "${EXCLUDES[@]}" "${restore_flags[@]}" "$LOCAL_DIR/" "$CLAUDE_DIR/"
-  else
-    rsync -av "${EXCLUDES[@]}" "$LOCAL_DIR/" "$CLAUDE_DIR/"
-  fi
-  info "Restore config files"
-  if [[ ${#restore_flags[@]} -gt 0 ]]; then
-    sync_files restore "${restore_flags[@]}"
-  else
-    sync_files restore
-  fi
-  ok "Restore complete"
-  if [[ ! " $* " =~ " --dry-run " ]]; then
-    post_restore_hook "$@"
-  fi
+  checkout_guard
+  info "Links: ~/.claude -> $SCRIPT_DIR"
+  while IFS= read -r pair; do
+    ensure_link "${pair%%::*}" "${pair##*::}"
+  done < <(links)
+  remove_dangling
+  info "Config files"
+  restore_configs
+  devsync_bootstrap
+  if (( DRY )); then ok "Dry run — nothing changed"; else ok "Restore complete"; fi
+}
+
+cmd_backup() {
+  local entry live repo arg
+  for arg in "$@"; do
+    case "$arg" in
+      --dry-run) DRY=1 ;;
+      *) err "unknown option: $arg"; exit 2 ;;
+    esac
+  done
+  for entry in "${CONFIG_FILES[@]}"; do
+    live="${entry%%::*}"; repo="${entry##*::}"
+    [[ -f "$live" ]] || { warn "skip: $live (not found)"; continue; }
+    if (( DRY )); then log "would back up $live -> ${repo#"$SCRIPT_DIR"/}"; continue; fi
+    mkdir -p "$(dirname "$repo")"
+    cp "$live" "$repo"
+    ok "backed up $live -> ${repo#"$SCRIPT_DIR"/}"
+  done
 }
 
 cmd_status() {
-  ensure_dir "$LOCAL_DIR"
-  ensure_dir "$CLAUDE_DIR"
-  info "Diff summary (excludes node_modules, bin/, etc.)"
-  log ""
-  log "${C_BOLD}Files only in ~/.claude/skills/ (would be backed up):${C_RESET}"
-  rsync -avn --delete "${EXCLUDES[@]}" "$CLAUDE_DIR/" "$LOCAL_DIR/" \
-    | grep -E '^(>|<|\*deleting)' || log "  (none)"
-  log ""
-  log "${C_BOLD}Sizes:${C_RESET}"
-  log "  local:   $(du -sh "$LOCAL_DIR"  2>/dev/null | awk '{print $1}')  $LOCAL_DIR"
-  log "  source:  $(du -sh "$CLAUDE_DIR" 2>/dev/null | awk '{print $1}')  $CLAUDE_DIR"
+  local pair link target state bad=0 entry live repo
+  while IFS= read -r pair; do
+    link="${pair%%::*}"; target="${pair##*::}"
+    state=$(link_state "$link" "$target")
+    log "${link#"$CLAUDE_HOME"/}: $state"
+    [[ "$state" == ok ]] || bad=1
+  done < <(links)
+  for entry in "${CONFIG_FILES[@]}"; do
+    live="${entry%%::*}"; repo="${entry##*::}"
+    if [[ ! -f "$live" || ! -f "$repo" ]]; then
+      log "$live: missing"
+    elif cmp -s "$live" "$repo"; then
+      log "$live: same"
+    else
+      log "$live: differs (./sync.sh backup to save it)"
+    fi
+  done
+  return "$bad"
 }
 
 usage() {
   cat <<EOF
-${C_BOLD}sync.sh${C_RESET} — Bidirectional sync for Claude skills
+${C_BOLD}sync.sh${C_RESET} — install ai_system (ship-workflow + run-plan + code-review-skill)
 
-${C_BOLD}Usage:${C_RESET}
-  $(basename "$0") backup  [--dry-run]         Push ~/.claude/skills -> ./claude-skills
-  $(basename "$0") restore [--dry-run] [--yes] Pull ./claude-skills  -> ~/.claude/skills
-  $(basename "$0") status                      Show what's different
+  $(basename "$0") restore [--yes] [--dry-run]  link the skills and commands into ~/.claude,
+                                              restore the config files, run devsync bootstrap
+  $(basename "$0") backup [--dry-run]           copy ~/.claude/CLAUDE.md and the devsync config here
+  $(basename "$0") status                       show link and config state (exit 1 if a link is wrong)
 
-${C_BOLD}Notes:${C_RESET}
-  • Excludes node_modules, bin/, dist, build, .git, *.log, .DS_Store, .cache
-  • 'backup' uses --delete (mirrors source); 'restore' does NOT (keeps local node_modules)
-  • After 'restore', will offer to run 'npm install' in skills that need it (e.g. gstack)
+A real file or directory in a link's way is moved to $DISPLACED, never deleted.
 EOF
 }
 
-# ---------- Main ----------
 cmd="${1:-}"; shift || true
 case "$cmd" in
-  backup)  cmd_backup  "$@" ;;
   restore) cmd_restore "$@" ;;
-  status)  cmd_status  "$@" ;;
+  backup)  cmd_backup "$@" ;;
+  status)  cmd_status ;;
   ""|-h|--help|help) usage ;;
   *) err "Unknown command: $cmd"; usage; exit 1 ;;
 esac

@@ -17,22 +17,11 @@
         │ /ship-idea      │───▶│ docs/ideas/     │
         └─────────────────┘    │ IDEA-NNN-*.md   │
                                └────────┬────────┘
-                                        │ (some graduate)
-                                        ▼
-        ┌─────────────────┐    ┌─────────────────┐
-        │ /ship-decision  │───▶│ docs/decisions/ │
-        └─────────────────┘    │ D-NNN-*.md      │
-                               └────────┬────────┘
-                                        │
+                                        │ (some graduate into ROADMAP.md rows)
                                         ▼
                             ┌─────────────────┐
-                            │ /ship-roadmap   │ (refresh ranking)
-                            └────────┬────────┘
-                                     │
-                                     ▼
-                            ┌─────────────────┐
-                            │ /ship-next      │ ◀── /ship-research <topic>
-                            │ (mega)          │     (fill gap before brainstorm or implementation)
+                            │ /ship-next      │
+                            │ (mega)          │
                             └────────┬────────┘
                                      │
                                      ▼
@@ -43,16 +32,10 @@
                                      └─▶ back to /ship-next
 ```
 
-## Knowledge-input bridge commands
+## Optional input
 
-`/ship-research` (external grounding) and UA's `/understand` / `/understand-explain` (code understanding) are **optional inputs**:
-
-```
-   /ship-research  ────▶ │ AIR-OS 10 Projects/<P>/Research/         │
-   UA /understand  ────▶ │ target-repo/.ua/knowledge-graph.json    │
-```
-
-These commands DELEGATE to the underlying obsidian-second-brain skill commands (`/obsidian-architect` and `/obsidian-research-deep`) but add ship housekeeping (sync, _log.md, commit).
+UA's `/understand` (code understanding) is an optional input: when
+`target-repo/.ua/knowledge-graph.json` exists, ship-next reads it in Phases 3, 6 and 8.
 
 ## Dual-brain sync
 

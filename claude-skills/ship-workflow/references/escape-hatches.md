@@ -28,10 +28,9 @@ While `/ship-next` is running:
 
 ```
 /ship-idea --during-ship-next "Maybe rich menu can use templated variants"
-/ship-decision --during-ship-next "Switch to celery-task for retries"
 ```
 
-Both produce normal IDEA-NNN / D-NNN files but with extra frontmatter:
+It produces a normal IDEA-NNN file, but with extra frontmatter:
 
 ```yaml
 related-roadmap-item: R-018          # the current ship cycle's ID
@@ -40,13 +39,11 @@ created-during: ship-next            # the phase
 
 This lets `/ship-compound` later sweep up all captures from this ship cycle into the learning.
 
-## Worktree-cwd-block (3 commands)
+## Worktree-cwd-block
 
 The following commands refuse to run inside a ship/* worktree because they modify cross-cutting state on main:
 
-- `/ship-roadmap` — modifies ROADMAP.md (canonical)
 - `/ship-init` — scaffolds repo + vault state
-- `/ship-propose` — writes to Proposals/
 
 If you invoke any of these inside a worktree, you'll see:
 

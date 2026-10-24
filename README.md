@@ -26,7 +26,7 @@
 
 **附帶的功能**
 
-- **一行裝回整套環境**：換新電腦時，所有 AI 工具和設定一次還原。
+- **一行裝好**：換新電腦時，ship-workflow 和它需要的 skill、全域設定一次裝好。
 - **遠端開發**：在公司的 GPU server 上跑程式時，本機寫的 code 會即時同步過去。
 
 ## 2. Quick start
@@ -41,30 +41,32 @@ cd ~/Desktop/code/ai_system
 
 | repo 內 | 安裝到 | 內容 |
 |---|---|---|
-| `claude-skills/` | `~/.claude/skills/` | ship-workflow、gstack（`/browse`、`/qa`、`/review` 等 40 多個）、`run-plan`、Obsidian 工具 |
-| `CLAUDE.md` | `~/.claude/CLAUDE.md` | 每個 session 都會載入的全域規則 |
+| `claude-skills/` | `~/.claude/skills/`（symlink） | ship-workflow、`run-plan`（codex 執行器）、`code-review-skill`（Phase 6 的 review） |
+| `claude-skills/ship-workflow/commands/` | `~/.claude/commands/`（symlink） | `/ship-next`、`/ship-compound`、`/ship-idea`、`/ship-land`、`/ship-init` |
+| `config/claude/CLAUDE.md` | `~/.claude/CLAUDE.md` | 全域規則的備份；內容不同時會先問你 |
 | `devsync/` | `~/.local/bin/devsync` | 同步到 dl01–dl04 的 CLI，連同 mutagen、uv、SSH 設定 |
 
-> 已經在用的機器請加 `--update`，否則本機比較新的檔案（例如升級過的 gstack）會被 repo 的舊版蓋掉。
+> 全部用 symlink 接上，所以本機跑的永遠是這個 checkout。擋路的實體目錄會搬到 `~/.claude/.ai_system-displaced/`，不會被刪掉；重跑不會多改任何東西。
 
 **啟用 ship-workflow：**
 
 ```bash
 cp ~/.claude/skills/ship-workflow/examples/ship-workflow.example.yml ~/.claude/ship-workflow.yml   # 填入 vault 路徑
-git clone https://github.com/awesome-skills/code-review-skill ~/.claude/skills/code-review-skill
 ```
 
 再安裝 [superpowers](https://github.com/obra/superpowers) plugin，然後在目標 repo 執行 `/ship-init`。
 
 ## 3. 使用範例
 
-### 同步 skills
+### 安裝與備份
 
 ```bash
-./sync.sh status     # 看差異
-./sync.sh backup     # 本機 → repo（鏡像，會刪除本機已刪的檔案）
-./sync.sh restore    # repo → 本機
+./sync.sh status     # 每個連結、設定檔的狀態；有連結不對時 exit 1
+./sync.sh backup     # 全域 CLAUDE.md、devsync 設定 → repo
+./sync.sh restore    # 接好連結、還原設定檔（--dry-run 只顯示會做什麼）
 ```
+
+主 checkout 要停在 `main`：本機每個 session 跑的都是這個 checkout，連未提交的修改也算。不在 `main` 或有未提交修改時，`/ship-next` 會警告。
 
 ### 用 Roadmap 開發功能
 
@@ -72,7 +74,7 @@ git clone https://github.com/awesome-skills/code-review-skill ~/.claude/skills/c
 
 Roadmap 上每個要做的項目都有一個編號 `R-NNN`（例如 `R-012`），從目前最大的號碼往上加。太大的項目會拆成 `R-012.1`、`R-012.2` 這樣的子項目，原本的 `R-012` 變成 epic，`/ship-next` 自動挑選時會跳過它。
 
-這個編號會貫穿整個流程：worktree、branch、spec、plan、learning 都用它命名，事後從任何一個檔案都能追回同一個項目。另外還有兩種編號：`IDEA-NNN` 是還沒排進 Roadmap 的想法（多半是 review 時延後處理的問題），`D-NNN` 是架構決策。
+這個編號會貫穿整個流程：worktree、branch、spec、plan、learning 都用它命名，事後從任何一個檔案都能追回同一個項目。另外還有一種編號：`IDEA-NNN` 是還沒排進 Roadmap 的想法（多半是 review 時延後處理的問題）。
 
 **Roadmap 長什麼樣**
 
@@ -89,7 +91,6 @@ Roadmap 上每個要做的項目都有一個編號 `R-NNN`（例如 `R-012`）�
 
 ```markdown
 - [ ] **R-012** 讓客服可以批次關閉工單 · est=3d
-    ↳ explain: [[Roadmap-Notes/R-012-bulk-close-tickets]]
     ↳ done when: 一次選 50 張工單關閉，全部狀態更新並寫入 audit log
 ```
 
@@ -111,22 +112,18 @@ Claude 會配一個新的 R-NNN 並寫進 Roadmap。順便說清楚怎樣算做�
 「幫我把 XXX 加到 Roadmap」
   │ 配一個新的 R-NNN
   ▼
-Later → Next → Now     ← /ship-roadmap 排序；太大的標 ⚠️ 並建議拆成子項目
-  │ （選用）/ship-explain 寫白話說明、/ship-propose 寫提案
+Later → Next → Now     ← 順序由你決定；brainstorm 會建議把太大的項目拆成幾列
   ▼
 /ship-next R-NNN       ← brainstorm → spec → plan → 實作 → review → merge
   │
   ▼
-✅ Done                ← review 延後處理的問題變成 IDEA，下次 /ship-roadmap 會建議排進來
+✅ Done                ← review 延後處理的問題變成 IDEA，要不要排進 Roadmap 由你決定
 ```
-
-`/ship-roadmap` 每次都會重新讀策略文件、還沒擱置的 IDEA、已接受的決策和最近 30 天的 learning，依「影響 × 相依性」重新排序。Now 最多放 5 項，缺少 `↳ done when:` 的項目會被特別標出來。
 
 **實際操作**
 
 ```text
 幫我把「客服批次關閉工單」加到 Roadmap  # 配好 R-NNN
-/ship-roadmap                           # 重新排序
 /ship-next                              # 取 Now 第一項，做到 merge
 /ship-next R-012 --auto:yes             # 指定項目，全自動
 /ship-next --adhoc "修 token 外洩"      # 臨時插單
@@ -147,9 +144,9 @@ Later → Next → Now     ← /ship-roadmap 排序；太大的標 ⚠️ 並建
 | 好處 | 缺點 |
 |---|---|
 | 一個編號追到底：從想法、spec、commit 到 learning 都能用 R-NNN 串起來 | 很吃紀律：描述和 done-when 寫得越模糊，brainstorm 和全自動模式就越容易做偏 |
-| 「做完」有明確定義：done-when 讓你和 AI 用同一個標準驗收，全自動模式也有依據 | 排序品質看 `ce-strategy`：沒裝 compound-engineering 時改由 Claude 在對話中排序，結果比較不穩定 |
-| 項目會被逼著變小：太大的會被標 ⚠️，拆出來的每個子項目都必須能驗收 | IDEA 會越積越多：review 自動開的 IDEA 需要定期整理，或標成 `shelved` 擱置 |
-| 問題不會被遺忘：延後處理的 review 問題會變成 IDEA，下次排 Roadmap 時再被看到 | 編號在本機分配：兩台機器在 Roadmap 同步之前各自開新項目，可能拿到同一個號碼 |
+| 「做完」有明確定義：done-when 讓你和 AI 用同一個標準驗收，全自動模式也有依據 | 排序靠你自己：沒有自動排序，Now 的順序就是你寫的順序 |
+| 項目會被逼著變小：brainstorm 會建議拆開太大的項目，拆出來的每一列都必須能驗收 | IDEA 會越積越多：review 自動開的 IDEA 需要定期整理，或標成 `shelved` 擱置 |
+| 問題不會被遺忘：延後處理的 review 問題會變成 IDEA，留在 `docs/ideas/` 等你決定 | 編號在本機分配：兩台機器在 Roadmap 同步之前各自開新項目，可能拿到同一個號碼 |
 
 ### 遠端開發
 
@@ -173,22 +170,22 @@ devsync stop my-repo   # 結束
 **缺點**
 
 - **小改動也要走全套**：一行修正一樣會經過 brainstorm、spec、plan、review，花的時間和 token 都多。
-- **依賴多**：Obsidian vault、superpowers、code-review-skill 少一個就跑不起來。
+- **依賴多**：Obsidian vault、superpowers 少一個就跑不起來。
 - **綁我的環境**：只支援 macOS，範例設定寫死我的路徑，devsync 也只連內部的 dl01–dl04。
 - **流程由模型執行**：helper script 有 bats 測試，但指令本身是給 Claude 讀的 markdown，每一步有沒有照做，取決於模型。
-- **全自動的品質看 Roadmap 寫得多清楚**：`--auto:yes` 遇到問題一律選建議選項，沒有寫 `↳ explain:` 或提案時，做出來的可能和你想的不一樣。
+- **全自動的品質看 Roadmap 寫得多清楚**：`--auto:yes` 遇到問題一律選建議選項，Roadmap 寫得越模糊，做出來的就越可能和你想的不一樣。
 - **策略只能在 Obsidian 改**：同步是單向的，直接在 repo 改 ROADMAP 會被擋下來。
 - **Knowledge graph 很貴**：大型 repo 第一次跑 `/understand` 會消耗大量 token。
 
 ## 5. 需求
 
-**必要**：macOS + Homebrew、Claude Code、Obsidian vault、[superpowers](https://github.com/obra/superpowers)、[code-review-skill](https://github.com/awesome-skills/code-review-skill)、bun（gstack 用）、dl01–dl04 的 SSH 帳號（devsync 用）
+**必要**：macOS + Homebrew、Claude Code、Obsidian vault、[superpowers](https://github.com/obra/superpowers)、dl01–dl04 的 SSH 帳號（devsync 用）。[code-review-skill](https://github.com/awesome-skills/code-review-skill) 已經收在 repo 裡。
 
 **選用**：
 
 | 項目 | 用途 |
 |---|---|
-| compound-engineering（`ce-*`） | `/ship-roadmap`、`/ship-compound` 的自動化 |
+| compound-engineering（`ce-*`） | `/ship-compound` 的自動化 |
 | [understand-anything](https://github.com/Lum1104/Understand-Anything) | 影響範圍分析、knowledge graph 自動重建（見第 6 節） |
 | [ponytail](https://github.com/DietrichGebert/ponytail) | executor 的寫碼規則 |
 | codex CLI | 第 3 種 executor |
@@ -207,7 +204,7 @@ devsync stop my-repo   # 結束
 | 3 | 讀過去的 learning 和 `CONTEXT.md`，brainstorm 出 spec（必須有 `## Seams`） |
 | 4 | 寫 plan |
 | 5 | 執行 plan |
-| 6 | Code review，blocking 必須歸零，最多修 3 輪 |
+| 6 | Code review 加獨立的 security review，blocking 必須歸零，最多修 3 輪 |
 | 7 | Squash merge，或開 PR/MR |
 | 8 | 寫 learning、Roadmap 移到 Done |
 | 9 | 刪除 worktree 和 branch |
@@ -227,7 +224,6 @@ devsync stop my-repo   # 結束
 | 時機 | 做什麼 |
 |---|---|
 | `/ship-init --with-ua` | 提示你對 repo 跑 `/understand`，建立 knowledge graph |
-| `/ship-roadmap` | 用 graph 輔助排序，並判斷項目是否太大（橫跨 3 個以上模組） |
 | Phase 1.5 | graph 比 HEAD 舊時發出警告 |
 | Phase 6 | 用 `/understand-diff` 產出影響範圍報告（受影響的模組、層級、風險評估），再比對 vault 的 `REMINDERS.md`，一起交給 reviewer |
 | Phase 8 | `/ship-compound` 用影響範圍草擬一份 case 筆記，並問你要不要新增 REMINDERS 規則 |

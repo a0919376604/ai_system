@@ -197,12 +197,22 @@ IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claud
 Your task: implement the plan below. Execute tasks in numerical order; within each task, execute steps in order.
 
 WORKFLOW:
-1. Use the exact code/text shown in each step. Do not improvise.
+1. Use the exact code/text shown in each step. Do not improvise beyond the REPAIR RULE below.
 2. Use TDD discipline where the plan asks for it: write failing test, confirm fail, then implement.
-3. After each task, verify tests are green before moving on. If they cannot be made green within the task, STOP and write a status note to the end of the plan file (append a "## Execution log" section if absent).
+3. After each task, verify tests are green before moving on. If they cannot be made green within the task (including via the REPAIR RULE), STOP and write a status note to the end of the plan file (append a "## Execution log" section if absent).
 4. Run tests with the commands the plan shows.
 5. Commit per the plan's commit messages — one commit per task unless the plan groups otherwise.
 6. At the end, report DONE / DONE_WITH_CONCERNS / BLOCKED with a summary.
+
+REPAIR RULE — small plan defects are yours to fix; do NOT stop for them:
+When the prescribed code fails a check, or breaks a requirement the plan itself states, and the fix is small and local, apply the smallest fix and continue. Typical cases:
+- a referenced file or test path does not exist, and exactly one obvious replacement does
+- an existing guard / registry / allow-list test needs the new item added (as its message or docstring instructs)
+- a lint rule rejects the prescribed structure (e.g. move a helper into its own module)
+- a missing null / empty guard is needed to keep output unchanged where the plan says it must not change
+- a grep or search the plan relies on misses a call site of the same pattern
+Record each one in the plan's "## Execution log" as "Deviation: <what> — <why>", and finish with DONE_WITH_CONCERNS listing them.
+STOP with BLOCKED only if the fix would change the approach or the behaviour the plan specifies, touch modules the task does not involve (other than the guard or test the failing check names), or delete, skip or loosen an assertion to make it pass.
 
 CONSTRAINTS:
 - Stay on branch \`$BRANCH\`. Do NOT switch branches.
@@ -213,6 +223,7 @@ CONSTRAINTS:
 - If a "fail first" test passes immediately (e.g., the test mirrors production logic), that's acceptable — just note it and move on.
 - If exact line numbers in the plan don't match the file, use surrounding context to locate the correct spot.
 - Pre-existing baseline failures (failing before your changes) are NOT yours to fix — note them and continue.
+- If you invoke \`/ship-next\` from a plan task, ALWAYS include \`--auto:yes\`. Codex cannot answer interactive prompts; \`/ship-next\` without \`--auto:yes\` will hang waiting for user input.
 
 PLAN ($PLAN_ABS):
 
@@ -243,13 +254,34 @@ pwd > "$CWD_FILE"
   echo "branch=$BRANCH"
   echo "cwd=$CWD"
   echo "started=$(date +%Y-%m-%dT%H:%M:%S)"
+  # Record the Discord channel that launched this run so the wakeup
+  # legacy adapter can route the done marker back. Injected by
+  # claudecode-discord's SessionManager via env. Empty when the skill
+  # is run from the terminal — legacy adapter degrades gracefully.
+  echo "channel_id=${WAKEUP_CHANNEL_ID:-}"
 } > "$META_FILE"
+
+# ALSO write a separate, stable channel file that manual retry logic
+# won't clobber. The meta file above is sometimes rewritten by Claude
+# during "resume from BLOCKED" retries with `>` (truncate) — losing
+# the channel_id line. The legacy adapter falls back to this file when
+# meta lacks channel_id. Only written when the env var is set — no
+# empty file when the skill is run from the terminal.
+if [ -n "$WAKEUP_CHANNEL_ID" ]; then
+  echo "$WAKEUP_CHANNEL_ID" > "/tmp/run-plan-channel-$SLOT.txt"
+fi
 
 # Pass the prompt via stdin (`-` reads prompt from stdin) instead of argv —
 # avoids macOS ARG_MAX (~256KB) limits if a plan ever gets very large.
+#
+# NO `-c model_reasoning_effort=...` here. This used to hardcode "high",
+# which silently overrode ~/.codex/config.toml — `-c` beats the config file,
+# so a user who deliberately set "low" globally still paid for high on every
+# run and had no way to see why except reading this skill. Model/effort is
+# the user's global setting; the skill does not get a vote. Override for one
+# run by appending `-c 'model_reasoning_effort="high"'` by hand.
 nohup codex exec - \
   --dangerously-bypass-approvals-and-sandbox \
-  -c 'model_reasoning_effort="high"' \
   < "$PROMPT_FILE" > "$LOG_FILE" 2>&1 &
 CODEX_PID=$!
 echo "$CODEX_PID" > "$PID_FILE"
@@ -273,7 +305,7 @@ even after codex finishes successfully.
 
 ```
 ScheduleWakeup(
-  delaySeconds=1800,
+  delaySeconds=270,
   reason="run-plan <slot> fallback poll — checks done marker, re-arms if still running",
   prompt="/run-plan status"
 )
@@ -291,7 +323,9 @@ Behavior when the wakeup fires:
    surface that and stop re-arming.
 
 This gives belt-and-suspenders coverage: Monitor wakes Claude in ~seconds
-when it works; ScheduleWakeup catches it within 30 min when it doesn't.
+when it works; ScheduleWakeup catches it within ~4.5 min when it doesn't
+(270s — stays inside the 5-min prompt cache TTL, so the wake-up doesn't
+pay a cache miss).
 
 ## Step 4: Heartbeat watcher
 
@@ -340,6 +374,30 @@ DONE_FILE=/tmp/run-plan-done-$SLOT.txt
   echo "commits=+$FINAL_COMMITS"
   echo "status=$FINAL_STATUS"
 } > "$DONE_FILE"
+
+# Primary Discord wake-up: drop an atomic JSON into the bot's wake-up
+# directory. claudecode-discord's WakeupWatcher (fs.watch) picks it up
+# and re-invokes Claude on the originating channel with `/run-plan
+# status $SLOT`. Backward-compatible: silently skips if env vars aren't
+# set (skill run from terminal, or bot not present).
+if [ -n "$WAKEUP_CHANNEL_ID" ] && [ -n "$WAKEUP_DIR" ] && [ -d "$WAKEUP_DIR" ]; then
+  WAKEUP_UUID=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s%N)
+  WAKEUP_FILE="$WAKEUP_DIR/$WAKEUP_UUID.json"
+  # Escape backslashes and double quotes in FINAL_STATUS so it's JSON-safe.
+  # $FINAL_STATUS can contain quotes when a "DONE_WITH_CONCERNS: reason" line
+  # is captured from the log.
+  SAFE_STATUS=$(printf '%s' "$FINAL_STATUS" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  cat > "$WAKEUP_FILE.tmp" << WAKEUP_JSON_END
+{
+  "channel_id": "$WAKEUP_CHANNEL_ID",
+  "prompt": "/run-plan status $SLOT",
+  "source": "run-plan",
+  "metadata": {"slot": "$SLOT", "status": "$SAFE_STATUS", "commits": "+$FINAL_COMMITS"},
+  "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+WAKEUP_JSON_END
+  mv "$WAKEUP_FILE.tmp" "$WAKEUP_FILE"
+fi
 
 # Native OS notification — this is the reliable wake-up channel for the
 # human. The harness may or may not re-invoke Claude when this background

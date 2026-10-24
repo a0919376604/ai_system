@@ -79,3 +79,26 @@ EOF
   result="$(HOME="$HOME_OVERRIDE" "$SHIP_LIB/airos-binding.sh" code_root)"
   [ -z "$result" ]
 }
+
+# --- R-004 §3.8: a ship-next worktree is named after its main checkout ---------
+
+@test "airos-binding: at a linked worktree's root the project is the main checkout" {
+  # basename(pwd) there is the worktree's own name, so R-001/R-003 mirrored their specs
+  # into bogus "10 Projects/R-00N-…" vault folders.
+  mkdir -p "$SCRATCH/my-repo" && cd "$SCRATCH/my-repo" || return 1
+  git init -q -b main && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+  git worktree add -q -b ship/R-9-x "$SCRATCH/my-repo-worktrees/R-9-x"
+  cd "$SCRATCH/my-repo-worktrees/R-9-x" || return 1
+  [ "$(HOME="$HOME_OVERRIDE" "$SHIP_LIB/airos-binding.sh" project_name)" = "my-repo" ] || return 1
+  [ "$(HOME="$HOME_OVERRIDE" "$SHIP_LIB/airos-binding.sh" project_path)" = "$AIROS/10 Projects/my-repo" ]
+}
+
+@test "airos-binding: a plain directory inside a linked worktree keeps its own name" {
+  # The fixtures above live in non-git dirs nested in whatever checkout runs the suite —
+  # often a ship-next worktree. They must not inherit that checkout's name.
+  mkdir -p "$SCRATCH/outer" && cd "$SCRATCH/outer" || return 1
+  git init -q -b main && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+  git worktree add -q -b ship/R-9-y "$SCRATCH/outer-wt"
+  mkdir -p "$SCRATCH/outer-wt/fixture/my-repo" && cd "$SCRATCH/outer-wt/fixture/my-repo" || return 1
+  [ "$(HOME="$HOME_OVERRIDE" "$SHIP_LIB/airos-binding.sh" project_name)" = "my-repo" ]
+}

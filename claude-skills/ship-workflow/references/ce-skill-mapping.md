@@ -4,11 +4,8 @@
 |---|---|---|
 | `ship-init` | (none) | n/a |
 | `ship-idea` | optional `compound-engineering:ce-ideate` (only on user request) | Skip ideation; just capture |
-| `ship-decision` | optional `compound-engineering:ce-doc-review` | Write decision manually |
-| `ship-roadmap` | `compound-engineering:ce-strategy` (preferred) or `ce-plan` | Re-rank in conversation, show reasoning |
 | `ship-next` | `superpowers:brainstorming` + `superpowers:writing-plans` + user-chosen executor + code-review-skill | Required — no fallback for brainstorm/spec/plan/review |
 | `ship-compound` | `compound-engineering:ce-compound` + `ce-promote` | Hand-write learning sections |
-| `ship-research` | `obsidian-second-brain:/obsidian-research-deep` | Same — tell user to keep that skill |
 
 `/ship-next` now spans the former brainstorm/spec plus plan/execute range: it opens the worktree, produces brainstorm/spec artifacts, writes the plan, runs the chosen executor, enforces the strict code-review gate, squash-merges, and then invokes `/ship-compound`.
 
