@@ -111,3 +111,6 @@ tb_shadow_active() {
   [ "$n" -lt "$TB_SHADOW_SHIPS" ] && return 0
   return 1
 }
+
+# tb_test_lines_added <sha> — echo added lines in test paths of one commit.
+tb_test_lines_added() { git diff --numstat "$1^" "$1" -- '*test*' 'tests/' 2>/dev/null | awk '{s+=$1} END {print s+0}'; }

@@ -105,3 +105,8 @@ teardown() { rm -rf "$SCRATCH"; }
   fi
   [ "$(grep -c . "$SCRATCH/bash.out")" -eq 3 ]
 }
+
+@test "learnings_terms: keeps words of 4+ chars minus stopwords, in slug order" {
+  run learnings_terms show-churn-warning-in-chat
+  [ "$output" = "$(printf 'churn\nwarning\nchat')" ]
+}

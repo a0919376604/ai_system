@@ -68,3 +68,6 @@ land_context() {
   echo "land_context: lost the race to origin/$base $LAND_PUSH_ATTEMPTS times" >&2
   return 1
 }
+
+# land_worktree_for_branch <branch> — echo its worktree path, or nothing when absent.
+land_worktree_for_branch() { git worktree list --porcelain | awk -v b="refs/heads/$1" '/^worktree /{w=substr($0,10)} /^branch /{if ($2==b) print w}'; }

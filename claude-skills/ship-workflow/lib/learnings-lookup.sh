@@ -59,3 +59,6 @@ learnings_grep_body() {
 # a `title:` field. A title helper that works for 12 files is worse than none —
 # the filename carries the slug (R-068-unify-ai-resolve-rate.md) and is the one
 # label every file has. Callers print the path.
+
+# learnings_terms <slug> — print words of 4+ chars minus generic verbs, in slug order.
+learnings_terms() { printf '%s' "$1" | tr '-' '\n' | awk 'length($0) >= 4' | grep -vxE 'fix|add|update|remove|improve|unify|polish|show|make|into' || true; }

@@ -75,3 +75,6 @@ pre_existing_strip_unverified() {
     mv "$tmp" "$f"
   done
 }
+
+# pre_existing_drop <file>… — omit pre-existing findings and their indented details.
+pre_existing_drop() { PE="$PRE_EXISTING_RE" awk '$0 ~ ENVIRON["PE"] {skip=1; next} skip && /^[[:space:]]+[^[:space:]]/ {next} {skip=0; print}' "$@"; }

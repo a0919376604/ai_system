@@ -28,46 +28,10 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 
 0. **Parse all args FIRST** (before any destructive operation, so mutex checks run before discard):
 
-   ```bash
-   # Initialize flag state
-   AUTO=0
-   MODE=""              # one of: discard | adhoc | resume | "" (positional)
-   TARGET=""            # ID for discard/resume, or description for adhoc
-   POSITIONAL=""        # R-NNN if user typed `/ship-next R-NNN` plain
+   Parse the arguments yourself — they arrive as text, not as shell positionals. `--auto:yes` or `--auto` anywhere in the arguments sets `AUTO=1`. `--discard <R-NNN>`, `--adhoc <description>` and `--resume <R-NNN>` set `MODE` to discard / adhoc / resume and `TARGET` to the value after the flag (an adhoc description runs to the end of the arguments, minus a trailing `--auto` / `--auto:yes`). Any other `--flag` is an error (exit 2). The first bare token is `POSITIONAL` (an R-NNN). Write the values you parsed as assignments at the top of this block, then run it:
 
-   # Walk args once, consuming flags
-   while [ $# -gt 0 ]; do
-     case "$1" in
-       --auto:yes|--auto)
-         AUTO=1
-         shift
-         ;;
-       --discard)
-         MODE="discard"
-         TARGET="${2:-}"
-         shift 2 || shift  # robust against missing arg
-         ;;
-       --adhoc)
-         MODE="adhoc"
-         TARGET="${2:-}"
-         shift 2 || shift
-         ;;
-       --resume)
-         MODE="resume"
-         TARGET="${2:-}"
-         shift 2 || shift
-         ;;
-       --*)
-         echo "ERROR: unknown flag: $1" >&2
-         exit 2
-         ;;
-       *)
-         # First non-flag positional = R-NNN
-         [ -z "$POSITIONAL" ] && POSITIONAL="$1"
-         shift
-         ;;
-     esac
-   done
+   ```bash
+   AUTO=${AUTO:-0}; MODE=${MODE:-}; TARGET=${TARGET:-}; POSITIONAL=${POSITIONAL:-}
 
    # Mutex: --discard + --auto are incompatible (auto must never delete)
    if [ "$MODE" = "discard" ] && [ "$AUTO" = "1" ]; then
@@ -165,7 +129,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    - Elif `$POSITIONAL` is set: `ID="$POSITIONAL"`.
    - Else: read `docs/product/ROADMAP.md` "## 🔥 Now" section; rank by existing logic (epics skipped, children ascending by .M, impact/dependency tie-breakers). Pick top.
 
-   **Critical:** never assign `ID="$1"` directly — that pattern captures flags like `--auto:yes` as the row ID. Always use the parsed variables.
+   **Critical:** never take `ID` from the first raw argument — that pattern captures flags like `--auto:yes` as the row ID. Always use the parsed variables.
 
 4.5. **Auto pre-flight gate** (only in `--auto:yes` mode):
     ```bash
@@ -274,11 +238,7 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    source ~/.claude/skills/ship-workflow/lib/learnings-lookup.sh
 
    LEARN_CAP=3
-   # Terms come from the slug: specific enough to hit, cheap to derive. Generic
-   # verbs are dropped because they match almost every learning.
-   LEARN_TERMS=$(printf '%s' "$SLUG" | tr '-' '\n' \
-     | awk 'length($0) >= 4' \
-     | grep -vxE 'fix|add|update|remove|improve|unify|polish|show|make|into' || true)
+   LEARN_TERMS=$(learnings_terms "$SLUG")   # words of 4+ chars minus generic verbs
    LEARN_HITS=$(learnings_match $LEARN_TERMS)
    # `grep -c . || echo 0` prints 0 AND exits 1, giving "00". Use `|| true`.
    LEARN_N=$(printf '%s' "$LEARN_HITS" | grep -c . || true)
@@ -738,8 +698,7 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
        TASK_NO=$(echo "$SUBJ" | grep -oE 'Task [0-9]+' | head -1)
        [ -z "$TASK_NO" ] && continue
        grep -A6 "### ${TASK_NO}:" "$PLAN_FILE" | grep -qF 'Seam: none' || continue
-       ADDED=$(git diff --numstat "${sha}^" "$sha" -- '*test*' 'tests/' 2>/dev/null \
-               | awk '{s+=$1} END {print s+0}')
+       ADDED=$(tb_test_lines_added "$sha")
        if [ "${ADDED:-0}" -gt 0 ]; then
          echo "🛑 blocking: refactor task added test lines (${TASK_NO}, +${ADDED} in tests)" >&2
          MECH_BLOCKERS=$((MECH_BLOCKERS + 1))
@@ -750,8 +709,8 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    # (b) Test budget, relative to this repo's own baseline.
    BASELINE_RATIO_BP=$(tb_baseline_ratio)
    SHIP_RATIO_BP=$(tb_ship_ratio "$ORIG_BRANCH" HEAD)
-   set -- $(tb_ship_lines "$ORIG_BRANCH" HEAD)
-   TEST_LINES_ADDED="$1"; SRC_LINES_ADDED="$2"
+   TB_LINES=$(tb_ship_lines "$ORIG_BRANCH" HEAD)
+   TEST_LINES_ADDED=${TB_LINES% *}; SRC_LINES_ADDED=${TB_LINES#* }
    TEST_BUDGET_VERDICT=$(tb_verdict "$SHIP_RATIO_BP" "$BASELINE_RATIO_BP")
 
    if tb_shadow_active; then
@@ -907,9 +866,7 @@ CHECKS
      # Print blockers ONLY in interactive mode (auto mode keeps quiet)
      if [ "$AUTO" = "0" ]; then
        echo "🛑 ${BLOCKING_COUNT} blocking finding(s):"
-       # Drop each pre-existing finding together with its indented detail lines (ENVIRON,
-       # not awk -v, which mangles the \[ escapes), then print the blockers with context.
-       PE="$PRE_EXISTING_RE" awk '$0 ~ ENVIRON["PE"] {skip=1; next} skip && /^[[:space:]]+[^[:space:]]/ {next} {skip=0; print}' "$REVIEW_OUT" "$SEC_OUT" \
+       pre_existing_drop "$REVIEW_OUT" "$SEC_OUT" \
          | grep -B1 -A3 -E '(\*\*Severity:\*\*[[:space:]]*blocking|\[blocking\]|🔴)'
      fi
 

@@ -129,3 +129,13 @@ EOF
   [ "$(wc -l < "$SCRATCH/attempts" | tr -d ' ')" -eq "$LAND_PUSH_ATTEMPTS" ]
   [ "$(git worktree list --porcelain | grep -c '^worktree')" -eq 1 ]
 }
+
+@test "land_worktree_for_branch: finds the worktree of a branch" {
+  git worktree add -q -b ship/R-1-x "$SCRATCH/ship worktree"
+  run land_worktree_for_branch ship/R-1-x
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(cd "$SCRATCH/ship worktree" && pwd -P)" ]
+  run land_worktree_for_branch nope
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}

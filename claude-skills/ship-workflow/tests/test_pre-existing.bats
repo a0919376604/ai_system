@@ -100,3 +100,17 @@ teardown() { rm -rf "$SCRATCH"; }
   crlf=$(pre_existing_key "$(printf '🟡 [important] [pre-existing] old.sh:1 — short desc\r')")
   [ "$crlf" = "$lf" ]
 }
+
+@test "pre_existing_drop: removes pre-existing findings and their detail lines" {
+  printf '%s\n' \
+    '🟡 [important] [pre-existing] a.sh:1 — old' \
+    '   Base evidence: a.sh:1 exists unchanged on main' \
+    '🔴 [blocking] b.sh:2 — new' \
+    '   detail of new' > "$SCRATCH/report.md"
+  run pre_existing_drop "$SCRATCH/report.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *b.sh:2* ]] || return 1
+  [[ "$output" == *"detail of new"* ]] || return 1
+  [[ "$output" != *a.sh:1* ]] || return 1
+  [[ "$output" != *"Base evidence"* ]] || return 1
+}

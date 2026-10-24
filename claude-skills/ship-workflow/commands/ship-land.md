@@ -34,7 +34,7 @@ Phase 9 already cleaned up.
 1. **Resolve the row, the base and the branch.** Run from the main repo root.
 
    ```bash
-   ID="$1"
+   ID="$ARGUMENTS"   # the R-NNN argument; Claude Code substitutes it
    [ -n "$ID" ] || { echo "usage: /ship-land R-NNN" >&2; exit 2; }
 
    # From the main checkout, never from the ship's worktree: step 5 removes
@@ -140,8 +140,8 @@ Phase 9 already cleaned up.
 5. **Clean up what Phase 9 kept.**
 
    ```bash
-   WORKTREE=$(git worktree list --porcelain \
-              | awk -v b="refs/heads/$BRANCH" '/^worktree /{w=$2} /^branch /{if ($2==b) print w}')
+   source ~/.claude/skills/ship-workflow/lib/ship-land.sh
+   WORKTREE=$(land_worktree_for_branch "$BRANCH")
    # Never the main checkout: if $BRANCH is checked out there, the lookup above
    # resolves to it, and the clean below would delete the operator's own files.
    if [ -n "$WORKTREE" ] && [ "$WORKTREE" != "$(git rev-parse --show-toplevel)" ]; then

@@ -85,7 +85,7 @@ file path:
 
 ```bash
 resolve_slot() {
-  local ARG="$1"
+  local ARG=""; for ARG in "$@"; do break; done
   if [ -z "$ARG" ]; then echo ""; return; fi
   if [ -f "$ARG" ]; then
     basename "$ARG" .md | tr -c 'A-Za-z0-9_.-' '_'
@@ -117,7 +117,7 @@ fi
 echo "auth: present"
 
 # Plan file resolution
-PLAN_ARG="$1"
+read -r PLAN_ARG _ <<< "$ARGUMENTS"   # first token; Claude Code substitutes ARGUMENTS
 if [ -z "$PLAN_ARG" ]; then
   PLAN_ARG=$(ls -t docs/superpowers/plans/*.md 2>/dev/null | head -1)
   if [ -z "$PLAN_ARG" ]; then
@@ -432,7 +432,7 @@ finished runs and resume verification — see Step 7a.
 ## Step 5: `/run-plan status [slot|path]`
 
 ```bash
-ARG="$1"
+read -r _SUB ARG _ <<< "$ARGUMENTS"   # token after "status"
 
 list_alive_slots() {
   for p in /tmp/run-plan-codex-*.pid; do
@@ -567,10 +567,10 @@ fi
 ## Step 6: `/run-plan kill [slot|path|--all]`
 
 ```bash
-ARG="$1"
+read -r _SUB ARG _ <<< "$ARGUMENTS"   # token after "kill"
 
 do_kill() {
-  local SLOT="$1"
+  local SLOT=""; for SLOT in "$@"; do break; done
   local PID_FILE=/tmp/run-plan-codex-$SLOT.pid
   if [ ! -f "$PID_FILE" ]; then
     echo "no run to kill for slot '$SLOT'"

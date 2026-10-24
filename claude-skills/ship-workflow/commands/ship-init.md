@@ -30,7 +30,8 @@ You are bootstrapping the Ship Workflow in the user's current repo.
 1. **Resolve target directory + project name.** Order of checks:
 
    ```bash
-   ARG="$1"   # may be empty, a bare word, or an absolute path
+   # The first argument that is not a --flag: empty, a bare word, or an absolute path.
+   ARG=""; for A in $ARGUMENTS; do case "$A" in --*) ;; *) ARG="$A"; break ;; esac; done
    CODE_ROOT=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh code_root)
 
    if [ -z "$ARG" ]; then

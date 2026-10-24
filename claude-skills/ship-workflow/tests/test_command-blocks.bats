@@ -453,3 +453,23 @@ p9_capture_block() { block ship-next.md '^0\. \*\*Capture anything inside the wo
   rm -f /tmp/ship-R-T11-security-review-state
   [[ "$output" == *"off (ship-config on main)"* ]]
 }
+
+@test "ship-init step 1 ignores flags when picking the target" {
+  block ship-init.md '^1\. \*\*Resolve target directory' '^2\. ' \
+    | sed '/^ *ARG=/q' > "$SCRATCH/s1-block.sh"
+  sed "1i\\
+ARGUMENTS='--upgrade /tmp/x'
+" "$SCRATCH/s1-block.sh" > "$SCRATCH/s1.sh"
+  printf '%s\n' 'printf '\''%s'\'' "$ARG"' >> "$SCRATCH/s1.sh"
+  run bash "$SCRATCH/s1.sh"
+  [ "$status" -eq 0 ]
+  [ "$output" = "/tmp/x" ]
+
+  sed "1i\\
+ARGUMENTS='--upgrade'
+" "$SCRATCH/s1-block.sh" > "$SCRATCH/s1.sh"
+  printf '%s\n' 'printf '\''%s'\'' "$ARG"' >> "$SCRATCH/s1.sh"
+  run bash "$SCRATCH/s1.sh"
+  [ "$status" -eq 0 ]
+  [ "$output" = "" ]
+}

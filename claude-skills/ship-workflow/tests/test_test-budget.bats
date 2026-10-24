@@ -157,3 +157,15 @@ seed() {
   run tb_shadow_active
   [ "$status" -eq 1 ]
 }
+
+@test "tb_test_lines_added: sums added lines in test paths of one commit" {
+  git commit -q --allow-empty -m base
+  mkdir -p tests src
+  printf '1\n2\n3\n' > tests/a.bats
+  printf '1\n2\n3\n4\n5\n' > src/a.sh
+  git add -A && git commit -q -m additions
+  [ "$(tb_test_lines_added HEAD)" = 3 ]
+  echo 6 >> src/a.sh
+  git add -A && git commit -q -m source-only
+  [ "$(tb_test_lines_added HEAD)" = 0 ]
+}
