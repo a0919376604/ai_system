@@ -10,3 +10,4 @@
 | 2026-10-24 11:22 | ship-next | R-004 | shipped (review: blocking=0, major=5 fixed post-gate, ratio 711bp vs baseline 1656bp, prune: n/a, codex: 1 round(s) done) | y |
 | 2026-10-24 22:52 | ship-compound | R-005 | shipped | y |
 | 2026-10-24 22:53 | ship-next | R-005 | shipped (review: blocking=0, major=2 fixed post-gate, ratio 0bp vs baseline 1662bp, prune: no report (verdict=pass)) | y |
+| 2026-10-25 01:24 | ship-compound | R-006 | shipped | y |
