@@ -1106,7 +1106,7 @@ review sets `merge_mode: mr`.
 
    Tests: +${TEST_LINES_ADDED} / Src: +${SRC_LINES_ADDED}  (ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp)
    Spec:  docs/specs/${ID}-${SLUG}.md
-   Plan:  docs/plans/${ID}-${SLUG}.md
+   Plan:  docs/plans/${ID}-${SLUG}.md (removed by /ship-compound; kept in the "plan: ${ID}" commit)
    Notes: docs/roadmap-notes/${ID}-${SLUG}.md (if exists)
 
    🤖 ${BRANCH}

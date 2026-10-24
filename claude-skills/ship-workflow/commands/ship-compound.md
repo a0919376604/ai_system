@@ -287,6 +287,10 @@ Sub-steps 2–4 below are the `squash` path.
      exit 1
    fi
 
+   # Before ship_log: a failure here must leave nothing written. -f because the
+   # plan may carry an uncommitted Execution log note that steps 2-4 already read.
+   git rm -q -f --ignore-unmatch -- "docs/plans/${ID}-${slug}.md" "docs/plans/${ID}-${slug}-review-fix-*.md" || exit 1
+
    ship_log "| $(date +%Y-%m-%d\ %H:%M) | ship-compound | $ID | $STATUS_WORD | n |"
 
    if [ "$MERGE_MODE" = "mr" ]; then
@@ -305,6 +309,11 @@ Sub-steps 2–4 below are the `squash` path.
      git commit -m "compound: $ID — $STATUS_WORD + learning + ROADMAP update"
    fi
    ```
+
+   Both modes remove this ship's plan and fix-plans in the commit above (`ship_log`
+   commits with `--only`, so the staged removal waits for it): steps 2–4
+   were the plan's last reader, and plans left behind piled up to 321 files with no
+   reader on one repo (R-005). Specs, brainstorms and learnings stay.
 
    `docs/tdd-rules.d/` is staged in both modes: step 6b writes this ship's rule
    fragment there, and no other step commits it.

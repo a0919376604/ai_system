@@ -125,6 +125,50 @@ compound_step9() { block ship-compound.md '^9\. \*\*Log \+ commit' '^10\. \*\*Re
   [ "$(git rev-parse HEAD)" = "$head_before" ]
 }
 
+@test "ship-compound step 9 (mr) removes this ship's plan and fix-plans, not another ship's" {
+  git worktree add -q -b ship/R-1-x "$SCRATCH/wt"
+  cd "$SCRATCH/wt"
+  mkdir -p docs/plans
+  touch docs/plans/R-1-x.md docs/plans/R-1-x-review-fix-2.md docs/plans/R-2-y.md
+  git add docs/plans && git commit -q -m "plans"
+  echo "learning" > docs/learnings/R-1-x.md
+  compound_step9 > "$SCRATCH/s9.sh"
+  run env ID=R-1 slug=x bash "$SCRATCH/s9.sh"
+  [ "$status" -eq 0 ]
+  deleted=$(git show --name-status --format= HEAD | awk '$1=="D"{print $2}' | sort | tr '\n' ' ')
+  [ "$deleted" = "docs/plans/R-1-x-review-fix-2.md docs/plans/R-1-x.md " ]
+  [ "$(git ls-files docs/plans)" = "docs/plans/R-2-y.md" ]
+}
+
+@test "ship-compound step 9 (mr) removes a plan with uncommitted edits and logs the row once" {
+  git worktree add -q -b ship/R-1-x "$SCRATCH/wt"
+  cd "$SCRATCH/wt"
+  mkdir -p docs/plans
+  echo plan > docs/plans/R-1-x.md
+  git add docs/plans && git commit -q -m "plan"
+  echo "## Execution log" >> docs/plans/R-1-x.md
+  echo "learning" > docs/learnings/R-1-x.md
+  compound_step9 > "$SCRATCH/s9.sh"
+  run env ID=R-1 slug=x bash "$SCRATCH/s9.sh"
+  [ "$status" -eq 0 ]
+  [ -z "$(git ls-files docs/plans)" ]
+  [ "$(git log --format=%s | grep -c '^log: ')" -eq 1 ]
+}
+
+@test "ship-compound step 9 (squash) removes this ship's plan, not a sibling R-1.1 plan" {
+  echo 'merge_mode: squash' > .claude/ship-config.yml
+  mkdir -p docs/plans docs/proposals
+  echo p > docs/proposals/p.md
+  touch docs/plans/R-1-x.md docs/plans/R-1.1-z.md
+  git add -A && git commit -q -m "squash mode + plans"
+  echo "learning" > docs/learnings/R-1-x.md
+  compound_step9 > "$SCRATCH/s9.sh"
+  run env ID=R-1 slug=x bash "$SCRATCH/s9.sh"
+  [ "$status" -eq 0 ]
+  [ "$(git show --name-status --format= HEAD | awk '$1=="D"{print $2}')" = "docs/plans/R-1-x.md" ]
+  [ "$(git ls-files docs/plans)" = "docs/plans/R-1.1-z.md" ]
+}
+
 land_step5() { block ship-land.md '^5\. \*\*Clean up' '^6\. \*\*Report'; }
 
 @test "ship-land step 5 removes a worktree whose vault mirror sync dirtied" {
