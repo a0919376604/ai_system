@@ -7,6 +7,7 @@ p5_section() { awk '/^## Phase 5/,/^## Phase 6/' "$CMD"; }
 
 p5_bash() {
   p5_section | awk '/^[[:space:]]*```bash[[:space:]]*$/{f=1;next} /^[[:space:]]*```[[:space:]]*$/{f=0} f'
+  sed -n '/^sn_codex_after_exit()/,/^}/p' "$SHIP_LIB/ship-next.sh"
 }
 
 @test "Phase 5 sources all three supervise libs" {
@@ -115,7 +116,7 @@ p5_bash() {
 # --- Ruling 8: success must not leave blocked state behind ------------------
 
 @test "Phase 5 clears the blocked state when the run completes" {
-  cont=$(p5_section | awk '/- \*\*`continue`\*\*/,/- \*\*`stop_infra`\*\*/')
+  cont=$(sed -n '/if \[ "$CODEX_ROUTE" = continue \]/,/^  fi/p' "$SHIP_LIB/ship-next.sh")
   echo "$cont" | grep -qF 'codex_state_write' \
     || { echo "the success branch leaves stale blocked state for Phase 6"; return 1; }
 }
@@ -136,13 +137,18 @@ p5_bash() {
 
 # ============================ Task 5: Phase 9 ===============================
 
-p9_section() { awk '/^## Phase 9/,0' "$CMD"; }
+p9_section() {
+  awk '/^## Phase 9/,0' "$CMD"
+  echo '```bash'
+  sed -n '/^sn_capture()/,$p' "$SHIP_LIB/ship-next.sh"
+  echo '```'
+}
 p9_bash() {
   p9_section | awk '/^[[:space:]]*```bash[[:space:]]*$/{f=1;next} /^[[:space:]]*```[[:space:]]*$/{f=0} f'
 }
 
 @test "Phase 9 log row records the codex round count and verdict" {
-  row=$(grep -F 'SHIP_LOG_ROW="|' "$CMD")
+  row=$(grep -F 'SHIP_LOG_ROW="|' "$SHIP_LIB/ship-next.sh")
   [ -n "$row" ]
   [[ "$row" == *'${CODEX_LOG_FRAGMENT}'* ]] || return 1
   frag=$(p9_bash | grep -F 'CODEX_LOG_FRAGMENT=", codex:')
@@ -167,7 +173,7 @@ p9_bash() {
 }
 
 @test "Phase 9 sources the lib it calls — phases do not share a shell" {
-  p9_bash | grep -qF 'lib/codex-rounds.sh' \
+  p9_bash | grep -qF '/codex-rounds.sh' \
     || { echo "Phase 9 calls codex_round_* without sourcing the lib"; return 1; }
 }
 

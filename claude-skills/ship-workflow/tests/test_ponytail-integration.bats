@@ -95,7 +95,7 @@ teardown() {
 
 @test "Phase 9 summary carries the ponytail status" {
   CMD="$SHIP_SKILL_ROOT/commands/ship-next.md"
-  awk '/^## Phase 9 /,0' "$CMD" | grep -qF 'ponytail: ${PONYTAIL_STATUS}' \
+  sed -n '/^sn_summary()/,$p' "$SHIP_LIB/ship-next.sh" | grep -qF 'ponytail: ${PONYTAIL_STATUS}' \
     || { echo "the summary omits whether a ladder was enforced"; return 1; }
 }
 

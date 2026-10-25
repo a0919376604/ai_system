@@ -13,7 +13,7 @@ setup() {
 }
 
 @test "P3 tells brainstorming that ## Seams is a required section" {
-  run grep -F 'required output section: `## Seams`' "$CMD"
+  run grep -F 'Require `## Seams`: a table' "$CMD"
   [ "$status" -eq 0 ]
 }
 

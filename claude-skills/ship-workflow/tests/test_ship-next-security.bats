@@ -8,7 +8,7 @@ setup() { export CMD="$SHIP_SKILL_ROOT/commands/ship-next.md"; }
 p6() { awk '/^## Phase 6/,/^## Phase 7/' "$CMD"; }
 
 @test "the reviewer is told about the [pre-existing] tag" {
-  p6 | grep -qF -- '- `[pre-existing]` — the defect exists on' || { echo "extra checks lack [pre-existing]"; return 1; }
+  cat "$SHIP_LIB/ship-next.sh" | grep -qF -- '- `[pre-existing]` — the defect exists on' || { echo "extra checks lack [pre-existing]"; return 1; }
 }
 
 @test "the loop parses the code review and the security review together" {
@@ -41,8 +41,8 @@ p6() { awk '/^## Phase 6/,/^## Phase 7/' "$CMD"; }
 }
 
 @test "the landed commit and the auto summary report the security review" {
-  awk '/^## Phase 7/,/^## Phase 8 /' "$CMD" | grep -qF 'Security review:' || { echo "Phase 7 body has no security line"; return 1; }
-  awk '/^## Phase 9/,0' "$CMD" | grep -qF '• security review:' || { echo "Phase 9 summary has no security line"; return 1; }
+  sed -n '/^sn_ship_body()/,/^sn_land()/p' "$SHIP_LIB/ship-next.sh" | grep -qF 'Security review:' || { echo "Phase 7 body has no security line"; return 1; }
+  sed -n '/^sn_capture()/,$p' "$SHIP_LIB/ship-next.sh" | grep -qF '• security review:' || { echo "Phase 9 summary has no security line"; return 1; }
 }
 
 @test "new Phase 6 blocks use no positional parameters (Claude Code substitutes them)" {
@@ -71,9 +71,9 @@ p6() { awk '/^## Phase 6/,/^## Phase 7/' "$CMD"; }
 }
 
 @test "the landed commit and the auto summary say when the security review was off" {
-  awk '/^## Phase 7/,/^## Phase 8 /' "$CMD" | grep -qF 'security-review-state' || return 1
-  awk '/^## Phase 7/,/^## Phase 8 /' "$CMD" | grep -qF 'off (ship-config on' || return 1
-  awk '/^## Phase 9/,0' "$CMD" | grep -qF 'security-review-state'
+  sed -n '/^sn_ship_body()/,/^sn_land()/p' "$SHIP_LIB/ship-next.sh" | grep -qF 'security-review-state' || return 1
+  sed -n '/^sn_ship_body()/,/^sn_land()/p' "$SHIP_LIB/ship-next.sh" | grep -qF 'off (ship-config on' || return 1
+  sed -n '/^sn_capture()/,$p' "$SHIP_LIB/ship-next.sh" | grep -qF 'security-review-state'
 }
 
 @test "security runs once code review reports zero blockers on the attempt" {

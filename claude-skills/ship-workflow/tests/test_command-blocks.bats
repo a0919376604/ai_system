@@ -36,7 +36,10 @@ block() {
     | awk '/^[[:space:]]*```bash[[:space:]]*$/{f=1;next} /^[[:space:]]*```[[:space:]]*$/{f=0} f'
 }
 
-p9_log_block() { block ship-next.md '^3\. \*\*Log \+ commit\.\*\*' '^4\. \*\*Auto-mode'; }
+p9_log_block() {
+  printf 'source %q\n' "$SHIP_LIB/ship-next.sh"
+  echo 'sn_log "${WORKTREE:-}" "$ID" "${SHIP_LOG_ROW:-}"'
+}
 
 @test "ship-next P9 (mr): an unset WORKTREE pushes nothing and writes nothing" {
   git commit -q --allow-empty -m "local-only work on main"
@@ -277,9 +280,10 @@ land_step5() { block ship-land.md '^5\. \*\*Clean up' '^6\. \*\*Report'; }
 
 @test "ship-next P9 step 1 (mr) keeps the worktree the review still needs" {
   git worktree add -q -b ship/R-1-x "$SCRATCH/wt"
-  block ship-next.md '^1\. \*\*Remove worktree\*\*' '^2\. \*\*Delete worktree branch\*\*' > "$SCRATCH/p9s1.sh"
+  { printf 'source %q\n' "$SHIP_LIB/ship-next.sh"; echo 'sn_cleanup "$WORKTREE" "${BRANCH:-ship/R-1-x}"'; } > "$SCRATCH/p9s1.sh"
   [ -s "$SCRATCH/p9s1.sh" ]
   run env WORKTREE="$SCRATCH/wt" bash "$SCRATCH/p9s1.sh"
+  [ "$status" -eq 0 ]
   [ -d "$SCRATCH/wt" ] || { echo "removed the worktree of an open review"; return 1; }
 }
 
@@ -427,7 +431,7 @@ pre_block()       { block ship-next.md '^4\.5\. \*\*Pre-existing findings' '^## 
 # --- R-003 review round 2 ------------------------------------------------------
 
 major_block()      { block ship-next.md '^4\. \*\*Major findings handling' '^4\.5\. \*\*Pre-existing findings'; }
-p9_capture_block() { block ship-next.md '^0\. \*\*Capture anything inside the worktree' '^1\. \*\*Remove worktree'; }
+p9_capture_block() { printf 'source %q\n' "$SHIP_LIB/ship-next.sh"; echo 'sn_capture "$WORKTREE" "$ID"'; }
 
 @test "ship-next P6 step 4: files every major from both reports, never a pre-existing finding's detail line" {
   printf '%s\n' '🟡 [important] [pre-existing] old.sh:1 — old defect' \
@@ -453,13 +457,9 @@ p9_capture_block() { block ship-next.md '^0\. \*\*Capture anything inside the wo
   [ "$status" -eq 0 ]
   rm -rf "$SCRATCH/wt"   # step 1 removes the worktree
   # Step 4 is its own block, so its own shell: a variable set in step 0 is gone.
-  step4=$(awk '/^## Phase 9/{p=1} p && /^4\. \*\*Auto-mode success notification/{f=1} f && /^## /{exit} f' \
-          "$SHIP_SKILL_ROOT/commands/ship-next.md")
-  line=$(echo "$step4" | grep -F '• security review:' | sed 's/^[[:space:]]*//')
-  [ -n "$line" ] || return 1
-  printf 'echo "%s"\n' "$line" > "$SCRATCH/p94.sh"
-  run env ID=R-T11 ORIG_BRANCH=main bash "$SCRATCH/p94.sh"
-  rm -f /tmp/ship-R-T11-security-review-state
+  { printf 'source %q\n' "$SHIP_LIB/ship-next.sh"; echo 'sn_summary "$WORKTREE" "$ID"'; } > "$SCRATCH/p94.sh"
+  run env AUTO=1 WORKTREE="$SCRATCH/wt" ID=R-T11 ORIG_BRANCH=main bash "$SCRATCH/p94.sh"
+  rm -f /tmp/ship-R-T11-security-review-state /tmp/ship-R-T11-state.env
   [[ "$output" == *"off (ship-config on main)"* ]]
 }
 

@@ -2,7 +2,7 @@
 load helpers
 
 setup() {
-  export CMD="$SHIP_SKILL_ROOT/commands/ship-next.md"
+  export CMD="$SHIP_LIB/ship-next.sh"
 }
 
 @test "P6 flags refactor tasks that added test lines as blocking" {
@@ -13,7 +13,7 @@ setup() {
 }
 
 @test "P6 sources test-budget.sh and exports the verdict" {
-  run grep -F 'lib/test-budget.sh' "$CMD"
+  run grep -F '/test-budget.sh' "$CMD"
   [ "$status" -eq 0 ]
   run grep -F 'TEST_BUDGET_VERDICT=' "$CMD"
   [ "$status" -eq 0 ]

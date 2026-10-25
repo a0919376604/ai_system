@@ -3,13 +3,13 @@ load helpers
 
 setup() { export CMD="$SHIP_SKILL_ROOT/commands/ship-next.md"; }
 
-p7() { awk '/^## Phase 7/,/^## Phase 8 /' "$CMD"; }
-p9() { awk '/^## Phase 9/,0' "$CMD"; }
+p7() { awk '/^## Phase 7/,/^## Phase 8 /' "$CMD"; sed -n '/^sn_ship_body()/,/^sn_capture()/p' "$SHIP_LIB/ship-next.sh"; }
+p9() { awk '/^## Phase 9/,0' "$CMD"; sed -n '/^sn_capture()/,$p' "$SHIP_LIB/ship-next.sh"; }
 code() { sed 's/[[:space:]]*#.*$//' | grep -v '^[[:space:]]*$'; }
 
 @test "Phase 7 sources merge-mode and branches on it" {
   s=$(p7)
-  echo "$s" | grep -qF 'lib/merge-mode.sh' || { echo "Phase 7 never sources merge-mode"; return 1; }
+  echo "$s" | grep -qF '/merge-mode.sh' || { echo "Phase 7 never sources merge-mode"; return 1; }
   echo "$s" | grep -qF 'MERGE_MODE=$(merge_mode)' || { echo "mode is not resolved"; return 1; }
   echo "$s" | grep -qF 'case "$MERGE_MODE" in' || { echo "no branch on the mode"; return 1; }
 }
@@ -50,7 +50,7 @@ code() { sed 's/[[:space:]]*#.*$//' | grep -v '^[[:space:]]*$'; }
 
 @test "Phase 9 sources merge-mode itself" {
   # Phases do not share a shell.
-  p9 | grep -qF 'lib/merge-mode.sh' || { echo "Phase 9 uses MERGE_MODE without sourcing"; return 1; }
+  p9 | grep -qF '/merge-mode.sh' || { echo "Phase 9 uses MERGE_MODE without sourcing"; return 1; }
 }
 
 @test "Phase 7 and 9 bash still parse" {

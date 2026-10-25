@@ -123,8 +123,8 @@ EOT
   # Phase 9 step 1 removes the worktree. Reading .ship/ after that returns
   # nothing, and the operator is told the run produced no findings.
   sec=$(awk '/^## Phase 9/,0' "$CMD")
-  read_at=$(echo "$sec" | grep -n 'codex_round_last_findings' | head -1 | cut -d: -f1)
-  rm_at=$(echo "$sec" | grep -n 'git worktree remove "\$WORKTREE"' | head -1 | cut -d: -f1)
+  read_at=$(echo "$sec" | grep -n 'sn_capture "\$WORKTREE"' | head -1 | cut -d: -f1)
+  rm_at=$(echo "$sec" | grep -n 'sn_cleanup "\$WORKTREE"' | head -1 | cut -d: -f1)
   [ -n "$read_at" ] && [ -n "$rm_at" ]
   [ "$read_at" -lt "$rm_at" ]
 }
