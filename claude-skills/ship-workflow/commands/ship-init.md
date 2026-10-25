@@ -17,7 +17,6 @@ You are bootstrapping the Ship Workflow in the user's current repo.
   - **Omitted** — use current working directory; project name = basename(pwd) or `.claude/ship-config.yml` override.
 - `--custom` — interactively prompt for per-repo config overrides and write `.claude/ship-config.yml`
 - `--upgrade` — only remove this repo's old `.claude/commands/ship-*.md` copies (preserves docs/ and Obsidian content). The commands are installed once per machine by ai_system's `./sync.sh restore`; a repo needs no copy.
-- `--with-ua` — after scaffolding completes, if Understand-Anything plugin is detected at `~/.claude/plugins/cache/understand-anything/`, prompt to run `/understand` in the target repo (or skip prompt with this flag). Recommended when initializing on a mature repo (≥ 10 source files). For a brand new / empty repo, this is a no-op (no code to index yet).
 
 ## Steps
 
@@ -135,7 +134,7 @@ project: "[[$PROJECT]]"
 
 ## TODO
 
-Delete this file if you decide this project doesn't need $(echo ${f%.md} | tr A-Z a-z), or fill in when ready. See obsidian-second-brain spec 2026-08-30-ua-ship-workflow-integration-design.md for guidance on what each file is for.
+Delete this file if you decide this project doesn't need $(echo ${f%.md} | tr A-Z a-z), or fill in when ready.
 EOF
    done
    for f in INDEX.md HOT.md; do
@@ -149,20 +148,10 @@ project: "[[$PROJECT]]"
 
 # Cases $(echo ${f%.md})
 
-No cases yet. Every /ship-compound cycle drafts a stub at /tmp/case-stub-<RID>.md — review and move it into a theme subdirectory of this cases/ folder.
+No cases yet. Add reviewed cases into a theme subdirectory of this cases/ folder.
 EOF
    done
    ```
-
-9. **`--with-ua` follow-on.** If the flag was passed OR UA plugin detected AND source-file count ≥ 10:
-   ```bash
-   if [ -d "$HOME/.claude/plugins/cache/understand-anything" ]; then
-     echo "UA plugin detected. Run \`/understand\` in this repo to build the initial knowledge graph?"
-     echo "(WARNING: initial /understand on large projects consumes significant tokens; consider scoped invocation, e.g. \`/understand src/core\`)"
-     echo "Skipping — user should run /understand manually when ready."
-   fi
-   ```
-   (We do not directly invoke `/understand` — Claude Code plugin skills discover only at session start; the user runs it in a fresh session.)
 
 10. **Report.** Tell the user:
     - Project name resolved
@@ -174,8 +163,6 @@ EOF
         -not -path "./node_modules/*" -not -path "./.git/*" | wc -l
       ```
     - Next suggested commands (in priority order):
-      - **If source count ≥ 10**: recommend running `/understand src/<core-module>` (scoped) in a fresh Claude Code session to build a KG. Skip if UA plugin not installed.
-      - **If source count < 10** (new / empty repo): no code understanding action — write code first, revisit UA when the codebase has structure worth indexing.
       - add rows to ROADMAP.md, or start one with `/ship-next --adhoc "<description>"`
       - `/ship-next` to start work
 

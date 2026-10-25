@@ -1,0 +1,7 @@
+# ship-next scratch — per worktree, never committed
+.ship/
+.superpowers/
+.claude/.ship-*
+.claude/.id-reservations
+# vault mirror written by sync.sh; ai_system does not track it
+docs/product/

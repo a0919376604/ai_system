@@ -8,11 +8,6 @@
                             └────────┬────────┘
                                      │
                                      ▼
-                            ┌─────────────────┐
-                            │ UA /understand  │ ← optional, run in Claude Code
-                            └────────┬────────┘
-                                     │
-                                     ▼
         ┌─────────────────┐    ┌─────────────────┐
         │ /ship-idea      │───▶│ docs/ideas/     │
         └─────────────────┘    │ IDEA-NNN-*.md   │
@@ -27,15 +22,10 @@
                                      ▼
                             ┌─────────────────┐
                             │ ✅ shipped       │ → /ship-compound runs inside Phase 8
-                            └────────┬────────┘   optional: UA /understand if code shape shifted significantly
+                            └────────┬────────┘
                                      │
                                      └─▶ back to /ship-next
 ```
-
-## Optional input
-
-UA's `/understand` (code understanding) is an optional input: when
-`target-repo/.ua/knowledge-graph.json` exists, ship-next reads it in Phases 3, 6 and 8.
 
 ## Dual-brain sync
 

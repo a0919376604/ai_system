@@ -80,21 +80,6 @@ Parse the user's input:
 - Otherwise → treat the input as an optional plan path and proceed with
   Pre-flight (launch a new run).
 
-A slot arg is normalized like this — accepts a bare slot id or a plan
-file path:
-
-```bash
-resolve_slot() {
-  local ARG=""; for ARG in "$@"; do break; done
-  if [ -z "$ARG" ]; then echo ""; return; fi
-  if [ -f "$ARG" ]; then
-    basename "$ARG" .md | tr -c 'A-Za-z0-9_.-' '_'
-  else
-    echo "$ARG" | tr -c 'A-Za-z0-9_.-' '_'
-  fi
-}
-```
-
 ## Step 1: Pre-flight
 
 ```bash
@@ -462,7 +447,8 @@ else
     SLOT=$(basename "$LAST_PID" .pid | sed 's/^run-plan-codex-//')
     echo "no alive runs — showing most recent: slot=$SLOT"
   elif [ ${#ALIVE[@]} -eq 1 ]; then
-    SLOT="${ALIVE[0]}"
+    # zsh arrays start at 1.
+    for SLOT in "${ALIVE[@]}"; do break; done
   else
     echo "multiple runs alive — pass a slot:"
     for s in "${ALIVE[@]}"; do echo "  - $s"; done
@@ -628,7 +614,9 @@ done
 if [ ${#ALIVE[@]} -eq 0 ]; then
   echo "no codex run to kill"
 elif [ ${#ALIVE[@]} -eq 1 ]; then
-  do_kill "${ALIVE[0]}"
+  # zsh arrays start at 1.
+  for SLOT in "${ALIVE[@]}"; do break; done
+  do_kill "$SLOT"
 else
   echo "multiple runs alive — pass a slot or --all:"
   for s in "${ALIVE[@]}"; do echo "  - $s"; done

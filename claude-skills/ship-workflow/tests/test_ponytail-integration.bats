@@ -33,31 +33,6 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
-@test "ponytail_version: echoes the installed version directory name" {
-  make_fake_ponytail_plugin "$SCRATCH" 5.0.1
-  run ponytail_version
-  [ "$output" = "5.0.1" ]
-}
-
-@test "ponytail_version: silent when plugin absent" {
-  run ponytail_version
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
-
-@test "ponytail_ruleset_sha256: stable 64-char hex for a fixed ruleset" {
-  make_fake_ponytail_plugin "$SCRATCH"
-  run ponytail_ruleset_sha256
-  [ "$status" -eq 0 ]
-  [ "${#output}" -eq 64 ]
-}
-
-@test "ponytail_ruleset_sha256: silent when plugin absent" {
-  run ponytail_ruleset_sha256
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
-
 @test "ponytail_render_rules: writes scope header then the ladder" {
   make_fake_ponytail_plugin "$SCRATCH"
   mkdir -p .ship
@@ -129,16 +104,6 @@ teardown() {
   make_fake_ponytail_plugin "$SCRATCH" 5.2.0 "" some-other-marketplace
   run ponytail_check_installed
   [ "$status" -eq 0 ]
-  run ponytail_version
-  [ "$output" = "5.2.0" ]
-}
-
-@test "ponytail_version: picks the highest version, not the last listed" {
-  make_fake_ponytail_plugin "$SCRATCH" 4.9.0
-  make_fake_ponytail_plugin "$SCRATCH" 4.10.0
-  make_fake_ponytail_plugin "$SCRATCH" 4.8.4
-  run ponytail_version
-  [ "$output" = "4.10.0" ]
 }
 
 @test "ponytail_check_installed: the pre-fix layout is NOT accepted" {

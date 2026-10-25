@@ -38,7 +38,6 @@ cd /path/to/your/repo
 | `/ship-land` | After an mr review merges, run `/ship-compound` at `origin/<base>` in a throwaway worktree, push with `[skip ci]`, then clean up (R-008) |
 | `/ship-init` | Scaffold a repo; `--upgrade` removes old per-repo command copies |
 
-**UA integration** — `/ship-next` auto-picks up `.ua/knowledge-graph.json` if present in the target repo. See spec `docs/superpowers/specs/2026-08-30-ua-ship-workflow-integration-design.md`.
 
 ## Security review (ship-next Phase 6)
 

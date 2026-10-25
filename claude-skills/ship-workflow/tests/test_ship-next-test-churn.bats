@@ -1,13 +1,11 @@
 #!/usr/bin/env bats
 load helpers
 setup() { export CMD="$SHIP_SKILL_ROOT/commands/ship-next.md"; }
-p85() { awk '/^## Phase 8.5/,/^## Phase 8.7/' "$CMD"; }
+p85() { awk '/^## Phase 8.5/,/^## Phase 9/' "$CMD"; }
 p5()  { awk '/^## Phase 5 /,/^## Phase 6 /' "$CMD"; }
 
 @test "Phase 8.5 reports churn, not only growth" {
-  # The phase stays two statements: its body is guarded by an exhaustive
-  # allowlist in test_ship-next-prune.bats, which only works while the body is
-  # short enough to enumerate. What tc_report actually emits is pinned in
+  # What tc_report actually emits is checked in
   # test_test-churn.bats against a real git history.
   s=$(p85)
   echo "$s" | grep -qF 'lib/test-churn.sh' || { echo "lib not sourced"; return 1; }
@@ -15,7 +13,7 @@ p5()  { awk '/^## Phase 5 /,/^## Phase 6 /' "$CMD"; }
 }
 
 @test "Phase 8.5 stays report-only for churn too" {
-  # The prune phase deletes nothing; churn must not become a gate either.
+  # The report phase deletes nothing; churn must not become a gate either.
   # Measured: 32% of real modifications are unpaired, and judging whether a
   # given one is wrong needs a human.
   s=$(p85 | sed 's/[[:space:]]*#.*$//')

@@ -21,6 +21,8 @@
 #   substring anywhere in the log reads the instructions back as a result, so a
 #   verdict only counts at the start of a line, optionally bold.
 
+# R-008: a test name in executor output is not an infrastructure error.
+CODEX_INFRA_LINE_RE='^[[:space:]]*([0-9][0-9TZ:.+-]*[[:space:]]+)?ERROR'
 CODEX_INFRA_SIGNATURES='out of credits|flagged for possible|UnknownProcessId|failed to record rollout items'
 
 # One definition of what a verdict marker looks like, shared by the classifier
@@ -38,7 +40,7 @@ _codex_marker() {
 codex_verdict() {
   local log="$1" marker
   [ -f "$log" ] || { echo infra; return 0; }
-  if grep -aqE "$CODEX_INFRA_SIGNATURES" "$log" 2>/dev/null; then
+  if grep -aE "$CODEX_INFRA_LINE_RE" "$log" 2>/dev/null | grep -aqE "$CODEX_INFRA_SIGNATURES"; then
     echo infra; return 0
   fi
   marker=$(_codex_marker "$log")
@@ -54,7 +56,7 @@ codex_verdict() {
 codex_verdict_reason() {
   local log="$1" hit marker
   [ -f "$log" ] || { echo "no log file at $log"; return 0; }
-  hit=$(grep -aoE "$CODEX_INFRA_SIGNATURES" "$log" 2>/dev/null | head -1)
+  hit=$(grep -aE "$CODEX_INFRA_LINE_RE" "$log" 2>/dev/null | grep -aoE "$CODEX_INFRA_SIGNATURES" | head -1)
   if [ -n "$hit" ]; then
     echo "infrastructure failure: $hit"
     return 0

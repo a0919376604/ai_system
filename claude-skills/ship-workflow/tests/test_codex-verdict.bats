@@ -188,3 +188,15 @@ mklog() { printf '%s\n' "$@" > run.log; }
   run codex_verdict_reason run.log
   [[ "$output" == *BLOCKED* ]]
 }
+
+@test "codex_verdict: an infra signature in test output is not infra" {
+  mklog "ok 102 codex_verdict: out of credits is infra, not a verdict" "DONE"
+  run codex_verdict run.log
+  [ "$output" = "done" ]
+}
+
+@test "codex_verdict_reason: an infra signature in test output reports the marker" {
+  mklog "ok 102 codex_verdict: out of credits is infra, not a verdict" "DONE"
+  run codex_verdict_reason run.log
+  [ "$output" = "executor reported DONE" ]
+}

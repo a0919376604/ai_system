@@ -75,3 +75,12 @@ p6() { awk '/^## Phase 6/,/^## Phase 7/' "$CMD"; }
   awk '/^## Phase 7/,/^## Phase 8 /' "$CMD" | grep -qF 'off (ship-config on' || return 1
   awk '/^## Phase 9/,0' "$CMD" | grep -qF 'security-review-state'
 }
+
+@test "security runs once code review reports zero blockers on the attempt" {
+  p6 | grep -qF 'Security pass (once code review clears the attempt)'
+  p6 | grep -qF 'code review reports 0 blockers'
+}
+
+@test "ship-next offers a Small-change lane before planning" {
+  awk '/^## Phase 3 /,/^## Phase 5 /' "$CMD" | grep -qF 'Small-change lane'
+}

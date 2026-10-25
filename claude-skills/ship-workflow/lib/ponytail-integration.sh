@@ -45,14 +45,6 @@ _ponytail_dir() {
   echo "$best"
 }
 
-# ponytail_version — echo the installed version, or nothing.
-ponytail_version() {
-  local d
-  d=$(_ponytail_dir)
-  [ -n "$d" ] || return 0
-  basename "$d"
-}
-
 # ponytail_ruleset_path — echo the shipped AGENTS.md path, or nothing.
 ponytail_ruleset_path() {
   local d
@@ -68,18 +60,6 @@ ponytail_check_installed() {
   p=$(ponytail_ruleset_path)
   [ -n "$p" ] || return 1
   return 0
-}
-
-# ponytail_ruleset_sha256 — echo the ruleset hash, or nothing.
-ponytail_ruleset_sha256() {
-  local p
-  p=$(ponytail_ruleset_path)
-  [ -n "$p" ] || return 0
-  if command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$p" | awk '{print $1}'
-  elif command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$p" | awk '{print $1}'
-  fi
 }
 
 # ponytail_render_rules <outfile> — write scope header + ladder, or no-op.

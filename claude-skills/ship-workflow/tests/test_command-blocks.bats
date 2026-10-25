@@ -204,6 +204,24 @@ compound_step9() { block ship-compound.md '^9\. \*\*Log \+ commit' '^10\. \*\*Re
   [ -z "$(git ls-files docs/specs)" ]
 }
 
+@test "ship-compound step 9 skips an ignored vault mirror instead of failing" {
+  echo 'merge_mode: squash' > .claude/ship-config.yml
+  git rm -rq --cached docs/product && printf 'docs/product/\n' > .gitignore
+  git add -A && git commit -q -m "mirror untracked and ignored"
+  echo "learning" > docs/learnings/R-1-x.md
+  compound_step9 > "$SCRATCH/s9.sh"
+  run env ID=R-1 slug=x bash "$SCRATCH/s9.sh"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ -z "$(git ls-files docs/product)" ]
+  [ "$(git log -1 --format=%s)" = "compound: R-1 — shipped + learning" ]
+}
+
+@test "ship-compound tells a small-change-lane ship (no plan) where its inputs are" {
+  sec=$(awk '/^2\. \*\*Identify the ship/,/^4\. /' "$SHIP_SKILL_ROOT/commands/ship-compound.md")
+  echo "$sec" | grep -qF 'small-change lane' || { echo "steps 2-3 ignore lane ships"; return 1; }
+  ! grep -qF 'No plan found' "$SHIP_SKILL_ROOT/commands/ship-compound.md"
+}
+
 land_step5() { block ship-land.md '^5\. \*\*Clean up' '^6\. \*\*Report'; }
 
 @test "ship-land step 5 removes a worktree whose vault mirror sync dirtied" {
@@ -572,4 +590,27 @@ land_case() {
 @test "ship-compound step 7 leaves an already Done row alone" {
   run sed -n '/^7\. /,/^7b\. /p' "$SHIP_SKILL_ROOT/commands/ship-compound.md"
   [[ "$output" == *'If the `${ID}` row is already under "✅ Done" (a re-run of `/ship-land`), leave the ROADMAP as it is.'* ]]
+}
+
+@test "ship-next P1 warns when the ship would land off the default branch" {
+  git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  git checkout -q -b x
+  block ship-next.md '^6\. \*\*Compute worktree path' '^7\. \*\*Detect existing worktree' > "$SCRATCH/p1.sh"
+  for shell in bash zsh; do
+    run env ID=R-1 SLUG=x "$shell" -c 'source "$1" 2>"$2"' -- "$SCRATCH/p1.sh" "$SCRATCH/warn"
+    [ "$status" -eq 0 ]
+    grep -qE "WARN:.*'x'.*'main'" "$SCRATCH/warn"
+  done
+}
+
+@test "ship-next P1 does not fail when the landing branch needs no warning" {
+  block ship-next.md '^6\. \*\*Compute worktree path' '^7\. \*\*Detect existing worktree' > "$SCRATCH/p1.sh"
+  for shell in bash zsh; do
+    git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+    run env ID=R-1 SLUG=x "$shell" "$SCRATCH/p1.sh"
+    [ "$status" -eq 0 ]
+    git symbolic-ref --delete refs/remotes/origin/HEAD
+    run env ID=R-1 SLUG=x "$shell" "$SCRATCH/p1.sh"
+    [ "$status" -eq 0 ]
+  done
 }

@@ -5,7 +5,7 @@
 | `ship-init` | (none) | n/a |
 | `ship-idea` | optional `compound-engineering:ce-ideate` (only on user request) | Skip ideation; just capture |
 | `ship-next` | `superpowers:brainstorming` + `superpowers:writing-plans` + user-chosen executor + code-review-skill | Required — no fallback for brainstorm/spec/plan/review |
-| `ship-compound` | `compound-engineering:ce-compound` + `ce-promote` | Hand-write learning sections |
+| `ship-compound` | (none; draft learning directly) | n/a |
 
 `/ship-next` now spans the former brainstorm/spec plus plan/execute range: it opens the worktree, produces the spec (decisions included), writes the plan, runs the chosen executor, enforces the strict code-review gate, squash-merges, and then invokes `/ship-compound`.
 
@@ -38,7 +38,6 @@ If a ce-* skill's interface changes (different argument names, different output 
 2. Pins to a known-good version in `~/.claude/ship-workflow.yml`:
    ```yaml
    ce_skill_versions:
-     ce-compound: "1.2"
      ce-strategy: "0.8"
    ```
 

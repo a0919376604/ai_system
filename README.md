@@ -165,7 +165,6 @@ devsync stop my-repo   # 結束
 - **經驗會累積**：過去的 learning 會在下次 brainstorm 時被讀回來，專案用語（`CONTEXT.md`）和測試規則（`docs/tdd-rules.md`）也會隨著每個 repo 一起成長。
 - **可以無人值守**：`--auto:yes` 可以整晚自己跑，每個自動做的決定都有紀錄，失敗時保留現場並通知你。
 - **每一步都留紀錄**：每個項目留一份 learning（含當初的決定和理由）在 repo，spec 全文在 vault，過程在 git 歷史；repo 裡不會堆過時的設計文件。
-- **看得到影響範圍**：搭配 Understand-Anything，review 時知道這次改動會波及哪些模組。
 
 **缺點**
 
@@ -175,7 +174,6 @@ devsync stop my-repo   # 結束
 - **流程由模型執行**：helper script 有 bats 測試，但指令本身是給 Claude 讀的 markdown，每一步有沒有照做，取決於模型。
 - **全自動的品質看 Roadmap 寫得多清楚**：`--auto:yes` 遇到問題一律選建議選項，Roadmap 寫得越模糊，做出來的就越可能和你想的不一樣。
 - **策略只能在 Obsidian 改**：同步是單向的，直接在 repo 改 ROADMAP 會被擋下來。
-- **Knowledge graph 很貴**：大型 repo 第一次跑 `/understand` 會消耗大量 token。
 
 ## 5. 需求
 
@@ -186,7 +184,6 @@ devsync stop my-repo   # 結束
 | 項目 | 用途 |
 |---|---|
 | compound-engineering（`ce-*`） | `/ship-compound` 的自動化 |
-| [understand-anything](https://github.com/Lum1104/Understand-Anything) | 影響範圍分析、knowledge graph 自動重建（見第 6 節） |
 | [ponytail](https://github.com/DietrichGebert/ponytail) | executor 的寫碼規則 |
 | codex CLI | 第 3 種 executor |
 | `gh` / `glab` | `merge_mode: mr` 開 PR/MR |
@@ -218,15 +215,5 @@ devsync stop my-repo   # 結束
 **`merge_mode: mr`**（寫在 `.claude/ship-config.yml`）：不直接 merge，改成開 PR/MR，review 只帶工作內容；合併後執行 `/ship-land R-NNN`，在 `origin/<base>` 的暫存 worktree 跑 `/ship-compound`，以 `[skip ci]` 推送後清理 branch 和 worktree（R-008）。
 
 **中斷**：重跑 `/ship-next R-NNN` 會從上次的階段接續。
-
-**Understand-Anything 整合**：repo 有 `.ua/knowledge-graph.json` 時自動啟用，沒有就安靜跳過。
-
-| 時機 | 做什麼 |
-|---|---|
-| `/ship-init --with-ua` | 提示你對 repo 跑 `/understand`，建立 knowledge graph |
-| Phase 1.5 | graph 比 HEAD 舊時發出警告 |
-| Phase 6 | 用 `/understand-diff` 產出影響範圍報告（受影響的模組、層級、風險評估），再比對 vault 的 `REMINDERS.md`，一起交給 reviewer |
-| Phase 8 | `/ship-compound` 用影響範圍草擬一份 case 筆記，並問你要不要新增 REMINDERS 規則 |
-| Phase 8.7 | graph 落後超過 50 個檔案時，自動重跑 `/understand` |
 
 完整定義見 [`ship-next.md`](claude-skills/ship-workflow/commands/ship-next.md)，設計文件在 [`docs/superpowers/specs/`](docs/superpowers/specs/)。

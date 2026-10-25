@@ -15,13 +15,12 @@ them into `~/.claude/commands/` — and every repo uses those. A repo carries no
 - **`/ship-land [R-NNN]`** — Finish an item shipped via `merge_mode: mr`: after the review merges, run `/ship-compound` in a throwaway worktree at `origin/<base>`, push with `[skip ci]`, then remove the branch + worktree Phase 9 kept (R-008)
 - **`/ship-init`** — Bootstrap a repo (folders, AIR-OS Product Brain stub); `--upgrade` removes old per-repo command copies
 
-- **UA integration**: `/ship-next` auto-detects `.ua/knowledge-graph.json` in the target repo and injects UA blast-radius context into Phase 3 (brainstorm), Phase 6 (review), and Phase 8 (compound). Silent no-op when UA absent. See `docs/superpowers/specs/2026-08-30-ua-ship-workflow-integration-design.md`.
 
 ## Dual-Brain Architecture
 
 - **Obsidian Product Brain** at AIR-OS `10 Projects/<repo-name>/`:
   - VISION / STRATEGY / ROADMAP / QUARTERLY_GOALS (edited by hand; `--adhoc` inserts ROADMAP rows)
-  - `Architecture/` (hand-written POCKET/JOURNEY/GLOSSARY/REMINDERS + cases/; optional `.ua/knowledge-graph.json` in target repo for descriptive code graph via UA plugin)
+  - `Architecture/` (hand-written POCKET/JOURNEY/GLOSSARY/REMINDERS + cases/)
 - **Repo Execution Brain** at `<repo>/docs/`:
   - `ideas/` `decisions/` `specs/` `plans/` `learnings/`
   - `product/` (mirror of vault strategy + roadmap)
@@ -52,7 +51,7 @@ default_id_pad: 3
 auto_pull_freshness_window: 60
 ```
 
-- `ponytail:` configures mode, pinned version, and ruleset SHA-256.
+- ponytail: when installed, its ladder is rendered into .ship/ponytail-rules.md for the executor.
 - `test_budget:` configures the major and blocking multipliers against each repo's baseline.
 
 The shadow-mode ship count is derived from `docs/learnings/_log.md` and is deliberately not stored in config.

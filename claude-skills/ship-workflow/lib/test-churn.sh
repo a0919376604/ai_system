@@ -100,10 +100,7 @@ tc_lines_per_test() {
 }
 
 # tc_report <base> <head> — the whole churn report, as lines.
-# Lives here, not in the phase, for the reason prune_report does: Phase 8.5's
-# body is guarded by an exhaustive allowlist, and that allowlist only works
-# while the body stays short enough to enumerate. Logic belongs in a lib that
-# is unit-tested directly.
+# Logic lives in a library so it can be unit-tested directly.
 tc_report() {
   local base="$1" head="$2" n orphan lpt
   n=$(tc_modified_tests "$base" "$head" | grep -c . || true)

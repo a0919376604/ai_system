@@ -159,6 +159,8 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    WORKTREE="$PARENT/${REPO_NAME}-worktrees/${ID}-${SLUG}"
    BRANCH="ship/${ID}-${SLUG}"
    ORIG_BRANCH=$(git branch --show-current)
+   DEFAULT_BRANCH=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || true)
+   [ -n "$DEFAULT_BRANCH" ] && [ "$ORIG_BRANCH" != "$DEFAULT_BRANCH" ] && echo "WARN: this ship will land on '$ORIG_BRANCH', not '$DEFAULT_BRANCH' — fast-forward $DEFAULT_BRANCH yourself afterwards" >&2 || true
    ```
 
 7. **Detect existing worktree:**
@@ -172,17 +174,6 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
        - `Y` (or `--resume` was passed): jump to Phase 3, but auto-skip phases already done (detect via commit count + file presence — see Phase 3 step 0).
        - `discard`: `git worktree remove --force "$WORKTREE"; git branch -D "$BRANCH"`, fall through to Phase 2.
        - `n`: exit 0.
-
-## Phase 1.5 — UA drift check (auto-detect, silent no-op if UA absent)
-
-```bash
-# shellcheck disable=SC1091
-source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
-DRIFT_WARN=$(ua_check_drift)
-[ -n "$DRIFT_WARN" ] && echo "$DRIFT_WARN"
-```
-
-When UA plugin + repo KG are both present and the KG's baseline commit differs from HEAD by any project files, this prints a warning block. It does NOT gate; the phase proceeds. See `docs/superpowers/specs/2026-08-30-ua-ship-workflow-integration-design.md`.
 
 ## Phase 2 — Open worktree
 
@@ -199,21 +190,7 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
 
 ## Phase 3 — Brainstorm
 
-0. **UA pre-brainstorm context (auto-detect, silent if UA absent):**
-
-   ```bash
-   # shellcheck disable=SC1091
-   source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
-   if ua_check_installed; then
-     mkdir -p .ship
-     ua_get_pre_brainstorm_context "$ID" > .ship/ua-context.md
-     [ -s .ship/ua-context.md ] && echo "UA pre-context saved to .ship/ua-context.md — Read this before brainstorm dialog."
-   fi
-   ```
-
-   When the brainstorming skill kicks off, it should Read `.ship/ua-context.md` (if present) as part of its opening context — this gives the design dialog concrete grounding in how the target files actually connect.
-
-   **CONTEXT.md (project vocabulary):**
+0. **CONTEXT.md (project vocabulary):**
 
    ```bash
    # shellcheck disable=SC1091
@@ -328,6 +305,13 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
 
 ## Phase 4 — Writing plans
 
+**Small-change lane.** When the spec's Decisions size the work as one task,
+about ≤ 50 changed lines and no new seam beyond one function, skip this phase
+and Phase 5's executor choice: implement it yourself in the worktree with TDD
+(failing test first), commit `feat(<ID>): …`, then go to Phase 6. Log the choice
+in auto mode. Set `EXECUTOR_CHOICE=2` and record it via Phase 5 step 2 and render the rule files
+via step 2.5 before implementing, so review fixes retain the inline executor.
+
 **Plan-authoring guidance (learned from R-084.1, 2026-07-30):**
 
 - **Verification/acceptance steps MUST run scoped pytest, not the full
@@ -422,28 +406,13 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
    source ~/.claude/skills/ship-workflow/lib/ponytail-integration.sh
    ponytail_render_rules .ship/ponytail-rules.md
 
-   # Version pin + drift detection (spec §8.4). Drift NEVER blocks: we use the
-   # new ruleset and surface the change, because a stale pin nobody bumps is the
-   # failure mode this project already has.
-   PONYTAIL_CURRENT=$(ponytail_version)
-   PONYTAIL_SHA=$(ponytail_ruleset_sha256)
-   PONYTAIL_PINNED=$(grep -A3 '^ponytail:' ~/.claude/ship-workflow.yml 2>/dev/null \
-                     | grep 'pinned_version:' | sed 's/.*: *//' | tr -d '"' )
-   PONYTAIL_PINNED_SHA=$(grep -A3 '^ponytail:' ~/.claude/ship-workflow.yml 2>/dev/null \
-                     | grep 'ruleset_sha256:' | sed 's/.*: *//' | tr -d '"' )
-   PONYTAIL_DRIFT=0
-   if [ -n "$PONYTAIL_SHA" ] && [ -n "$PONYTAIL_PINNED_SHA" ] \
-      && [ "$PONYTAIL_SHA" != "$PONYTAIL_PINNED_SHA" ]; then
-     PONYTAIL_DRIFT=1
-   fi
-
    # An absent ponytail is a legitimate state, but a SILENT one misleads. The
    # lib no-ops by design (spec 8.4) — correct for a missing optional
    # dependency, wrong for one the operator asked for and believes is active.
    # Measured on this machine: check_installed false, render_rules 0 lines,
    # Phase 5 said nothing, so every executor ran with no ladder at all.
    if ponytail_check_installed; then
-     PONYTAIL_STATUS="v${PONYTAIL_CURRENT} ladder rendered"
+     PONYTAIL_STATUS="ladder rendered"
    else
      PONYTAIL_STATUS="not installed — no ladder enforced this run"
      # Printed here, not only in Phase 9: the SUMMARY is built only when
@@ -451,16 +420,6 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
      echo "ponytail: not installed — no ladder enforced this run" >&2
    fi
    ```
-
-   **On drift (`PONYTAIL_DRIFT=1`):**
-   - `--auto:yes`: proceed with the new ruleset, log it, and let Phase 9 surface it.
-     ```bash
-     [ "$AUTO" = "1" ] && ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh \
-       "$WORKTREE" "P5" "ponytail ruleset drift" "${PONYTAIL_PINNED} -> ${PONYTAIL_CURRENT}, using new"
-     ```
-   - Interactive: show the version delta and a `diff` of the ruleset against the pin,
-     then offer `[A]ccept and re-pin / [S]kip / [C]ontinue without re-pinning`.
-     `[A]` rewrites `pinned_version` and `ruleset_sha256` in `~/.claude/ship-workflow.yml`.
 
    The plan's task template already instructs executors to read both files.
    Rendering to `.ship/` rather than relying on skill activation is deliberate:
@@ -640,49 +599,6 @@ When UA plugin + repo KG are both present and the KG's baseline commit differs f
 
 ## Phase 6 — Code review loop (strict gate)
 
-0. **UA blast-radius report + REMINDERS cross-ref (auto-detect, silent if UA absent):**
-
-   ```bash
-   # shellcheck disable=SC1091
-   source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
-   ua_check_installed && echo "UA present — run the blast-radius step below." || true
-   ```
-
-   When UA is present, **invoke `/understand-anything:understand-diff`** with
-   `${ORIG_BRANCH}` as the base, and write its analysis to `.ship/ua-diff-report.md`.
-
-   This used to be `ua_get_diff_report`, ~90 lines of bash walking
-   `.ua/knowledge-graph.json` by hand. It produced Changed and Affected components
-   only. `/understand-diff` reads the same graph and additionally gives **affected
-   layers**, a **risk assessment** derived from node complexity and cross-layer edge
-   count, and a **dashboard overlay** (`.ua/diff-overlay.json`). Its staleness check is
-   also stricter: it inspects staged, unstaged and untracked state, not just the
-   committed diff. Reimplementing a worse subset in shell was the duplication; the
-   output feeds an LLM reviewer and a template, so nothing parses it as a contract.
-
-   Then cross-reference the vault's architecture reminders — this part is independent
-   of UA's output format and stays as plain bash:
-
-   ```bash
-   if [ -s .ship/ua-diff-report.md ]; then
-     PROJECT_PATH=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path 2>/dev/null || echo "")
-     REMINDERS_PATH="$PROJECT_PATH/Architecture/REMINDERS.md"
-     if [ -n "$PROJECT_PATH" ] && [ -f "$REMINDERS_PATH" ]; then
-       git diff --name-only "${ORIG_BRANCH}...HEAD" | while IFS= read -r f; do
-         [ -z "$f" ] && continue
-         base=$(basename "$f" | sed 's/\.[^.]*$//')
-         if grep -q "$base" "$REMINDERS_PATH" 2>/dev/null; then
-           echo "> ℹ REMINDERS.md has a rule mentioning \`$base\` — review before merge." >> .ship/ua-diff-report.md
-         fi
-       done
-     fi
-     echo "UA blast-radius report → .ship/ua-diff-report.md"
-   fi
-   ```
-
-   code-review-skill should Read `.ship/ua-diff-report.md` when present, treating it as
-   pre-computed review context alongside the diff itself.
-
 0.5. **Mechanical test gates (pure git + shell, before the LLM review).**
 
    ```bash
@@ -751,12 +667,12 @@ CHECKS
    fi
    ```
 
-1.5. **Security pass (every review attempt)** — a separate review, next to
+1.5. **Security pass (once code review clears the attempt)** — a separate review, next to
    code-review-skill, as in Anthropic's own pipeline (R-003). It is a vendored copy of
    Anthropic's open-source `/security-review` prompt, rendered for this ship's diff, with
    prompt-injection and LLM-output checks added. Its HIGH findings block exactly like
    code-review blockers. Run this block inside the loop below, after code-review-skill
-   has written `$REVIEW_OUT`:
+   reports 0 blockers on the attempt (including mechanical blockers):
 
    ```bash
    # Each block runs in its own shell: these come from the surrounding phase.
@@ -844,15 +760,23 @@ CHECKS
      SEC_OUT=/tmp/ship-next-security-${ID}-${attempt}.md
      rm -f "$REVIEW_OUT" "$SEC_OUT"   # never parse a report left by an earlier run
      # Invoke awesome-skills/code-review-skill on REVIEW_TARGET; capture output to $REVIEW_OUT
-     # Read .ship/review-extra-checks.md alongside .ship/ua-diff-report.md when present.
-     # Then run steps 1.5 and 1.6 (the security pass); they write SEC_OUT.
+     # Read .ship/review-extra-checks.md when present.
 
      # A failed parse (a missing report) must stop the gate, not pass it: eval of an
      # empty string succeeds and leaves BLOCKING_COUNT unset.
-     PARSED=$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh "$REVIEW_OUT" "$SEC_OUT") \
+     PARSED=$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh "$REVIEW_OUT") \
        || { echo "review parse failed — not passing the gate" >&2; exit 1; }
      eval "$PARSED"
      BLOCKING_COUNT=$((BLOCKING_COUNT + MECH_BLOCKERS))
+
+     if [ "$BLOCKING_COUNT" -eq 0 ]; then
+       # Only once code review reports 0 blockers, run steps 1.5 and 1.6.
+       # They write and validate SEC_OUT; any failure stops here, never passes.
+       PARSED=$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh "$REVIEW_OUT" "$SEC_OUT") \
+         || { echo "review parse failed — not passing the gate" >&2; exit 1; }
+       eval "$PARSED"
+       BLOCKING_COUNT=$((BLOCKING_COUNT + MECH_BLOCKERS))
+     fi
 
      # Auto mode: log every attempt
      if [ "$AUTO" = "1" ]; then
@@ -1057,7 +981,7 @@ review sets `merge_mode: mr`.
    ↳ done when: ${DONE_WHEN}
 
    Tasks (from docs/plans/${ID}-${SLUG}.md):
-   $(grep -E '^### Task [0-9]+:' "docs/plans/${ID}-${SLUG}.md" | sed 's/^### /  - /')
+   $( [ -f "docs/plans/${ID}-${SLUG}.md" ] && grep -E '^### Task [0-9]+:' "docs/plans/${ID}-${SLUG}.md" | sed 's/^### /  - /')
 
    Code review (awesome-skills/code-review-skill):
    - blocking: 0 ✓
@@ -1120,7 +1044,7 @@ review sets `merge_mode: mr`.
 
 ## Phase 8 — /ship-compound (squash) · in-review + learning draft (mr)
 
-**`squash`:** invoke `/ship-compound` for this R-NNN from the original repo cwd on
+**`squash`:** invoke `/ship-compound` with `ID` set to this R-NNN from the original repo cwd on
 `$ORIG_BRANCH` (Phase 7 already cd'd back). It writes the learning, updates
 `CONTEXT.md` (exports `CONTEXT_MD_STATUS`), moves the row to Done and removes the
 spec and plan.
@@ -1143,7 +1067,7 @@ the base branch, and parallel reviews must not touch them (R-001, R-008).
    It is not committed; `/ship-land` starts from it. Set
    `CONTEXT_MD_STATUS="deferred to /ship-land"`.
 
-## Phase 8.5 — Test prune report
+## Phase 8.5 — Test churn report
 
 **Report-only. This phase deletes nothing.**
 
@@ -1169,90 +1093,8 @@ the base branch, and parallel reviews must not touch them (R-001, R-008).
    but averages 24 lines per test. The bulk is setup, not test count.
 
    **Report only.** Deciding whether a specific unpaired edit was wrong needs a
-   human, for the same reason the prune list below is a proposal: no mechanical
+   human: no mechanical
    signal distinguishes a brittle test from a correctly-updated one.
-
-It was designed to prune redundant tests behind a coverage gate. Six review rounds found
-fourteen defects in that gate, and the last three established why: coverage records which
-lines and branches *executed*, not whether an assertion *observed* them. A test stripped
-of its assertions produces coverage identical to one that checks everything, so no
-coverage-derived value can establish that deleting a test is safe. Proving assertion
-strength needs mutation testing, which is its own roadmap item. See spec §7.1.
-
-1. **Identify candidates.** When `TEST_BUDGET_VERDICT` is `major`, read the tests
-   covering the modules this ship touched and list, for each one you would propose
-   removing, the file, the test name, the category and one line of reasoning. Three
-   categories:
-
-   1. duplicate coverage — two tests asserting the same behavior
-   2. seam violations — a test asserting inside a seam rather than at it
-   3. never-failing tests — an assertion too weak to discriminate any input
-
-   Write them to `.ship/prune-candidates.md`, one line each, in exactly this form:
-
-   ```
-   CANDIDATE: <test file>::<test name> — <category> — <one line of reasoning>
-   ```
-
-   **Propose only; change no test file.** The prefix matters: an earlier Markdown table
-   made the header indistinguishable from data, so one candidate counted as two.
-
-2. **Compute the status.**
-
-   ```bash
-   # shellcheck disable=SC1091
-   source ~/.claude/skills/ship-workflow/lib/prune-report.sh
-   PRUNE_STATUS=$(prune_report "$ORIG_BRANCH" "$BRANCH" "$TEST_BUDGET_VERDICT")
-   ```
-
-   The mechanical half — trigger, scope resolution, counting — lives in
-   `lib/prune-report.sh` so it is unit-tested like every other function here. It was
-   previously inline bash in this file, and proving it destroyed nothing meant extracting
-   these fences and executing them; four review rounds then found holes in that
-   *extraction harness* rather than in the code. `prune_report` is read-only by
-   construction: its only write is `mkdir -p .ship`, and its git subcommands are `diff`,
-   `rev-parse` and `merge-base`, all of which read. It returns exit 2 when it cannot
-   evaluate its input — a malformed ref, an unknown verdict, two commits with no merge
-   base — so "could not tell" never reads as "nothing to do". The command substitution
-   below does not abort on that, so the reason lands in the Phase 9 summary.
-
-3. **Surface it.** Phase 9 puts `PRUNE_STATUS` in the summary and in the `_log.md` row,
-   so the count appears whether or not you open the file. Acting on the list is yours.
-
-   There is no rollback path and no commit, because nothing changes. The `--auto:yes`
-   question disappears with the destructive act: a report is safe to produce unattended.
-
-## Phase 8.7 — UA knowledge graph rebuild
-
-Runs after Phase 8.5. That phase is report-only and commits nothing, so this ordering is
-no longer load-bearing for correctness; it is kept so the rebuilt graph reflects the tree
-as Phase 9 will leave it.
-
-```bash
-# shellcheck disable=SC1091
-source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
-UA_STATUS="n/a"
-if ua_check_installed; then
-  # ua_check_drift already computes the count against the KG's baseline commit;
-  # re-deriving it here would risk the two disagreeing.
-  DRIFT_COUNT=$(ua_check_drift | grep -oE '[0-9]+ file' | grep -oE '[0-9]+' | head -1)
-  DRIFT_COUNT=${DRIFT_COUNT:-0}
-  if [ "$DRIFT_COUNT" -gt 50 ]; then
-    UA_STATUS="rebuilt (drift ${DRIFT_COUNT}/50)"
-  else
-    UA_STATUS="drift ${DRIFT_COUNT}/50"
-  fi
-fi
-```
-
-When `UA_STATUS` starts with `rebuilt`, **Invoke `/understand`** to do a full
-rebuild. There is no incremental refresh in the UA plugin: `understand-diff` reads
-the graph rather than writing it, so the options are a full rebuild or nothing.
-The `> 50` threshold is reused verbatim from `ua_check_drift`'s own severity
-boundary, not re-derived, and it doubles as the rate limiter.
-
-Rebuilding is non-destructive — it writes a new graph and touches no source — so it
-runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 
 ## Phase 9 — Cleanup
 
@@ -1360,7 +1202,7 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
      CODEX_LOG_FRAGMENT=", codex: ${CODEX_ROUNDS} round(s) ${CODEX_FINAL_VERDICT}"
    fi
    if [ -z "${SHIP_LOG_ROW:-}" ]; then
-     SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}${CODEX_LOG_FRAGMENT}) | n |"
+     SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp${CODEX_LOG_FRAGMENT}) | n |"
    fi
    # shellcheck disable=SC1091
    source ~/.claude/skills/ship-workflow/lib/ship-log.sh
@@ -1408,18 +1250,8 @@ ${CODEX_LAST_FINDINGS}
    • security review: $(if [ "$(cat "/tmp/ship-${ID}-security-review-state" 2>/dev/null)" = off ]; then echo "off (ship-config on ${ORIG_BRANCH})"; else echo "${SECURITY_COUNT:-0} finding(s), pre-existing ${PRE_EXISTING_COUNT:-0} → IDEA-NNN"; fi)
    • CONTEXT.md: ${CONTEXT_MD_STATUS}
    • Test budget: ship ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp (${TEST_BUDGET_VERDICT})
-   • Test pruning: ${PRUNE_STATUS}
-   • ponytail: ${PONYTAIL_STATUS}
-   • UA: ${UA_STATUS}${CODEX_SUMMARY_BLOCK}
+   • ponytail: ${PONYTAIL_STATUS}${CODEX_SUMMARY_BLOCK}
    • decisions log: ${WORKTREE}/.claude/.ship-auto-decisions.md (kept in worktree pre-cleanup; copy if you want post-mortem)"
-
-     case "$UA_STATUS" in
-       rebuilt*) SUMMARY="${SUMMARY/• UA:/• 🔄 UA KG rebuilt UA:}" ;;
-     esac
-     if [ "$PONYTAIL_DRIFT" = "1" ]; then
-       SUMMARY="${SUMMARY}
-   ⚠ ponytail ${PONYTAIL_PINNED} -> ${PONYTAIL_CURRENT}, ruleset changed, this ship used the new version"
-     fi
 
      # Channel routing (per /run-plan skill convention):
      # - Discord session (incoming message tag has channel source="discord"): use Discord reply

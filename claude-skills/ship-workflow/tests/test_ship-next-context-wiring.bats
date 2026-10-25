@@ -34,18 +34,6 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "P5 detects ponytail ruleset drift against the global pin" {
-  run grep -F 'PONYTAIL_DRIFT=1' "$CMD"
-  [ "$status" -eq 0 ]
-  run grep -F '[A]ccept and re-pin' "$CMD"
-  [ "$status" -eq 0 ]
-}
-
-@test "P5 drift never blocks the ship" {
-  run grep -F 'Drift NEVER blocks' "$CMD"
-  [ "$status" -eq 0 ]
-}
-
 @test "P5 tdd-rules carries the governing rules" {
   # Asserted against the RENDERED output, not against ship-next.md. The rules
   # moved into lib/tdd-rules.sh so a repo can add its own; pinning them to the

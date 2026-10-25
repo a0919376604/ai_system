@@ -23,15 +23,6 @@ load helpers
   [ "$status" -eq 0 ]
 }
 
-@test "example global config documents the ponytail block" {
-  run grep -F 'ponytail:' "$SHIP_SKILL_ROOT/examples/ship-workflow.example.yml"
-  [ "$status" -eq 0 ]
-  run grep -F 'pinned_version:' "$SHIP_SKILL_ROOT/examples/ship-workflow.example.yml"
-  [ "$status" -eq 0 ]
-  run grep -F 'ruleset_sha256:' "$SHIP_SKILL_ROOT/examples/ship-workflow.example.yml"
-  [ "$status" -eq 0 ]
-}
-
 @test "example global config documents the test budget multipliers" {
   run grep -F 'test_budget:' "$SHIP_SKILL_ROOT/examples/ship-workflow.example.yml"
   [ "$status" -eq 0 ]

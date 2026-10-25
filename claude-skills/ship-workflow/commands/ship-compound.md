@@ -19,15 +19,15 @@ You are wrapping up a Roadmap item.
    ~/.claude/skills/ship-workflow/lib/sync.sh
    ```
 
-2. **Identify the ship.** If `ID` is already set (by `/ship-land`), select the spec or plan with `ls docs/specs/${ID}-*.md docs/plans/${ID}-*.md 2>/dev/null | grep -v -- '-review-fix-' | head -1` and take `slug` from that filename, excluding review-fix plans. Otherwise find the most recent `docs/plans/R-*.md` and extract `$ID` and `$SLUG`.
+2. **Identify the ship.** The caller sets `ID`: ship-next Phase 8 for the R-NNN it just landed, `/ship-land` after the merge. Select its file with `find docs/specs docs/plans -name "${ID}-*.md" 2>/dev/null | grep -v -- '-review-fix-' | sort | head -1` (no shell glob: zsh aborts on a pattern that matches nothing, and a small-change lane ship has no plan) and take `slug` from that filename. Only when run standalone without `ID`, take the most recent `docs/specs/R-*.md` or `docs/plans/R-*.md`.
 
 3. **Gather inputs:**
-   - The plan: `docs/plans/${ID}-${slug}.md`
+   - The plan `docs/plans/${ID}-${slug}.md`, if any. A small-change lane ship has none: use the spec and the ship's implementation commits instead, and skip "What Changed From Plan".
    - All decisions tagged `affected-roadmap-items: ... ${ID} ...`
    - All ideas tagged `related-roadmap-item: ${ID}`
-   - Git log from plan's first commit timestamp to HEAD on this branch
+   - Git log from the ship's spec commit to HEAD
 
-4. **Delegate to `compound-engineering:ce-compound`** to draft the learning content:
+4. **Draft the learning yourself** with these sections:
    - What Shipped
    - Key Decisions — from the spec's `## Decisions`; the spec leaves the repo in step 9
    - What Changed From Plan
@@ -36,55 +36,7 @@ You are wrapping up a Roadmap item.
    - Technical Debt
    - Future Follow-ups
 
-5. **Render** `templates/repo/LEARNING.md` with `{{date}}` / `{{id}}` / `{{project}}` and the ce-compound output. Write to `docs/learnings/${ID}-${slug}.md`. When `/ship-land` points at a learning draft (`<ship worktree>/.ship/learning-draft.md`, written by ship-next Phase 8 in mr mode), start from it.
-
-5.5. **UA-augmented case ELI5 stub (auto-detect, silent if UA absent):**
-
-   ```bash
-   # shellcheck disable=SC1091
-   source ~/.claude/skills/ship-workflow/lib/ua-integration.sh
-   ua_check_installed && echo "UA present — run the case-stub step below." || true
-   ```
-
-   When UA is present, **invoke `/understand-anything:understand-diff`** with the base
-   being the commit of `chore: plan ${ID}` (fall back to two weeks ago if absent). Then
-   render the stub, supplying the three UA fields **from the analysis you just read**:
-
-   ```bash
-   # shellcheck disable=SC1091
-   source ~/.claude/skills/ship-workflow/lib/render-template.sh
-   PROJECT=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_name)
-   STUB_PATH="/tmp/case-stub-${ID}.md"
-   render_template ~/.claude/skills/ship-workflow/templates/repo/CASE_ELI5.md \
-     id="$ID" project="$PROJECT" slug="$SLUG" theme="TODO" \
-     date="$(date +%Y-%m-%d)" \
-     ua_changed_files="$UA_CHANGED" \
-     ua_blast_radius="$UA_BLAST" \
-     ua_raw_diff_report="$UA_REPORT" \
-     > "$STUB_PATH"
-   echo "Case ELI5 stub drafted at $STUB_PATH"
-   echo "Review + add rationale + move to AIR-OS 10 Projects/$PROJECT/Architecture/cases/<theme>/"
-   ```
-
-   Set `UA_CHANGED`, `UA_BLAST` and `UA_REPORT` yourself from the analysis. This used to
-   run `ua_get_shipped_facts` and cut the values out with
-   `sed -n '/### Changed components/,/^###/p'` — parsing prose for fixed headings. That
-   worked only because the prose came from bash. `/understand-diff` is written by a model
-   following instructions, and treating its output as a parseable contract is the mistake
-   this repo spent thirteen review rounds learning not to make. You read it; you fill the
-   fields.
-
-5.6. **REMINDERS candidate prompt (no auto-write):**
-
-   ```bash
-   echo
-   echo "Any new triggered-time rule to add to REMINDERS.md?"
-   echo "Look at UA blast radius — did we touch a module that others should"
-   echo "know a rule about before editing? (e.g. 'before touching X, do Y')"
-   echo "y/n:"
-   ```
-
-   REMINDERS is imperative shape (rules); UA output is declarative (facts). Rather than auto-draft rules (which would hallucinate), just prompt the human.
+5. **Render** `templates/repo/LEARNING.md` with `{{date}}` / `{{id}}` / `{{project}}` and the learning draft. Write to `docs/learnings/${ID}-${slug}.md`. When `/ship-land` points at a learning draft (`<ship worktree>/.ship/learning-draft.md`, written by ship-next Phase 8 in mr mode), start from it.
 
 ### Step 6 — Update CONTEXT.md (project vocabulary)
 
@@ -152,10 +104,6 @@ source ~/.claude/skills/ship-workflow/lib/context-md.sh
      CONTEXT_MD_STATUS="absent — no qualifying terms this ship"
    fi
    ```
-
-6. **Delegate to `compound-engineering:ce-promote`** to look at the "Reusable Patterns" section. For each pattern, ask the user:
-   - "Promote `<pattern title>` to AIR-OS `40 Knowledge/Concepts/<slug>.md` or `30 Engineering/<slug>.md`?"
-   - On confirm, write the promoted note with AIR-OS frontmatter (`type: concept` or `type: engineering`, ai-first preamble, related-projects wikilink back to current project).
 
 6b. **Promote a testing lesson into the repo's TDD rules.** If this ship's
    learning is about *how to write tests here* — a seam that kept getting
@@ -235,7 +183,8 @@ source ~/.claude/skills/ship-workflow/lib/context-md.sh
    git add "docs/learnings/${ID}-${slug}.md" docs/learnings/_log.md || exit 1
    # The vault mirror and this ship's TDD rule fragment, when the repo has them.
    for p in docs/product docs/proposals docs/tdd-rules.d; do
-     if [ -e "$p" ]; then git add "$p" || exit 1; fi
+     # An ignored path (ai_system ignores its untracked mirror) is not this ship's to add.
+     if [ -e "$p" ] && ! git check-ignore -q "$p"; then git add "$p" || exit 1; fi
    done
    git commit -m "compound: $ID — shipped + learning${SHIP_COMMIT_SUFFIX:-}" || exit 1
    ```
@@ -249,12 +198,10 @@ source ~/.claude/skills/ship-workflow/lib/context-md.sh
 
 10. **Report:**
     - Learning path
-    - Patterns promoted to AIR-OS (paths, if any)
     - ROADMAP item moved to Done
     - Next suggested command: `/ship-next`
 
 ## Failure modes
 
-- No plan found → ask user to run `/ship-next` first
-- `ce-compound` unavailable → fall back to user-driven structured prompt for each section
+- No spec or plan for `${ID}` → ask the user to run `/ship-next` first
 - ROADMAP doesn't contain `${ID}` → ERROR, ask user to inspect
