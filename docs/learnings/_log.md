@@ -24,3 +24,4 @@
 | 2026-10-25 12:33 | ship-next | R-011 | shipped (small-change lane; review: blocking=0, major=1 fixed; security 0) | y |
 | 2026-10-25 20:58 | ship-compound | R-012 | shipped | y |
 | 2026-10-25 20:58 | ship-next | R-012 | shipped (small-change lane; review: blocking=1 fixed, major=1 fixed; security 0) | y |
+| 2026-10-26 07:38 | ship-compound | R-013 | shipped | n |
