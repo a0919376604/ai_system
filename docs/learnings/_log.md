@@ -17,3 +17,4 @@
 | 2026-10-25 11:11 | ship-compound | R-008 | shipped | y |
 | 2026-10-25 11:11 | ship-next | R-008 | shipped (review: blocking=0 after fix-2, major=3 fixed in fix-3, ratio n/a, prune: n/a, codex: 4 round(s) done) | y |
 | 2026-10-25 11:26 | ship-compound | R-009 | shipped | y |
+| 2026-10-25 11:26 | ship-next | R-009 | shipped (review: blocking=0, major=1 fixed, ratio n/a, codex: 1 round(s) blocked→inline) | y |
