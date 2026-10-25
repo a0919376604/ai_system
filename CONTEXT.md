@@ -8,3 +8,6 @@
 - **command copy** — a `<repo>/.claude/commands/ship-*.md` file the old `/ship-init` copied in. They went stale; `remove_command_copies <repo>` clears them, and no repo needs one (R-004).
 - **displaced** — what `./sync.sh restore` does to a real file or directory that sits where a link or a restored config belongs: moved to `~/.claude/.ai_system-displaced/<name>-<UTC time>`, never deleted.
 - **land (mr mode)** — `/ship-land R-NNN` after the review merges: runs `/ship-compound` in a throwaway worktree at `origin/<base>` and pushes one `[skip ci]` push; review branches never write shared files (R-008).
+- **Roadmap 檢視** — the Obsidian plugin in `obsidian-roadmap-view/` (R-013): a live, read-only, phone-first view of one project's ROADMAP for a person. `./sync.sh restore` copies it into `<vault>/.obsidian/plugins/roadmap-view/`; it is enabled by hand once.
+- **ship-status file** — `<vault project>/ship-status/<R-NNN>.json`, written by `sn_status` at each ship-next phase (`brainstorm` … `done`, or `blocked` with a note). Observability only: a failed write is one WARN, never a failed ship.
+- **現況 panel** — a mockup's `.panel.now` element (else its first non-`facts` `.panel`): the "as it is today" picture Roadmap 檢視 shows as the item's thumbnail.
