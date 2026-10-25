@@ -224,3 +224,150 @@ mech_fixture() {
   [ "$output" = "$(git rev-parse --path-format=absolute --git-common-dir)/ship-R-1-state.env" ]
   ! grep -qE '/tmp/ship-[^ ]*state\.env' "$SHIP_LIB/ship-next.sh" || { grep -nE '/tmp/ship-[^ ]*state\.env' "$SHIP_LIB/ship-next.sh"; return 1; }
 }
+
+# R-013: sn_status records the ship's phase for the Roadmap 檢視 plugin.
+status_fixture() {
+  export HOME="$SCRATCH/home"
+  vault=$(make_fake_airos "$SCRATCH" wt)
+  write_global_config "$HOME" "$vault"
+  export PROJ="$vault/10 Projects/wt"
+  bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_state_set "$WT" ID R-9; sn_state_set "$WT" BRANCH ship/R-9-x'
+}
+
+# warns_once <shell> <script> — the script exits 0 and prints exactly one WARN line.
+warns_once() {
+  run "$1" -c "source \"\$SHIP_LIB/ship-next.sh\"; $2"
+  [ "$status" -eq 0 ] && [ "${#lines[@]}" -eq 1 ] && [[ "$output" == WARN:* ]] || { echo "$1: $output"; return 1; }
+}
+
+@test "sn_status records each phase in the vault project's ship-status file" {
+  status_fixture
+  for shell in bash zsh; do
+    rm -rf "$PROJ/ship-status"
+    run "$shell" -c 'source "$SHIP_LIB/ship-next.sh"; sn_status "$WT" plan && sn_status "$WT" blocked "codex: 3 attempts"'
+    [ "$status" -eq 0 ] && [ -z "$output" ] || { echo "$shell: $output"; return 1; }
+    f="$PROJ/ship-status/R-9.json"
+    [ "$(jq -r .id "$f")" = R-9 ]
+    [ "$(jq -r .phase "$f")" = blocked ]
+    [ "$(jq -r .note "$f")" = "codex: 3 attempts" ]
+    [ "$(jq -r .branch "$f")" = ship/R-9-x ]
+    [ "$(jq -r '[.phases[].phase] | join(",")' "$f")" = plan,blocked ]
+    [ "$(jq -r '.phases[1].note' "$f")" = "codex: 3 attempts" ]
+    [ "$(jq -r '.updated, .phases[].at' "$f" | grep -cE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$')" -eq 3 ]
+    [ "$(ls -A "$PROJ/ship-status")" = R-9.json ]
+  done
+}
+
+@test "sn_status without a vault config warns once and writes nothing" {
+  export HOME="$SCRATCH/home"
+  mkdir -p "$HOME"
+  bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_state_set "$WT" ID R-9'
+  for shell in bash zsh; do
+    warns_once "$shell" 'sn_status "$WT" plan'
+  done
+  [ -z "$(find "$SCRATCH" -name 'R-9*.json')" ]
+}
+
+@test "sn_status with an unwritable project dir warns once and writes nothing" {
+  status_fixture
+  chmod 555 "$PROJ"
+  for shell in bash zsh; do
+    warns_once "$shell" 'sn_status "$WT" plan' || { chmod 755 "$PROJ"; return 1; }
+  done
+  chmod 755 "$PROJ"
+  [ ! -e "$PROJ/ship-status" ]
+}
+
+@test "sn_status never creates a vault project folder that is not there" {
+  status_fixture
+  rm -rf "$PROJ"
+  for shell in bash zsh; do
+    warns_once "$shell" 'sn_status "$WT" plan'
+  done
+  [ ! -e "$PROJ" ]
+}
+
+@test "sn_status leaves a status file it cannot parse as it is" {
+  status_fixture
+  mkdir -p "$PROJ/ship-status"
+  echo 'not json' > "$PROJ/ship-status/R-9.json"
+  for shell in bash zsh; do
+    warns_once "$shell" 'sn_status "$WT" review'
+  done
+  [ "$(cat "$PROJ/ship-status/R-9.json")" = 'not json' ]
+  [ "$(ls -A "$PROJ/ship-status")" = R-9.json ]
+}
+
+@test "sn_status refuses a phase outside the list and an ID that is not a plain R-NNN" {
+  status_fixture
+  for shell in bash zsh; do
+    warns_once "$shell" 'sn_status "$WT" planning'
+    warns_once "$shell" 'sn_status "$WT"'
+  done
+  rm -rf "$WT/.ship"
+  for shell in bash zsh; do
+    warns_once "$shell" 'ID="../../x"; sn_status "$WT" done'
+  done
+  [ ! -e "$PROJ/ship-status" ]
+  [ -z "$(find "$SCRATCH" -name '*.json')" ]
+}
+
+@test "sn_status takes the caller's ID and BRANCH when the dir has no ship state (/ship-land)" {
+  status_fixture
+  rm -rf "$WT/.ship"
+  for shell in bash zsh; do
+    run "$shell" -c 'source "$SHIP_LIB/ship-next.sh"; ID=R-9; BRANCH=ship/R-9-y; sn_status "$WT" done'
+    [ "$status" -eq 0 ] && [ -z "$output" ] || { echo "$shell: $output"; return 1; }
+  done
+  [ "$(jq -r '.phase + " " + .branch' "$PROJ/ship-status/R-9.json")" = 'done ship/R-9-y' ]
+}
+
+# section <N> — the body of `## Phase N — …` in ship-next.md.
+section() { awk -v h="## Phase $1 " 'index($0, h) == 1 {f=1; next} /^## /{f=0} f' "$SHIP_SKILL_ROOT/commands/ship-next.md"; }
+
+@test "ship-next records every phase where it starts, and blocked on each stop path" {
+  for pair in 2:brainstorm 4:plan 5:build 6:review 7:landing 8:done 8:in-review; do
+    section "${pair%%:*}" | grep -qF "sn_status \"\$WORKTREE\" ${pair#*:}" || { echo "Phase ${pair%%:*} does not record ${pair#*:}"; return 1; }
+  done
+  section 4 | grep -F 'Small-change lane' | grep -qF 'sn_status "$WORKTREE" build'
+  for anchor in 'CODEX_ROUTE=stop_exhausted' '| **spec-level** |' 'cap=3 exhausted' '[n] Pause indefinitely'; do
+    grep -F -A6 -- "$anchor" "$SHIP_SKILL_ROOT/commands/ship-next.md" | grep -qF 'sn_status "$WORKTREE" blocked' \
+      || { echo "no blocked status at: $anchor"; return 1; }
+  done
+}
+
+@test "ship-next --adhoc passes a human summary to roadmap-insert" {
+  section 1 | grep -F 'roadmap-insert.sh' | grep -qF -- '--adhoc --summary "$SUMMARY_ZH"'
+  section 1 | grep -qE '^ *SUMMARY_ZH=.*zh-TW'
+}
+
+@test "a codex infra stop records the ship as blocked, with the reason" {
+  status_fixture
+  echo 'ERROR: Your workspace is out of credits.' > "/tmp/run-plan-codex-${SLOT}.log"
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_codex_after_exit "$WT" "$PLAN" "$SLOT"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'CODEX_ROUTE=stop_infra'* ]] || return 1
+  [ "$(jq -r .phase "$PROJ/ship-status/R-9.json")" = blocked ] || return 1
+  [[ "$(jq -r .note "$PROJ/ship-status/R-9.json")" == "codex infra: "* ]]
+}
+
+# Each fenced block runs in a fresh shell, so a block — or an inline `…` command —
+# that calls sn_status must source lib/ship-next.sh itself.
+@test "every sn_status call in a command file sources lib/ship-next.sh in its own shell" {
+  for f in "$SHIP_SKILL_ROOT"/commands/*.md; do
+    run awk '
+      /^[[:space:]]*```bash[[:space:]]*$/ { inb = 1; blk = ""; calls = 0; next }
+      inb && /^[[:space:]]*```[[:space:]]*$/ {
+        inb = 0
+        if (calls && blk !~ /lib\/ship-next\.sh/) print FILENAME ": a block calls sn_status without sourcing lib/ship-next.sh"
+        next
+      }
+      inb { blk = blk "\n" $0; if ($0 ~ /sn_status "/) calls = 1; next }
+      /sn_status "/ && $0 !~ /source ~\/\.claude\/skills\/ship-workflow\/lib\/ship-next\.sh && sn_status "/ {
+        print FILENAME ":" FNR ": an inline sn_status call does not source lib/ship-next.sh"
+      }
+    ' "$f"
+    [ -z "$output" ] || { echo "$output"; return 1; }
+  done
+  sed -n '/^sn_codex_after_exit()/,/^}/p' "$SHIP_LIB/ship-next.sh" | grep -qF 'sn_status "$WORKTREE" blocked'
+}

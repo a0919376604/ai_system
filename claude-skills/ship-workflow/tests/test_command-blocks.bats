@@ -614,3 +614,80 @@ land_case() {
     [ "$status" -eq 0 ]
   done
 }
+
+@test "ship-next --discard deletes that ship's status file, not a sibling's" {
+  vault=$(make_fake_airos "$SCRATCH" repo)
+  write_global_config "$HOME" "$vault"
+  st="$vault/10 Projects/repo/ship-status"
+  mkdir -p "$st"
+  echo '{}' > "$st/R-1.json"
+  echo '{}' > "$st/R-10.json"
+  git worktree add -q -b ship/R-1-x "$SCRATCH/repo-worktrees/R-1-x"
+  block ship-next.md '^1\. \*\*Handle `--discard`' '^1\.6\. ' > "$SCRATCH/d.sh"
+  [ -s "$SCRATCH/d.sh" ]
+  run env MODE=discard TARGET=R-1 bash "$SCRATCH/d.sh"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ ! -e "$st/R-1.json" ]
+  [ -e "$st/R-10.json" ]
+}
+
+@test "ship-land step 4 records the ship as done once the compound is pushed" {
+  for shell in bash zsh; do
+    land_case "$shell"
+    vault=$(make_fake_airos "$SCRATCH" "repo-$shell")
+    write_global_config "$HOME" "$vault"
+    git worktree add -q --detach "$LAND_WT" origin/main
+    git -C "$LAND_WT" commit -q --allow-empty -m 'compound: R-1 — shipped + learning'
+    block ship-land.md '^4\. \*\*Push' '^5\. ' > "$SCRATCH/s4.sh"
+    run env ARGUMENTS=R-1 "$shell" "$SCRATCH/s4.sh"
+    [ "$status" -eq 0 ] || { echo "$shell: $output"; return 1; }
+    [ "$(jq -r .phase "$vault/10 Projects/repo-$shell/ship-status/R-1.json")" = done ] || return 1
+  done
+}
+
+@test "ship-next --discard deletes the status file even when the worktree is already gone" {
+  vault=$(make_fake_airos "$SCRATCH" repo)
+  write_global_config "$HOME" "$vault"
+  st="$vault/10 Projects/repo/ship-status"
+  mkdir -p "$st"
+  echo '{}' > "$st/R-1.json"
+  echo '{}' > "$vault/10 Projects/repo/x.json"
+  block ship-next.md '^1\. \*\*Handle `--discard`' '^1\.6\. ' > "$SCRATCH/d.sh"
+  run env MODE=discard TARGET=R-1 bash "$SCRATCH/d.sh"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ "$output" == *"No worktree found for R-1"* ]] || return 1
+  [ ! -e "$st/R-1.json" ] || return 1
+  run env MODE=discard TARGET=../x bash "$SCRATCH/d.sh"
+  [ -e "$vault/10 Projects/repo/x.json" ]
+}
+
+# R-013 review 2: the block runs in a fresh shell; it must not write a state with an
+# empty plan, and the cap must still stop the loop.
+@test "ship-next P5 record-the-round block, in a fresh shell, keeps the plan and stops at the cap" {
+  WT="$SCRATCH/wt"
+  vault=$(make_fake_airos "$SCRATCH" wt)
+  write_global_config "$HOME" "$vault"
+  echo report > "$SCRATCH/report.md"
+  block ship-next.md '^     Record the round, then relaunch or stop:' '^     On `relaunch`' > "$SCRATCH/r.sh"
+  [ -s "$SCRATCH/r.sh" ]
+  for shell in bash zsh; do
+    for start in 0 2; do
+      rm -rf "$WT" "$vault/10 Projects/wt/ship-status"
+      mkdir -p "$WT/.ship"
+      printf 'ID=R-9\nSLUG=x\nBRANCH=ship/R-9-x\nCODEX_REPORT=%s\n' "$SCRATCH/report.md" > "$WT/.ship/state.env"
+      printf 'plan: docs/plans/R-9-x.md\nslot: R-9-x_\nattempt: %s\nlast_verdict: blocked\n' "$start" > "$WT/.ship/codex-supervise.md"
+      run env WORKTREE="$WT" CODEX_CLASS="plan defect" CODEX_NOTE=n CODEX_BLOCKED_AT="Task 1" \
+        "$shell" -c 'source "$1"; echo "ROUTE=$CODEX_ROUTE"' -- "$SCRATCH/r.sh"
+      [[ "$output" != *"integer expression"* ]] || { echo "$shell: $output"; return 1; }
+      grep -qxF 'plan: docs/plans/R-9-x.md' "$WT/.ship/codex-supervise.md" || { echo "$shell: plan lost"; return 1; }
+      grep -qxF 'slot: R-9-x_' "$WT/.ship/codex-supervise.md" || return 1
+      grep -qxF "attempt: $((start + 1))" "$WT/.ship/codex-supervise.md" || { cat "$WT/.ship/codex-supervise.md"; return 1; }
+      if [ "$start" -eq 2 ]; then
+        [[ "$output" == *"ROUTE=stop_exhausted"* ]] || { echo "$shell: $output"; return 1; }
+        [ "$(jq -r .phase "$vault/10 Projects/wt/ship-status/R-9.json")" = blocked ] || return 1
+      else
+        [[ "$output" == *"ROUTE=relaunch"* ]] || { echo "$shell: $output"; return 1; }
+      fi
+    done
+  done
+}

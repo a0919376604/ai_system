@@ -28,6 +28,45 @@ sn_state_load() {
   fi
 }
 
+# sn_status <worktree> <phase> [note] — record this ship's phase for the Roadmap 檢視
+# plugin (R-013) in <vault project>/ship-status/<ID>.json. ID and BRANCH come from
+# <worktree>/.ship/state.env, else from the caller's ID/BRANCH (/ship-land passes the
+# main checkout). Observability only: any failure prints one WARN and returns 0.
+sn_status() {
+  local wt="${1:-}" phase="${2:-}" note="${3:-}" id branch proj dir tmp now
+  case "$phase" in
+    brainstorm|plan|build|review|landing|in-review|done|blocked) ;;
+    *) echo "WARN: sn_status: unknown phase '$phase' — not recorded" >&2; return 0 ;;
+  esac
+  id=$(sn_state_load "$wt"; printf '%s' "${ID:-}")
+  branch=$(sn_state_load "$wt"; printf '%s' "${BRANCH:-}")
+  case "$id" in
+    R-[0-9]*) case "$id" in *[!A-Za-z0-9.-]*) id="" ;; esac ;;
+    *) id="" ;;
+  esac
+  [ -n "$id" ] || { echo "WARN: sn_status: no R-NNN ID for '$wt' — $phase not recorded" >&2; return 0; }
+  command -v jq >/dev/null 2>&1 || { echo "WARN: sn_status: jq not found — $phase not recorded" >&2; return 0; }
+  proj=$(cd "$wt" 2>/dev/null && "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/airos-binding.sh" project_path 2>/dev/null) || proj=""
+  # Never mkdir the project itself: a wrong name would plant a bogus vault folder (R-004).
+  if [ -z "$proj" ] || [ ! -d "$proj" ]; then
+    echo "WARN: sn_status: no vault project for '$wt' — $phase not recorded" >&2; return 0
+  fi
+  dir="$proj/ship-status"
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  if mkdir -p "$dir" 2>/dev/null && tmp=$(mktemp "$dir/.$id.XXXXXX" 2>/dev/null); then
+    if { cat "$dir/$id.json" 2>/dev/null || echo '{}'; } \
+        | jq --arg id "$id" --arg phase "$phase" --arg at "$now" --arg branch "$branch" --arg note "$note" \
+            '.id = $id | .phase = $phase | .updated = $at | .branch = $branch | .note = $note
+             | .phases = ((.phases // []) + [{phase: $phase, at: $at, note: $note}])' > "$tmp" 2>/dev/null \
+        && mv "$tmp" "$dir/$id.json" 2>/dev/null; then
+      return 0
+    fi
+    rm -f "$tmp"
+  fi
+  echo "WARN: sn_status: could not write $dir/$id.json — $phase not recorded" >&2
+  return 0
+}
+
 sn_mech_gates() {
   local WORKTREE="$1" ORIG_BRANCH="$2" PLAN_FILE
   cd "$WORKTREE" || return
@@ -126,6 +165,10 @@ sn_codex_after_exit() {
       "$CODEX_FINAL_VERDICT" "n/a" "n/a"
     rm -f "$WORKTREE/.ship/codex.pid"
 
+  fi
+  # R-013: the Roadmap 檢視 plugin shows the stop; the reason is only known here.
+  if [ "$CODEX_ROUTE" = stop_infra ]; then
+    sn_status "$WORKTREE" blocked "codex infra: $CODEX_REASON"
   fi
   sn_state_set "$WORKTREE" CODEX_FINAL_VERDICT "$CODEX_FINAL_VERDICT"
   sn_state_set "$WORKTREE" CODEX_ROUNDS "${CODEX_ROUNDS:-0}"

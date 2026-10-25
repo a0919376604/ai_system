@@ -312,3 +312,38 @@ EOF
     esac
   done
 }
+
+# --- R-013: --summary writes a human-readable line ----------------------------
+
+@test "roadmap-insert: --summary adds a plain ↳ explain line, before done-when" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-9 "desc" --adhoc --summary "客服可以一次關掉多張工單" --done-when "50 張都成功"
+  row=$(grep -n '\*\*R-9\*\*' "$ROADMAP" | cut -d: -f1)
+  [ "$(sed -n "$((row + 1))p" "$ROADMAP")" = "    ↳ explain: 客服可以一次關掉多張工單" ] || return 1
+  [ "$(sed -n "$((row + 2))p" "$ROADMAP")" = "    ↳ done when: 50 張都成功" ]
+}
+
+@test "roadmap-insert: --summary is one line — newlines fold to spaces" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-9 "desc" --summary "$(printf 'first\nsecond')"
+  grep -qxF '    ↳ explain: first second' "$ROADMAP"
+}
+
+@test "roadmap-insert: --summary wins over --explain, which stays a [[link]] on its own" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-9 "desc" --explain some-slug --summary "給人看的一句話"
+  grep -qxF '    ↳ explain: 給人看的一句話' "$ROADMAP" || return 1
+  if grep -qF '[[some-slug]]' "$ROADMAP"; then return 1; fi
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-10 "desc" --explain other-slug
+  grep -qxF '    ↳ explain: [[other-slug]]' "$ROADMAP"
+}
+
+@test "roadmap-insert: --summary on a child row is indented one level deeper" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-9 "parent"
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-9.1 "child" --child R-9 --summary "子項目的一句話"
+  grep -qxF '      ↳ explain: 子項目的一句話' "$ROADMAP"
+}
+
+@test "roadmap-insert: --summary keeps a typed backslash as text, on one line" {
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-9 "desc" --summary 'a\nb'
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-9.1 "child" --child R-9 --summary 'c\td'
+  grep -qxF '    ↳ explain: a\nb' "$ROADMAP" || return 1
+  grep -qxF '      ↳ explain: c\td' "$ROADMAP"
+}

@@ -8,6 +8,7 @@
 #       --epic       → add (epic) suffix to RID (marks parent of decomposition)
 #       --done-when  → add a "done when" annotation on a second line
 #       --explain    → add ↳ explain: [[<slug>]] annotation (positioned BEFORE done-when)
+#       --summary    → add a plain ↳ explain: <text> line for a person (R-013); wins over --explain
 #       --est        → add est=<duration> to the line (e.g. "3d", "1w")
 #
 #   roadmap-insert.sh <ROADMAP.md> <R-NNN.M> <description> --child <parent> [--done-when ...] [--est ...]
@@ -57,6 +58,7 @@ WARN_REASON=""
 REVIEW_URL=""
 DONE_WHEN=""
 EXPLAIN=""
+SUMMARY=""
 EST=""
 
 # Pull arg at position 3 if it is not a flag → it is DESC
@@ -82,6 +84,7 @@ while [ $# -gt 0 ]; do
     --mark-epic)    MODE="mark-epic"; shift ;;
     --done-when)    DONE_WHEN="${2:-}"; shift "$(_sh2 $#)" ;;
     --explain)      EXPLAIN="${2:-}"; shift "$(_sh2 $#)" ;;
+    --summary)      SUMMARY=$(printf '%s' "${2:-}" | tr '\n' ' '); shift "$(_sh2 $#)" ;;
     --inject-explain) MODE="inject-explain"; EXPLAIN="${2:-}"; shift "$(_sh2 $#)" ;;
     --est)          EST="${2:-}"; shift "$(_sh2 $#)" ;;
     *)              shift ;;
@@ -109,9 +112,12 @@ case "$MODE" in
     EXPLAIN_LINE=""
     DONE_LINE=""
     [ -n "$EXPLAIN" ]   && EXPLAIN_LINE="    ↳ explain: [[${EXPLAIN}]]"
+    [ -n "$SUMMARY" ]   && EXPLAIN_LINE="    ↳ explain: ${SUMMARY}"
     [ -n "$DONE_WHEN" ] && DONE_LINE="    ↳ done when: ${DONE_WHEN}"
 
-    awk -v line="$NEW_LINE" -v explain="$EXPLAIN_LINE" -v done_line="$DONE_LINE" '
+    # The explain line goes through ENVIRON: `awk -v` would turn a typed `\n` into a break.
+    EXPLAIN_LINE="$EXPLAIN_LINE" awk -v line="$NEW_LINE" -v done_line="$DONE_LINE" '
+      BEGIN { explain = ENVIRON["EXPLAIN_LINE"] }
       { print }
       /^## 🔥 Now/ && !inserted {
         print line
@@ -140,13 +146,15 @@ case "$MODE" in
     EXPLAIN_LINE=""
     DONE_LINE=""
     [ -n "$EXPLAIN" ]   && EXPLAIN_LINE="      ↳ explain: [[${EXPLAIN}]]"
+    [ -n "$SUMMARY" ]   && EXPLAIN_LINE="      ↳ explain: ${SUMMARY}"
     [ -n "$DONE_WHEN" ] && DONE_LINE="      ↳ done when: ${DONE_WHEN}"
 
     # awk's `END { exit !inserted }` returns non-zero if no row matched the
     # parent regex. This is more robust than grepping for $RID afterwards,
     # which false-positives when the child ID happens to appear elsewhere
     # in the file (e.g. as a wikilink in a comment).
-    if awk -v parent="$CHILD_PARENT" -v line="$NEW_LINE" -v explain="$EXPLAIN_LINE" -v done_line="$DONE_LINE" '
+    if EXPLAIN_LINE="$EXPLAIN_LINE" awk -v parent="$CHILD_PARENT" -v line="$NEW_LINE" -v done_line="$DONE_LINE" '
+      BEGIN { explain = ENVIRON["EXPLAIN_LINE"] }
       {
         print
         if (!inserted && match($0, "^- \\[ \\] (⚠️ )?\\*\\*" parent "(\\*\\*| )")) {

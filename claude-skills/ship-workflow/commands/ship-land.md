@@ -111,6 +111,8 @@ file runs here after the merge as `/ship-compound` in a throwaway worktree at
    (cd "$LAND_WT" && land_push "$BASE") || { echo "ERROR: could not push — the compound commit is left in $LAND_WT" >&2; exit 1; }
    git -C "$REPO" worktree remove --force "$LAND_WT"
    rm -rf "$(dirname "$LAND_WT")"
+   # R-013: the Roadmap 檢視 plugin shows the ship as done. $ID is the one given.
+   source ~/.claude/skills/ship-workflow/lib/ship-next.sh && sn_status "$REPO" done
    ```
 
 5. **Clean up what Phase 9 kept.**

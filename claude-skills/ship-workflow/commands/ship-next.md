@@ -59,6 +59,12 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
        rm -f "$VAULT_SPECS_DIR/${ID}-"*.md
        echo "Discarded worktree at $WT and branch $BRANCH"
      else echo "No worktree found for $ID"; fi
+     # The Roadmap 檢視 status file goes even when the worktree is already gone.
+     case "$ID" in
+       R-*[!A-Za-z0-9.-]*) ;;
+       R-[0-9]*) PROJ_DIR=$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path 2>/dev/null) \
+                   && rm -f "$PROJ_DIR/ship-status/${ID}.json" ;;
+     esac
      exit 0
    fi
    ```
@@ -77,11 +83,12 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    ```
 3. **Handle `--adhoc`** (uses pre-parsed `TARGET` as description):
    ```bash
+   SUMMARY_ZH="…"   # one zh-TW sentence for a person: what changes and for whom, no file names
    if [ "$MODE" = "adhoc" ]; then
      ~/.claude/skills/ship-workflow/lib/sync.sh --force
      ID=$(~/.claude/skills/ship-workflow/lib/id-gen.sh roadmap --reserve)
      ROADMAP_PATH="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/ROADMAP.md"
-     ~/.claude/skills/ship-workflow/lib/roadmap-insert.sh "$ROADMAP_PATH" "$ID" "$TARGET" --adhoc
+     ~/.claude/skills/ship-workflow/lib/roadmap-insert.sh "$ROADMAP_PATH" "$ID" "$TARGET" --adhoc --summary "$SUMMARY_ZH"
      ~/.claude/skills/ship-workflow/lib/sync.sh --force
    fi
    ```
@@ -152,6 +159,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    sn_state_set "$WORKTREE" AUTO "$AUTO"
    sn_state_set "$WORKTREE" REPO "$REPO"
    if [ -n "$DESCRIPTION" ]; then sn_state_set "$WORKTREE" DESCRIPTION "$DESCRIPTION"; fi
+   sn_status "$WORKTREE" brainstorm   # R-013: the phase the Roadmap 檢視 plugin shows
    ```
 2. **cd into the worktree.** Tell the user explicitly:
    ```
@@ -225,7 +233,8 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 
 ## Phase 4 — Writing plans
 
-**Small-change lane.** When the spec's Decisions size the work as one task, about ≤ 50 changed lines and no new seam beyond one function, skip this phase and Phase 5's executor choice: implement it yourself in the worktree with TDD (failing test first), commit `feat(<ID>): …`, then go to Phase 6. Log the choice in auto mode. Set `EXECUTOR_CHOICE=2` and record it via Phase 5 step 2 and render the rule files via step 2.5 before implementing, so review fixes retain the inline executor.
+**Record the phase:** `source ~/.claude/skills/ship-workflow/lib/ship-next.sh && sn_status "$WORKTREE" plan`.
+**Small-change lane.** When the spec's Decisions size the work as one task, about ≤ 50 changed lines and no new seam beyond one function, skip this phase and Phase 5's executor choice: run `source ~/.claude/skills/ship-workflow/lib/ship-next.sh && sn_status "$WORKTREE" build`, then implement it yourself in the worktree with TDD (failing test first), commit `feat(<ID>): …`, then go to Phase 6. Log the choice in auto mode. Set `EXECUTOR_CHOICE=2` and record it via Phase 5 step 2 and render the rule files via step 2.5 before implementing, so review fixes retain the inline executor.
 **Plan-authoring guidance:**
 - Verification/acceptance steps MUST run scoped pytest, not the full suite: list affected files or relevant module directories, e.g. `pytest tests/domain/test_foo.py tests/api/test_bar.py -q`. Missing environment credentials can leave a broad run hanging.
 - Reader-untouched grep guards MUST use `git diff <base>...HEAD -- <paths>`: three-dot excludes unrelated base-branch commits.
@@ -254,6 +263,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 
 ## Phase 5 — Choose executor + run
 
+**Record the phase:** `source ~/.claude/skills/ship-workflow/lib/ship-next.sh && sn_status "$WORKTREE" build`.
 1. **Choose executor.**
    - **In auto mode (`AUTO=1`):** auto-pick `3` (codex /run-plan). Fall back to `1` only when the `codex` CLI is missing. Do **not** downgrade to `2` (inline) on plan-size or cost grounds.
      ```bash
@@ -336,13 +346,13 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    ```
    Then route on `$CODEX_ROUTE`:
    - **`continue`** (verdict `done` / `done_with_concerns`) → the helper has recorded the round and marked the run finished; continue to Phase 6.
-   - **`stop_infra`** (verdict `infra`) → STOP and notify using Phase 9 routing with `$CODEX_REASON`; do not relaunch, leave the **attempt count unchanged**, and retain the worktree and branch.
+   - **`stop_infra`** (verdict `infra`) → `sn_codex_after_exit` has already recorded the ship as `blocked` with `$CODEX_REASON`. STOP and notify using Phase 9 routing with `$CODEX_REASON`; do not relaunch, leave the **attempt count unchanged**, and retain the worktree and branch.
    - **`classify`** (verdict `blocked`) → read the executor's report and classify it into exactly one of three, then act:
      | Class | Signal | Action |
      |---|---|---|
      | **plan defect** | the prescribed step is wrong, ambiguous or impossible as written | repair `$PLAN`, relaunch from the blocked task |
      | **executor error** | the plan is right and the executor deviated — a transcription slip, an edit in the wrong place | relaunch with a correction note, plan unchanged |
-     | **spec-level** | the finding says the *approach* cannot work, not that this step is wrong | **STOP and notify the operator** |
+     | **spec-level** | the finding says the *approach* cannot work, not that this step is wrong | `source ~/.claude/skills/ship-workflow/lib/ship-next.sh && sn_status "$WORKTREE" blocked "spec-level: <the finding>"`, then **STOP and notify the operator** |
      **When the classification is unclear, treat it as spec-level and escalate.** Do not redesign the approach.
      **Set these three yourself from the classification above** — they are the judgement's output and nothing computes them:
      ```bash
@@ -352,12 +362,22 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
      ```
      Record the round, then relaunch or stop:
      ```bash
+     source ~/.claude/skills/ship-workflow/lib/ship-next.sh
+     source ~/.claude/skills/ship-workflow/lib/codex-rounds.sh
+     source ~/.claude/skills/ship-workflow/lib/codex-supervise-state.sh
+     sn_state_load "$WORKTREE"
+     # A fresh shell: rebuild what the launch block set — never write an empty plan or slot.
+     CODEX_ATTEMPT_CAP=3
+     PLAN="docs/plans/${ID}-${SLUG}.md"
+     SLOT=$(basename "$PLAN" .md | tr -c 'A-Za-z0-9_.-' '_')
+     CODEX_ATTEMPT=$(codex_state_attempt "$WORKTREE")
      CODEX_ATTEMPT=$((CODEX_ATTEMPT + 1))
      codex_round_append "$WORKTREE" "$CODEX_ATTEMPT" blocked "$CODEX_REPORT" "$CODEX_CLASS" "$CODEX_NOTE"
      codex_state_write "$WORKTREE" "$PLAN" "$SLOT" "$CODEX_ATTEMPT" blocked "$CODEX_CLASS" "$CODEX_BLOCKED_AT"
      CODEX_ROUNDS=$(codex_round_count "$WORKTREE")
      if [ "$CODEX_ATTEMPT" -ge "$CODEX_ATTEMPT_CAP" ]; then
        CODEX_ROUTE=stop_exhausted
+       sn_status "$WORKTREE" blocked "codex: repair attempts exhausted"
        echo "codex: $CODEX_ATTEMPT_CAP repair attempts exhausted — stopping." >&2
        echo "worktree retained at $WORKTREE; history in .ship/codex-rounds.md" >&2
      else
@@ -369,6 +389,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 
 ## Phase 6 — Code review loop (strict gate)
 
+**Record the phase:** `source ~/.claude/skills/ship-workflow/lib/ship-next.sh && sn_status "$WORKTREE" review`.
 0.5. **Mechanical test gates (pure git + shell, before the LLM review).**
    ```bash
    source ~/.claude/skills/ship-workflow/lib/ship-next.sh
@@ -500,6 +521,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    - **In auto mode (`AUTO=1`):** **ABORT** the cycle. Send `$SUMMARY` by Discord reply if a chat_id is in scope; otherwise use PushNotification subject `/ship-next ${ID} aborted`. Do not cd to the original branch, remove the worktree, or delete the branch.
      ```bash
      ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P6" "cap=3 exhausted — aborting" "blocking=$BLOCKING_COUNT main untouched, worktree retained at $WORKTREE"
+     source ~/.claude/skills/ship-workflow/lib/ship-next.sh && sn_status "$WORKTREE" blocked "review: $BLOCKING_COUNT blockers left after 3 attempts"
      SUMMARY="🛑 ${ID} ${DESCRIPTION} aborted at P6 — 3 attempts didn't clear blockers.
    • blocking remaining: ${BLOCKING_COUNT}
    • last attempt review: /tmp/ship-next-review-${ID}-3.md
@@ -517,6 +539,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
        [n] Pause indefinitely (user fixes manually, then re-invoke /ship-next ${ID})
        [abort] Discard everything — /ship-next --discard ${ID}
      ```
+     On `[n]`, first run `source ~/.claude/skills/ship-workflow/lib/ship-next.sh && sn_status "$WORKTREE" blocked "review: paused after 3 attempts"`.
 4. **Major findings handling** (only after `BLOCKING_COUNT == 0`):
    - **In auto mode (`AUTO=1`):** every major finding becomes an `IDEA-NNN` follow-up (NEVER skip; quality-debt must be visible).
      ```bash
@@ -553,6 +576,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 ## Phase 7 — Land the branch (squash merge, or open a review)
 
 Read `merge_mode` from `.claude/ship-config.yml`: default `squash`, or `mr` for review.
+**Record the phase:** `source ~/.claude/skills/ship-workflow/lib/ship-next.sh && sn_status "$WORKTREE" landing`.
 1. **Build the body.** Both paths carry the same content: a squash commit message, or an MR/PR description. Build it once.
    ```bash
    source ~/.claude/skills/ship-workflow/lib/ship-next.sh
@@ -570,7 +594,7 @@ Read `merge_mode` from `.claude/ship-config.yml`: default `squash`, or `mr` for 
 
 ## Phase 8 — /ship-compound (squash) · in-review + learning draft (mr)
 
-**`squash`:** invoke `/ship-compound` with `ID` set to this R-NNN from the original repo cwd on `$ORIG_BRANCH` (Phase 7 already cd'd back). It writes the learning, updates `CONTEXT.md` (exports `CONTEXT_MD_STATUS`), moves the row to Done and removes the spec and plan.
+**`squash`:** invoke `/ship-compound` with `ID` set to this R-NNN from the original repo cwd on `$ORIG_BRANCH` (Phase 7 already cd'd back). It writes the learning, updates `CONTEXT.md` (exports `CONTEXT_MD_STATUS`), moves the row to Done and removes the spec and plan. Then run `source ~/.claude/skills/ship-workflow/lib/ship-next.sh && sn_status "$WORKTREE" done`.
 **`mr`:** do not run `/ship-compound` — every file it writes is shared or belongs on the base branch, and parallel reviews must not touch them. `/ship-land` runs it after the merge. `/ship-idea --during-build` rows wait in `$WORKTREE/.ship/ship-log-rows` too; `/ship-land` replays them. Here:
 1. Mark the row in review:
    ```bash
@@ -578,6 +602,7 @@ Read `merge_mode` from `.claude/ship-config.yml`: default `squash`, or `mr` for 
    sn_state_load "$WORKTREE"
    ROADMAP_PATH="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/ROADMAP.md"
    ~/.claude/skills/ship-workflow/lib/roadmap-insert.sh "$ROADMAP_PATH" "$ID" --mark-review "$SHIP_REVIEW_URL"
+   sn_status "$WORKTREE" in-review
    ```
 2. While the context is fresh, draft the learning from `templates/repo/LEARNING.md` into `$WORKTREE/.ship/learning-draft.md`: Key Decisions from the spec's `## Decisions`, What Changed From Plan from the plan and `.ship/codex-rounds.md`. It is not committed; `/ship-land` starts from it. Set `CONTEXT_MD_STATUS="deferred to /ship-land"`.
 After either path, persist the CONTEXT.md result for cleanup:

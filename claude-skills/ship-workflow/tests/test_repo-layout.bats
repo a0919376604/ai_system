@@ -58,3 +58,18 @@ setup() { export REPO_ROOT="$(cd "$SHIP_SKILL_ROOT/../.." && pwd)"; }
 @test "the root README shows no ↳ explain line — nothing writes or reads it any more" {
   if grep -n '↳ explain' "$REPO_ROOT/README.md"; then return 1; fi
 }
+
+# R-013: the Roadmap 檢視 plugin is plain JS with node:test, outside claude-skills/.
+@test "the Roadmap view plugin's node tests pass, so one bats run covers them" {
+  command -v node >/dev/null || skip "node not installed"
+  # A scratch HOME: the real-vault test (AC-4b) skips here and runs under plain node --test.
+  scratch=$(make_scratch repo-layout)
+  run env HOME="$scratch" node --test "$REPO_ROOT/obsidian-roadmap-view/test/"
+  rm -rf "$scratch"
+  [ "$status" -eq 0 ] || { echo "$output" | tail -30; return 1; }
+}
+
+@test "the repo rules name the plugin's test command and its install" {
+  grep -qF 'node --test obsidian-roadmap-view/test/' "$REPO_ROOT/CLAUDE.md"
+  grep -qF 'Roadmap 檢視' "$REPO_ROOT/README.md"
+}

@@ -1,0 +1,9 @@
+{
+  "id": "roadmap-view",
+  "name": "Roadmap 檢視",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "一次看一個專案的 ROADMAP 近況：白話標題、狀態、ship-next 階段、mockup 現況縮圖（點擊放大），以及 spec／mockup 連結。只讀，不改 ROADMAP。",
+  "author": "ai_system",
+  "isDesktopOnly": false
+}

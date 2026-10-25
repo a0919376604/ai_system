@@ -3,14 +3,15 @@
 #
 # ai_system is ship-workflow's home (R-004). `restore` links its three skills and
 # ship-workflow's five commands into ~/.claude, so every session runs this checkout;
-# `backup` copies the global CLAUDE.md and the devsync config into the repo.
+# `backup` copies the global CLAUDE.md and the devsync config into the repo. `restore`
+# also copies the Roadmap 檢視 Obsidian plugin (R-013) into the vault.
 #
 # It used to mirror all of ~/.claude/skills with rsync. That mirror drifted: its
 # restore would have reinstalled 40 removed skills, overwritten a newer global
 # CLAUDE.md with an old copy, and replaced the ship-workflow symlink with a copy.
 #
 # Usage:
-#   ./sync.sh restore [--yes] [--dry-run]   links + config files + devsync bootstrap
+#   ./sync.sh restore [--yes] [--dry-run]   links + config files + Obsidian plugin + devsync bootstrap
 #   ./sync.sh backup [--dry-run]             ~/.claude/CLAUDE.md, devsync config -> repo
 #   ./sync.sh status                         link and config state; exit 1 if a link is wrong
 #
@@ -28,6 +29,10 @@ CONFIG_FILES=(
   "$HOME/.claude/CLAUDE.md::$SCRIPT_DIR/config/claude/CLAUDE.md"
   "$HOME/.config/devsync/config.toml::$SCRIPT_DIR/devsync/config.toml"
 )
+
+# The Roadmap 檢視 plugin: copied, not linked — Obsidian Sync carries real files only.
+PLUGIN_SRC="$SCRIPT_DIR/obsidian-roadmap-view"
+PLUGIN_FILES=(manifest.json main.js styles.css)
 
 if [[ -t 1 ]]; then
   C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'
@@ -153,6 +158,48 @@ restore_configs() {
   done
 }
 
+# plugin_dir — <airos_vault>/.obsidian/plugins/roadmap-view; nothing when no vault is
+# configured or the folder is not an Obsidian vault.
+plugin_dir() {
+  local vault
+  vault=$("$SCRIPT_DIR/claude-skills/ship-workflow/lib/airos-binding.sh" vault 2>/dev/null) || return 0
+  [[ -n "$vault" && -d "$vault/.obsidian" ]] && echo "$vault/.obsidian/plugins/roadmap-view"
+  return 0
+}
+
+# plugin_state <dir> — up to date | out of date | not installed
+plugin_state() {
+  local f
+  [[ -d "$1" ]] || { echo "not installed"; return 0; }
+  for f in "${PLUGIN_FILES[@]}"; do
+    cmp -s "$PLUGIN_SRC/$f" "$1/$f" || { echo "out of date"; return 0; }
+  done
+  echo "up to date"
+}
+
+# Copy the three plugin files when they differ. Never enables the plugin, never touches
+# another plugin or this one's data.json (its settings).
+install_plugin() {
+  local dir f
+  dir=$(plugin_dir)
+  if [[ -z "$dir" ]]; then
+    warn "skip: Obsidian plugin (no airos_vault with a .obsidian folder in ~/.claude/ship-workflow.yml)"
+    return 0
+  fi
+  for f in "${PLUGIN_FILES[@]}"; do
+    [[ -f "$PLUGIN_SRC/$f" ]] || { warn "skip: Obsidian plugin ($PLUGIN_SRC/$f missing)"; return 0; }
+  done
+  [[ "$(plugin_state "$dir")" == "up to date" ]] && return 0
+  if (( DRY )); then log "would copy the Obsidian plugin into $dir"; return 0; fi
+  mkdir -p "$dir"
+  for f in "${PLUGIN_FILES[@]}"; do
+    cmp -s "$PLUGIN_SRC/$f" "$dir/$f" && continue
+    rm -f "$dir/$f"   # a symlink here would be written through, and Sync skips symlinks
+    cp "$PLUGIN_SRC/$f" "$dir/$f"
+  done
+  ok "copied the Obsidian plugin into $dir — enable 「Roadmap 檢視」 once in Obsidian"
+}
+
 devsync_bootstrap() {
   local bootstrap="$SCRIPT_DIR/devsync/bootstrap.sh"
   if (( DRY )) || [[ "${AI_SYSTEM_SKIP_DEVSYNC:-0}" == 1 ]]; then return 0; fi
@@ -197,6 +244,8 @@ cmd_restore() {
   remove_dangling
   info "Config files"
   restore_configs
+  info "Obsidian plugin"
+  install_plugin
   devsync_bootstrap
   if (( DRY )); then ok "Dry run — nothing changed"; else ok "Restore complete"; fi
 }
@@ -237,6 +286,9 @@ cmd_status() {
       log "$live: differs (./sync.sh backup to save it)"
     fi
   done
+  local dir
+  dir=$(plugin_dir)
+  if [[ -n "$dir" ]]; then log "obsidian plugin: $(plugin_state "$dir")"; else log "obsidian plugin: no vault"; fi
   return "$bad"
 }
 
@@ -245,7 +297,8 @@ usage() {
 ${C_BOLD}sync.sh${C_RESET} — install ai_system (ship-workflow + run-plan + code-review-skill)
 
   $(basename "$0") restore [--yes] [--dry-run]  link the skills and commands into ~/.claude,
-                                              restore the config files, run devsync bootstrap
+                                              restore the config files, copy the Obsidian
+                                              plugin into the vault, run devsync bootstrap
   $(basename "$0") backup [--dry-run]           copy ~/.claude/CLAUDE.md and the devsync config here
   $(basename "$0") status                       show link and config state (exit 1 if a link is wrong)
 

@@ -165,3 +165,85 @@ make_checkout() {  # turn $R into a git checkout on branch $1
   [ "$status" -eq 1 ] || return 1
   [[ "$output" == *"code-review-skill"*"target missing"* ]]
 }
+
+# --- R-013: restore copies the Roadmap 檢視 plugin into the vault -------------------
+
+# plugin_fixture — the repo's plugin files, sync.sh's vault lookup, and a vault with
+# another plugin and an Obsidian config.
+plugin_fixture() {
+  mkdir -p "$R/obsidian-roadmap-view" "$R/claude-skills/ship-workflow/lib"
+  cp "$SHIP_LIB/airos-binding.sh" "$R/claude-skills/ship-workflow/lib/"
+  for f in manifest.json main.js styles.css; do echo "repo $f" > "$R/obsidian-roadmap-view/$f"; done
+  echo "a test" > "$R/obsidian-roadmap-view/notes.md"   # not one of the three
+  V="$SCRATCH/vault"; export V
+  P="$V/.obsidian/plugins/roadmap-view"; export P
+  mkdir -p "$V/.obsidian/plugins/other"
+  echo other > "$V/.obsidian/plugins/other/main.js"
+  write_global_config "$HOME" "$V"
+}
+
+@test "restore copies the three plugin files into the vault, then changes nothing; other plugins untouched" {
+  plugin_fixture
+  run bash "$R/sync.sh" restore --yes
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  for f in manifest.json main.js styles.css; do cmp -s "$R/obsidian-roadmap-view/$f" "$P/$f" || { echo "$f"; return 1; }; done
+  [ "$(ls "$P" | tr '\n' ' ')" = "main.js manifest.json styles.css " ]
+  [ ! -L "$P" ] && [ ! -L "$P/main.js" ] || return 1
+  [[ "$output" == *"Roadmap 檢視"* ]] || return 1
+  touch -t 200001010000 "$P"/* && touch -t 200101010000 "$SCRATCH/ref"
+  run bash "$R/sync.sh" restore --yes
+  [ "$status" -eq 0 ] || return 1
+  [ -z "$(find "$P" -type f -newer "$SCRATCH/ref")" ] || { echo "rewrote an up-to-date copy"; return 1; }
+  [[ "$output" != *"copied the Obsidian plugin"* ]] || return 1
+  [ "$(cat "$V/.obsidian/plugins/other/main.js")" = other ]
+  [ "$(cat "$V/.obsidian/community-plugins.json" 2>/dev/null)" = "" ]   # never enabled for you
+}
+
+@test "restore updates an out-of-date copy in place and keeps the plugin's own settings" {
+  plugin_fixture
+  mkdir -p "$P"
+  echo "old main" > "$P/main.js"
+  echo '{"project":"x"}' > "$P/data.json"
+  run bash "$R/sync.sh" restore --yes
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(cat "$P/main.js")" = "repo main.js" ]
+  [ "$(cat "$P/data.json")" = '{"project":"x"}' ]
+  [ -z "$(ls -A "$HOME/.claude/.ai_system-displaced" 2>/dev/null | grep roadmap)" ]
+}
+
+@test "restore without a configured vault, or with a folder that is not an Obsidian vault, skips the plugin" {
+  run bash "$R/sync.sh" restore --yes
+  [ "$status" -eq 0 ] || return 1
+  [[ "$output" == *"skip: Obsidian plugin"* ]] || { echo "$output"; return 1; }
+  plugin_fixture
+  rm -rf "$V/.obsidian"
+  run bash "$R/sync.sh" restore --yes
+  [ "$status" -eq 0 ] || return 1
+  [[ "$output" == *"skip: Obsidian plugin"* ]] || return 1
+  [ ! -e "$V/.obsidian" ]
+}
+
+@test "restore --dry-run names the plugin copy and copies nothing" {
+  plugin_fixture
+  run bash "$R/sync.sh" restore --dry-run
+  [ "$status" -eq 0 ] || return 1
+  [[ "$output" == *"would copy the Obsidian plugin into $P"* ]] || { echo "$output"; return 1; }
+  [ ! -e "$P" ]
+}
+
+@test "status prints one obsidian plugin line; its state never changes the exit code" {
+  run bash "$R/sync.sh" status
+  [[ "$output" == *"obsidian plugin: no vault"* ]] || { echo "$output"; return 1; }
+  plugin_fixture
+  bash "$R/sync.sh" restore --yes >/dev/null
+  run bash "$R/sync.sh" status
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(grep -c '^obsidian plugin:' <<<"$output")" -eq 1 ]
+  [[ "$output" == *"obsidian plugin: up to date"* ]] || return 1
+  echo changed > "$P/styles.css"
+  run bash "$R/sync.sh" status
+  [ "$status" -eq 0 ] && [[ "$output" == *"obsidian plugin: out of date"* ]] || { echo "$output"; return 1; }
+  rm -rf "$P"
+  run bash "$R/sync.sh" status
+  [ "$status" -eq 0 ] && [[ "$output" == *"obsidian plugin: not installed"* ]] || { echo "$output"; return 1; }
+}

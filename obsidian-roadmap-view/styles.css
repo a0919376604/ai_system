@@ -1,0 +1,53 @@
+/* Roadmap 檢視 (R-013) — phone-first: one column, large tap targets. */
+.rv { padding: 10px; }
+.rv-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.rv-project { max-width: 100%; }
+.rv-tabs { display: flex; gap: 4px; }
+.rv-tabs button.is-on, .rv-zoom-bar button.is-on { background: var(--interactive-accent); color: var(--text-on-accent); }
+.rv-group { font-size: 12px; font-weight: 700; color: var(--text-muted); margin: 14px 0 6px; }
+.rv-foldable { cursor: pointer; }
+.rv-none, .rv-faint { color: var(--text-faint); font-size: 12px; }
+.rv-empty { color: var(--text-muted); padding: 20px 0; }
+.rv-search { width: 100%; margin-bottom: 4px; }
+.rv-card { display: grid; grid-template-columns: 1fr 96px; gap: 10px; padding: 10px; margin-bottom: 8px;
+  border-radius: 10px; background: var(--background-secondary); border: 1px solid var(--background-modifier-border);
+  cursor: pointer; }
+.rv-card.rv-nothumb { grid-template-columns: 1fr; }
+.rv-card.rv-g-active { border-color: var(--interactive-accent); }
+.rv-left { min-width: 0; }
+.rv-top { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.rv-id { font-family: var(--font-monospace); font-size: 11px; font-weight: 700; color: var(--interactive-accent); }
+.rv-chip { font-size: 10px; font-weight: 700; padding: 0 6px; border-radius: 999px; border: 1px solid currentColor; }
+.rv-done { color: var(--color-green); }
+.rv-wait { color: var(--color-yellow); }
+.rv-pick { color: var(--color-purple); }
+.rv-blocked { color: var(--color-red); }
+.rv-phase { color: var(--color-blue); }
+.rv-epic { color: var(--text-muted); }
+.rv-title { font-weight: 600; margin-top: 4px; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.rv-exp { color: var(--text-muted); font-size: 12px; margin-top: 3px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.rv-headline, .rv-full { display: block; -webkit-line-clamp: unset; }
+.rv-headline { font-size: 16px; }
+.rv-thumb { width: 96px; height: 70px; overflow: hidden; border-radius: 6px; background: #fff;
+  border: 1px solid var(--background-modifier-border); font-size: 10px; color: var(--text-faint); cursor: zoom-in; }
+.rv-big { width: 100%; overflow: hidden; border-radius: 8px; background: #fff;
+  border: 1px solid var(--background-modifier-border); cursor: zoom-in; }
+.rv-slow { outline: 2px dashed var(--color-yellow); }
+.rv-back { margin-bottom: 10px; }
+.rv-lbl { font-size: 10.5px; font-weight: 700; color: var(--text-faint); letter-spacing: .04em; margin: 14px 0 5px; }
+.rv-cap { font-size: 10.5px; color: var(--text-faint); margin-top: 4px; }
+.rv-link { display: block; padding: 9px 10px; margin-bottom: 6px; border-radius: 8px; font-size: 12px;
+  background: var(--background-secondary); border: 1px solid var(--background-modifier-border); word-break: break-all; }
+.rv-off { opacity: .6; }
+.rv-fold { margin: 8px 0; font-size: 12px; }
+.rv-fold summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
+.rv-raw { white-space: pre-wrap; word-break: break-all; color: var(--text-muted); margin: 4px 0; font-size: 11px; }
+.rv-err { white-space: pre-wrap; font-size: 10.5px; color: var(--text-error);
+  background: var(--background-secondary); padding: 8px; border-radius: 6px; }
+.rv-zoom-modal { width: 96vw; max-width: 96vw; height: 92vh; max-height: 92vh; }
+.rv-zoom-bar { display: flex; gap: 6px; margin-bottom: 8px; }
+.rv-zoom-scroll { overflow: auto; -webkit-overflow-scrolling: touch; height: calc(92vh - 120px);
+  background: #fff; border-radius: 8px; border: 1px solid var(--background-modifier-border); }
+.rv-zoom-inner { overflow: hidden; }

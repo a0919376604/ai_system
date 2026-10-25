@@ -28,6 +28,7 @@
 
 - **一行裝好**：換新電腦時，ship-workflow 和它需要的 skill、全域設定一次裝好。
 - **遠端開發**：在公司的 GPU server 上跑程式時，本機寫的 code 會即時同步過去。
+- **手機上看 Roadmap**：Obsidian 外掛「Roadmap 檢視」，一次看一個專案的近況，寫給人看的版本。
 
 ## 2. Quick start
 
@@ -148,6 +149,18 @@ Later → Next → Now     ← 順序由你決定；brainstorm 會建議把太�
 | 項目會被逼著變小：brainstorm 會建議拆開太大的項目，拆出來的每一列都必須能驗收 | IDEA 會越積越多：review 自動開的 IDEA 需要定期整理，或標成 `shelved` 擱置 |
 | 問題不會被遺忘：延後處理的 review 問題會變成 IDEA，留在 `docs/ideas/` 等你決定 | 編號在本機分配：兩台機器在 Roadmap 同步之前各自開新項目，可能拿到同一個號碼 |
 
+### 手機上看 Roadmap（Obsidian 外掛「Roadmap 檢視」）
+
+ROADMAP.md 是寫給 AI 看的；這個外掛從裡面挑出人需要的部分，即時顯示，手機優先：
+
+- **近況**：進行中／卡住、最近完成（14 天內）、待做（收合）。**全部**：每一項，可搜尋。
+- 每一項：中文標題、狀態（完成日期、尚未部署、卡住原因、方案）、ship-next 正在哪個階段、mockup 的「現況」縮圖，點了全螢幕放大（符合寬度／2×／3×）。
+- 詳細頁：spec、brainstorm、mockup 的連結，commit／MR，完成條件，給 AI 的原文。
+- 檔案一變就重畫，不用產生。ship-next 每到一個階段就寫 `<專案>/ship-status/<R-NNN>.json`。
+- 只讀：除了自己的設定（`data.json`）不寫任何檔案。
+
+`./sync.sh restore` 會把外掛複製到 vault 的 `.obsidian/plugins/roadmap-view/`，再到 Obsidian 的「第三方外掛」啟用一次。手機靠 Obsidian Sync：要開「同步已安裝的外掛」與「同步其他類型的檔案」（mockup 是 `.html`、狀態是 `.json`）。
+
 ### 遠端開發
 
 ```bash
@@ -188,7 +201,7 @@ devsync stop my-repo   # 結束
 | codex CLI | 第 3 種 executor |
 | `gh` / `glab` | `merge_mode: mr` 開 PR/MR |
 
-測試：`bats claude-skills/ship-workflow/tests/`
+測試：`bats claude-skills/ship-workflow/tests/`（包含 Roadmap 檢視外掛的 `node --test`，需要 Node 22 以上）
 
 ## 6. `/ship-next`
 

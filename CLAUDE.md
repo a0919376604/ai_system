@@ -2,7 +2,8 @@
 
 This repo is ship-workflow's home: `claude-skills/` holds `ship-workflow`, plus the two
 skills `/ship-next` needs, `run-plan` and `code-review-skill`, and nothing else (R-004).
-`devsync/` is the separate remote-dev tool; leave it as it is.
+`devsync/` is the separate remote-dev tool; leave it as it is. `obsidian-roadmap-view/` is
+the Roadmap 檢視 Obsidian plugin (R-013): plain JS, no build, no npm dependencies.
 
 ## The main checkout stays on `main`
 
@@ -18,9 +19,12 @@ machine therefore runs whatever this checkout holds, uncommitted edits included.
 
 - Tests: `cd claude-skills/ship-workflow && bats tests/`. In a linked worktree, the
   `cwd-guard: exits 0 when not in a git repo at all` test fails. That failure is
-  pre-existing and known.
-- After a pull that changes `sync.sh` or the set of directories in `claude-skills/`, run
-  `./sync.sh restore`. Then `./sync.sh status` must print `ok` for every link.
+  pre-existing and known. The bats run includes the plugin's tests; alone they are
+  `node --test obsidian-roadmap-view/test/`.
+- `./sync.sh restore` copies the plugin into `<airos_vault>/.obsidian/plugins/roadmap-view/`
+  when it changed. It never enables it: that is a one-time click in Obsidian.
+- After a pull that changes `sync.sh`, `obsidian-roadmap-view/` or the set of directories
+  in `claude-skills/`, run `./sync.sh restore`. Then `./sync.sh status` must print `ok` for every link.
 - After editing `~/.claude/CLAUDE.md`, run `./sync.sh backup`. It copies the file to
   `config/claude/CLAUDE.md`. That file is the backup of the global rules, not this
   repo's rules.
