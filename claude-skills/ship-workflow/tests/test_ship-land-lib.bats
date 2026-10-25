@@ -76,7 +76,7 @@ EOF
   cat > "$SCRATCH/bin/gh" <<'EOF'
 #!/bin/sh
 case "$*" in
-  "pr list --head ship/R-1-x --base main --state merged --json number --jq .[].number") echo 7 ;;
+  "pr list --head ship/R-1-x --base main --state merged --json number,headRefOid --jq "*) echo "7 0123456789abcdef0123456789abcdef01234567" ;;
   *) exit 1 ;;
 esac
 EOF
@@ -230,7 +230,7 @@ EOF
   cat > "$SCRATCH/bin/gh" <<'EOF'
 #!/bin/sh
 case "$*" in
-  "pr list --head ship/R-1-x --base main --state merged --json number --jq .[].number") echo 7 ;;
+  "pr list --head ship/R-1-x --base main --state merged --json number,headRefOid --jq "*) echo "7 0123456789abcdef0123456789abcdef01234567" ;;
   *) exit 1 ;;
 esac
 EOF
@@ -272,4 +272,60 @@ EOF
   [[ "$stderr" == *"git worktree remove --force"* ]] || return 1
   [[ "$stderr" == *"$(git rev-parse --show-toplevel)"* ]] || return 1
   [ "$(git --git-dir="$SCRATCH/origin.git" rev-parse main)" = "$before" ]
+}
+
+@test "land_is_merged (glab): the API head sha counts when GitLab has dropped the MR ref" {
+  git checkout -q -b ship/R-1-x
+  git commit -q --allow-empty -m reviewed
+  git checkout -q --detach
+  git commit -q --allow-empty -m suggestion
+  export MERGED_TIP=$(git rev-parse HEAD)
+  # no refs/merge-requests/* on origin: GitLab cleans them up after a while (R-011)
+  forge_cli() { echo glab; }
+  cat > "$SCRATCH/bin/glab" <<'EOF2'
+#!/bin/sh
+printf '[{"iid":7,"sha":"%s"}]\n' "$MERGED_TIP"
+EOF2
+  run land_is_merged ship/R-1-x main
+  [ "$status" -eq 0 ]
+}
+
+@test "land_is_merged (gh): the API headRefOid counts when refs/pull is gone" {
+  git checkout -q -b ship/R-1-x
+  git commit -q --allow-empty -m reviewed
+  export MERGED_TIP=$(git rev-parse HEAD)
+  forge_cli() { echo gh; }
+  cat > "$SCRATCH/bin/gh" <<'EOF2'
+#!/bin/sh
+case "$*" in
+  *"--state merged"*headRefOid*) echo "7 $MERGED_TIP" ;;
+  *) exit 1 ;;
+esac
+EOF2
+  run land_is_merged ship/R-1-x main
+  [ "$status" -eq 0 ]
+}
+
+@test "land_is_merged (glab): an API sha that is not a local commit, with no ref, is not proof" {
+  git checkout -q -b ship/R-1-x
+  git commit -q --allow-empty -m reviewed
+  forge_cli() { echo glab; }
+  cat > "$SCRATCH/bin/glab" <<'EOF2'
+#!/bin/sh
+printf '[{"iid":7,"sha":"%s"}]\n' 0123456789abcdef0123456789abcdef01234567
+EOF2
+  run land_is_merged ship/R-1-x main
+  [ "$status" -eq 1 ]
+}
+
+@test "zsh: land_is_merged reads every merged MR, not just the first" {
+  git checkout -q -b ship/R-1-x
+  git commit -q --allow-empty -m reviewed
+  export MERGED_TIP=$(git rev-parse HEAD)
+  cat > "$SCRATCH/bin/glab" <<'EOF2'
+#!/bin/sh
+printf '[{"iid":6,"sha":"0123456789abcdef0123456789abcdef01234567"},{"iid":7,"sha":"%s"}]\n' "$MERGED_TIP"
+EOF2
+  run env SHIP_LIB="$SHIP_LIB" zsh -c 'source "$SHIP_LIB/ship-land.sh"; forge_cli() { echo glab; }; land_is_merged ship/R-1-x main; echo rc=$?'
+  [ "$(printf '%s\n' "$output" | tail -1)" = "rc=0" ] || { echo "$output"; return 1; }
 }

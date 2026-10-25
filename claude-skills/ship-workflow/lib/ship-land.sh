@@ -11,23 +11,42 @@ LAND_PUSH_ATTEMPTS=3
 # origin/<base>, so ancestry alone reads a merged review as open (R-002). With no
 # forge answer, fall back to ancestry. Exit 2 on usage.
 land_is_merged() {
-  local branch="$1" base="$2" tip json ids n
+  local branch="$1" base="$2" tip json ids shas pairs n sha
   [ -n "$branch" ] && [ -n "$base" ] || return 2
   # The review head must CONTAIN the local tip: equal, or with forge-side
   # commits on top ("Apply suggestion"). This keeps git branch -D from losing
-  # local work. Review head refs survive --remove-source-branch.
+  # local work. The API's head sha is checked first: it was pushed from this
+  # clone, so it is usually a local commit — and GitLab deletes
+  # refs/merge-requests/<iid>/head some time after the merge (R-011). The head
+  # ref is fetched only when the sha is not a local object.
   tip=$(git rev-parse -q --verify "$branch") || return 1
   case "$(forge_cli 2>/dev/null)" in
     glab)
       json=$(glab api "projects/:id/merge_requests?state=merged&target_branch=${base}&source_branch=$(printf '%s' "$branch" | sed 's#/#%2F#g')" 2>/dev/null)
-      if command -v jq >/dev/null 2>&1; then ids=$(printf '%s' "$json" | jq -r '.[].iid' 2>/dev/null)
-      else ids=$(printf '%s' "$json" | grep -oE '\{"id":[0-9]+,"iid":[0-9]+' | grep -oE '[0-9]+$'); fi
-      for n in $ids; do
+      if command -v jq >/dev/null 2>&1; then
+        ids=$(printf '%s' "$json" | jq -r '.[].iid' 2>/dev/null)
+        shas=$(printf '%s' "$json" | jq -r '.[].sha' 2>/dev/null)
+      else
+        ids=$(printf '%s' "$json" | grep -oE '\{"id":[0-9]+,"iid":[0-9]+' | grep -oE '[0-9]+$')
+        # the leading quote keeps merge_commit_sha / squash_commit_sha out
+        shas=$(printf '%s' "$json" | grep -oE '"sha":"[0-9a-f]{40}"' | grep -oE '[0-9a-f]{40}')
+      fi
+      # $(...) is split in zsh too; a bare $var is not (zsh does no word splitting).
+      for sha in $(printf '%s\n' "$shas"); do
+        git cat-file -e "$sha^{commit}" 2>/dev/null \
+          && git merge-base --is-ancestor "$tip" "$sha" && return 0
+      done
+      for n in $(printf '%s\n' "$ids"); do
         git fetch -q origin "refs/merge-requests/$n/head" 2>/dev/null \
           && git merge-base --is-ancestor "$tip" FETCH_HEAD && return 0
       done ;;
     gh)
-      for n in $(gh pr list --head "$branch" --base "$base" --state merged --json number --jq '.[].number' 2>/dev/null); do
+      pairs=$(gh pr list --head "$branch" --base "$base" --state merged --json number,headRefOid --jq '.[] | "\(.number) \(.headRefOid)"' 2>/dev/null)
+      for sha in $(printf '%s\n' "$pairs" | awk '{print $2}'); do
+        git cat-file -e "$sha^{commit}" 2>/dev/null \
+          && git merge-base --is-ancestor "$tip" "$sha" && return 0
+      done
+      for n in $(printf '%s\n' "$pairs" | awk '{print $1}'); do
         git fetch -q origin "refs/pull/$n/head" 2>/dev/null \
           && git merge-base --is-ancestor "$tip" FETCH_HEAD && return 0
       done ;;
