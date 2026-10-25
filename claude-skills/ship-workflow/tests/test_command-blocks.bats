@@ -49,16 +49,21 @@ p9_log_block() { block ship-next.md '^3\. \*\*Log \+ commit\.\*\*' '^4\. \*\*Aut
   [ -z "$(git status --porcelain)" ] || { echo "the base checkout was written"; return 1; }
 }
 
-@test "ship-next P9 (mr): logs on the review branch and pushes only that branch" {
+@test "ship-next P9 (mr): writes the row to the worktree's .ship/ship-log-rows, commits and pushes nothing" {
   git worktree add -q -b ship/R-1-x "$SCRATCH/wt"
+  mkdir -p "$SCRATCH/wt/.ship"
   git commit -q --allow-empty -m "local-only work on main"
-  origin_main=$(git ls-remote origin refs/heads/main | cut -f1)
+  main_before=$(git rev-parse HEAD)
+  wt_before=$(git -C "$SCRATCH/wt" rev-parse HEAD)
+  origin_before=$(git ls-remote origin)
+  row='| d | ship-next | R-1 | shipped | n |'
   p9_log_block > "$SCRATCH/p9.sh"
-  run env WORKTREE="$SCRATCH/wt" ID=R-1 bash "$SCRATCH/p9.sh"
+  run env WORKTREE="$SCRATCH/wt" ID=R-1 SHIP_LOG_ROW="$row" bash "$SCRATCH/p9.sh"
   [ "$status" -eq 0 ]
-  [ "$(git ls-remote origin refs/heads/main | cut -f1)" = "$origin_main" ]
-  git fetch -q origin ship/R-1-x
-  git log -1 --format='%(trailers:key=Ship-Log,valueonly)' FETCH_HEAD | grep -qF '| ship-next | R-1 |'
+  [ "$(cat "$SCRATCH/wt/.ship/ship-log-rows")" = "$row" ]
+  [ "$(git rev-parse HEAD)" = "$main_before" ]
+  [ "$(git -C "$SCRATCH/wt" rev-parse HEAD)" = "$wt_before" ]
+  [ "$(git ls-remote origin)" = "$origin_before" ]
 }
 
 @test "ship-next P9 (squash): appends the row and commits it on the current branch" {
@@ -83,49 +88,35 @@ p9_log_block() { block ship-next.md '^3\. \*\*Log \+ commit\.\*\*' '^4\. \*\*Aut
 
 compound_step9() { block ship-compound.md '^9\. \*\*Log \+ commit' '^10\. \*\*Report'; }
 
-@test "ship-compound step 9 (mr) refuses to run on the base branch" {
-  echo "learning" > docs/learnings/R-1-x.md
+@test "ship-compound step 9 stops before committing when the learning is missing" {
   compound_step9 > "$SCRATCH/s9.sh"
-  [ -s "$SCRATCH/s9.sh" ]
   head_before=$(git rev-parse HEAD)
   run env ID=R-1 slug=x bash "$SCRATCH/s9.sh"
   [ "$status" -ne 0 ]
   [ "$(git rev-parse HEAD)" = "$head_before" ]
-  git diff --quiet -- docs/learnings/_log.md || { echo "_log.md was written on base"; return 1; }
 }
 
-@test "ship-compound step 9 (mr) commits only this ship's own paths and pushes its branch" {
-  git worktree add -q -b ship/R-1-x "$SCRATCH/wt"
-  cd "$SCRATCH/wt"
-  echo "learning" > docs/learnings/R-1-x.md
-  mkdir -p docs/tdd-rules.d docs/ship-pending
-  echo '- A rule. ← R-1' > docs/tdd-rules.d/R-1.md
-  echo '- **Lane** — a queue' > docs/ship-pending/R-1-context.md
-  echo "synced from the vault" >> docs/product/ROADMAP.md
+@test "ship-compound step 9 commits in a repo with no vault mirror" {
+  git rm -q -r docs/product
+  git commit -q -m "no vault mirror"
+  echo learning > docs/learnings/R-1-x.md
   compound_step9 > "$SCRATCH/s9.sh"
   run env ID=R-1 slug=x bash "$SCRATCH/s9.sh"
   [ "$status" -eq 0 ]
-  files=$(git show --name-only --format= HEAD | sort | tr '\n' ' ')
-  [ "$files" = "docs/learnings/R-1-x.md docs/ship-pending/R-1-context.md docs/tdd-rules.d/R-1.md " ]
-  git fetch -q origin ship/R-1-x
-  [ "$(git rev-parse FETCH_HEAD)" = "$(git rev-parse HEAD)" ]
+  [ "$(git log -1 --format=%s)" = "compound: R-1 — shipped + learning" ]
+  git show --name-only --format= HEAD | grep -qxF docs/learnings/R-1-x.md
+  git show --name-only --format= HEAD | grep -qxF docs/learnings/_log.md
 }
 
-@test "ship-compound step 9 (squash) stops before committing when a required path is missing" {
-  echo 'merge_mode: squash' > .claude/ship-config.yml
-  git commit -q -am "squash mode"
-  echo "learning" > docs/learnings/R-1-x.md
-  mkdir -p docs/tdd-rules.d
-  echo '- A rule. ← R-1' > docs/tdd-rules.d/R-1.md
-  # no docs/proposals/ in this repo
+@test "ship-compound step 9 appends SHIP_COMMIT_SUFFIX to the subject" {
+  echo learning > docs/learnings/R-1-x.md
   compound_step9 > "$SCRATCH/s9.sh"
-  head_before=$(git rev-parse HEAD)
-  run env ID=R-1 slug=x bash "$SCRATCH/s9.sh"
-  [ "$status" -ne 0 ]
-  [ "$(git rev-parse HEAD)" = "$head_before" ]
+  run env ID=R-1 slug=x SHIP_COMMIT_SUFFIX=" [skip ci]" bash "$SCRATCH/s9.sh"
+  [ "$status" -eq 0 ]
+  [ "$(git log -1 --format=%s)" = "compound: R-1 — shipped + learning [skip ci]" ]
 }
 
-@test "ship-compound step 9 (mr) removes this ship's plan and fix-plans, not another ship's" {
+@test "ship-compound step 9 removes this ship's plan and fix-plans, not another ship's" {
   git worktree add -q -b ship/R-1-x "$SCRATCH/wt"
   cd "$SCRATCH/wt"
   mkdir -p docs/plans
@@ -140,8 +131,8 @@ compound_step9() { block ship-compound.md '^9\. \*\*Log \+ commit' '^10\. \*\*Re
   [ "$(git ls-files docs/plans)" = "docs/plans/R-2-y.md" ]
 }
 
-@test "ship-compound step 9 (mr) removes a plan with uncommitted edits and logs the row once" {
-  git worktree add -q -b ship/R-1-x "$SCRATCH/wt"
+@test "ship-compound step 9 removes a plan with uncommitted edits and logs the row once" {
+  git worktree add -q --detach "$SCRATCH/wt" origin/main
   cd "$SCRATCH/wt"
   mkdir -p docs/plans
   echo plan > docs/plans/R-1-x.md
@@ -152,10 +143,10 @@ compound_step9() { block ship-compound.md '^9\. \*\*Log \+ commit' '^10\. \*\*Re
   run env ID=R-1 slug=x bash "$SCRATCH/s9.sh"
   [ "$status" -eq 0 ]
   [ -z "$(git ls-files docs/plans)" ]
-  [ "$(git log --format=%s | grep -c '^log: ')" -eq 1 ]
+  [ "$(grep -c '| ship-compound | R-1 |' docs/learnings/_log.md)" -eq 1 ]
 }
 
-@test "ship-compound step 9 (squash) removes this ship's plan, not a sibling R-1.1 plan" {
+@test "ship-compound step 9 removes this ship's plan, not a sibling R-1.1 plan" {
   echo 'merge_mode: squash' > .claude/ship-config.yml
   mkdir -p docs/plans docs/proposals
   echo p > docs/proposals/p.md
@@ -169,7 +160,7 @@ compound_step9() { block ship-compound.md '^9\. \*\*Log \+ commit' '^10\. \*\*Re
   [ "$(git ls-files docs/plans)" = "docs/plans/R-1.1-z.md" ]
 }
 
-@test "ship-compound step 9 (mr) removes this ship's spec, brainstorm and plan, not another ship's spec" {
+@test "ship-compound step 9 removes this ship's spec, brainstorm and plan, not another ship's spec" {
   git worktree add -q -b ship/R-1-x "$SCRATCH/wt"
   cd "$SCRATCH/wt"
   mkdir -p docs/specs docs/brainstorms docs/plans
@@ -200,7 +191,7 @@ compound_step9() { block ship-compound.md '^9\. \*\*Log \+ commit' '^10\. \*\*Re
   [ -z "$(git ls-files docs/specs)" ]
 }
 
-@test "ship-compound step 9 (squash) removes the spec with no vault configured" {
+@test "ship-compound step 9 removes the spec with no vault configured" {
   echo 'merge_mode: squash' > .claude/ship-config.yml
   mkdir -p docs/specs docs/proposals
   echo p > docs/proposals/p.md
@@ -225,7 +216,7 @@ land_step5() { block ship-land.md '^5\. \*\*Clean up' '^6\. \*\*Report'; }
   echo "new proposal" > "$SCRATCH/wt/docs/proposals/R-9-proposal.md"
   land_step5 > "$SCRATCH/s5.sh"
   [ -s "$SCRATCH/s5.sh" ]
-  run env BRANCH=ship/R-1-x bash "$SCRATCH/s5.sh"
+  run env ARGUMENTS=R-1 BRANCH=ship/R-1-x bash "$SCRATCH/s5.sh"
   [ "$status" -eq 0 ]
   [ ! -d "$SCRATCH/wt" ] || { echo "worktree not removed: $output"; return 1; }
   run git rev-parse --verify -q refs/heads/ship/R-1-x
@@ -235,7 +226,7 @@ land_step5() { block ship-land.md '^5\. \*\*Clean up' '^6\. \*\*Report'; }
 @test "every ship-land block that calls the lib sources it — blocks do not share a shell" {
   awk '/^[[:space:]]*```bash[[:space:]]*$/{n++; f=1; next} /^[[:space:]]*```[[:space:]]*$/{f=0} f{print n": "$0}' \
     "$SHIP_SKILL_ROOT/commands/ship-land.md" > "$SCRATCH/blocks"
-  for n in $(grep -E 'land_context|land_is_merged|CONTEXT_MD_MAX' "$SCRATCH/blocks" | cut -d: -f1 | sort -u); do
+  for n in $(grep -E 'land_resolve|land_is_merged|land_push' "$SCRATCH/blocks" | cut -d: -f1 | sort -u); do
     grep -E "^$n: " "$SCRATCH/blocks" | grep -qF 'lib/ship-land.sh' \
       || { echo "block $n calls the lib without sourcing it"; return 1; }
   done
@@ -291,7 +282,7 @@ land_step5() { block ship-land.md '^5\. \*\*Clean up' '^6\. \*\*Report'; }
   mkdir -p docs/proposals
   echo "operator draft" > docs/proposals/draft.md
   land_step5 > "$SCRATCH/s5.sh"
-  run env BRANCH=ship/R-1-x bash "$SCRATCH/s5.sh"
+  run env ARGUMENTS=R-1 BRANCH=ship/R-1-x bash "$SCRATCH/s5.sh"
   [ -f docs/proposals/draft.md ] || { echo "cleaned the operator's checkout"; return 1; }
 }
 
@@ -472,4 +463,113 @@ ARGUMENTS='--upgrade'
   run bash "$SCRATCH/s1.sh"
   [ "$status" -eq 0 ]
   [ "$output" = "" ]
+}
+
+
+# Each shell gets an independent checkout; no shared fixture is changed.
+land_case() {
+  export TMPDIR="$SCRATCH/tmp-$1"
+  mkdir -p "$TMPDIR"
+  git clone -q "$SCRATCH/origin.git" "$SCRATCH/repo-$1"
+  cd "$SCRATCH/repo-$1"
+  git config user.email t@t
+  git config user.name t
+  git worktree add -q -b ship/R-1-x "$SCRATCH/ship-$1"
+  source "$SHIP_LIB/ship-land.sh"
+  eval "$(land_resolve R-1)"
+}
+
+@test "ship-land step 4 refuses to push when the land worktree has no compound commit for the ID" {
+  for shell in bash zsh; do
+    land_case "$shell"
+    git worktree add -q --detach "$LAND_WT" origin/main
+    before=$(git --git-dir="$SCRATCH/origin.git" rev-parse main)
+    block ship-land.md '^4\. \*\*Push' '^5\. ' > "$SCRATCH/s4.sh"
+    run env ARGUMENTS=R-1 "$shell" "$SCRATCH/s4.sh"
+    [ "$status" -ne 0 ]
+    [ "$(git --git-dir="$SCRATCH/origin.git" rev-parse main)" = "$before" ]
+  done
+}
+
+@test "ship-land step 5 removes a ship worktree that still holds .ship/" {
+  for shell in bash zsh; do
+    land_case "$shell"
+    mkdir -p "$SHIP_WT/.ship"
+    echo draft > "$SHIP_WT/.ship/learning-draft.md"
+    land_step5 > "$SCRATCH/s5.sh"
+    run env ARGUMENTS=R-1 "$shell" "$SCRATCH/s5.sh"
+    [ "$status" -eq 0 ]
+    [ ! -d "$SHIP_WT" ]
+    run git rev-parse --verify -q refs/heads/ship/R-1-x
+    [ "$status" -ne 0 ]
+  done
+}
+
+@test "ship-land step 3 replays every deferred row" {
+  for shell in bash zsh; do
+    land_case "$shell"
+    mkdir -p "$SHIP_WT/.ship"
+    printf '%s\n' 'idea row' 'ship row' > "$SHIP_WT/.ship/ship-log-rows"
+    block ship-land.md '^3\. \*\*Compound' '^4\. ' > "$SCRATCH/s3.sh"
+    run env ARGUMENTS=R-1 "$shell" "$SCRATCH/s3.sh"
+    [ "$status" -eq 0 ]
+    [ "$(tail -2 "$LAND_WT/docs/learnings/_log.md")" = "$(printf '%s\n' 'idea row' 'ship row')" ]
+  done
+}
+
+@test "ship-land step 3 warns when the ship worktree is gone" {
+  for shell in bash zsh; do
+    land_case "$shell"
+    git worktree remove "$SHIP_WT"
+    block ship-land.md '^3\. \*\*Compound' '^4\. ' > "$SCRATCH/s3.sh"
+    run env ARGUMENTS=R-1 "$shell" -c '"$0" "$1" 2>"$2"' "$shell" "$SCRATCH/s3.sh" "$SCRATCH/stderr"
+    [ "$status" -eq 0 ]
+    grep -qF WARN "$SCRATCH/stderr"
+  done
+}
+
+@test "ship-land step 3 refuses to discard a land worktree that has unpushed commits" {
+  for shell in bash zsh; do
+    land_case "$shell"
+    git worktree add -q --detach "$LAND_WT" origin/main
+    git -C "$LAND_WT" commit -q --allow-empty -m 'compound: R-1 — shipped + learning'
+    before=$(git -C "$LAND_WT" rev-parse HEAD)
+    block ship-land.md '^3\. \*\*Compound' '^4\. ' > "$SCRATCH/s3.sh"
+    run env ARGUMENTS=R-1 "$shell" "$SCRATCH/s3.sh"
+    [ "$status" -ne 0 ]
+    [ "$(git -C "$LAND_WT" rev-parse HEAD)" = "$before" ]
+    [[ "$output" == *"push it with step 4 or remove it by hand"* ]] || return 1
+  done
+}
+
+@test "ship-land skips to cleanup when origin/<base> already has the compound commit" {
+  for shell in bash zsh; do
+    land_case "$shell"
+    git commit -q --allow-empty -m 'compound: R-1 — shipped + learning'
+    git push -q origin main
+    block ship-land.md '^1\. \*\*Resolve' '^2\. ' > "$SCRATCH/s1.sh"
+    run env ARGUMENTS=R-1 "$shell" "$SCRATCH/s1.sh"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"already compounded"* ]] || return 1
+    [[ "$output" == *"go to step 5"* ]] || return 1
+  done
+}
+
+@test "ship-compound step 9 stages the whole vault mirror" {
+  for shell in bash zsh; do
+    echo old > docs/product/VISION.md
+    git add docs/product/VISION.md && git commit -q -m vision
+    echo refreshed-roadmap >> docs/product/ROADMAP.md
+    echo refreshed-vision >> docs/product/VISION.md
+    echo learning > docs/learnings/R-1-x.md
+    compound_step9 > "$SCRATCH/s9.sh"
+    run env ID=R-1 slug=x "$shell" "$SCRATCH/s9.sh"
+    [ "$status" -eq 0 ] || return 1
+    [ -z "$(git status --porcelain docs/product)" ] || return 1
+  done
+}
+
+@test "ship-compound step 7 leaves an already Done row alone" {
+  run sed -n '/^7\. /,/^7b\. /p' "$SHIP_SKILL_ROOT/commands/ship-compound.md"
+  [[ "$output" == *'If the `${ID}` row is already under "✅ Done" (a re-run of `/ship-land`), leave the ROADMAP as it is.'* ]]
 }

@@ -1116,22 +1116,32 @@ review sets `merge_mode: mr`.
    esac
    ```
 
-   **`mr` does not move `$ORIG_BRANCH`.** The work is shipped but not landed, so
-   Phase 8 marks the ROADMAP row `in-review` rather than Done, and Phase 9 keeps
-   the branch and worktree the review depends on. `/ship-land` finishes the job
-   once the review merges.
+   **`mr` does not move `$ORIG_BRANCH`.** The review carries only the work. Phase 8 marks the row in-review and drafts the learning, Phase 9 keeps the branch and worktree, and `/ship-land` runs `/ship-compound` on the base branch once the review merges (R-008).
 
-## Phase 8 — /ship-compound
+## Phase 8 — /ship-compound (squash) · in-review + learning draft (mr)
 
-1. **Invoke `/ship-compound`** for this R-NNN. It writes the learning, promotes patterns to AIR-OS, marks the ROADMAP row ✅.
+**`squash`:** invoke `/ship-compound` for this R-NNN from the original repo cwd on
+`$ORIG_BRANCH` (Phase 7 already cd'd back). It writes the learning, updates
+`CONTEXT.md` (exports `CONTEXT_MD_STATUS`), moves the row to Done and removes the
+spec and plan.
 
-   Where it runs depends on the merge mode. `squash`: from the original repo cwd
-   (Phase 7 already cd'd back), on `$ORIG_BRANCH`. `mr`: from `$WORKTREE`, on the
-   review branch — the learning and the queued `CONTEXT.md` entries belong to the
-   review, and `/ship-compound` refuses to run its mr path anywhere else. Either way
-   it edits the canonical ROADMAP in the vault directly.
+**`mr`:** do not run `/ship-compound` — every file it writes is shared or belongs on
+the base branch, and parallel reviews must not touch them (R-001, R-008).
+`/ship-land` runs it after the merge. `/ship-idea --during-build` rows wait in
+`$WORKTREE/.ship/ship-log-rows` too; `/ship-land` replays them. Here:
 
-   `/ship-compound` now also updates `CONTEXT.md` and exports `CONTEXT_MD_STATUS`.
+1. Mark the row in review:
+
+   ```bash
+   ROADMAP_PATH="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/ROADMAP.md"
+   ~/.claude/skills/ship-workflow/lib/roadmap-insert.sh "$ROADMAP_PATH" "$ID" --mark-review "$SHIP_REVIEW_URL"
+   ```
+
+2. While the context is fresh, draft the learning from `templates/repo/LEARNING.md`
+   into `$WORKTREE/.ship/learning-draft.md`: Key Decisions from the spec's
+   `## Decisions`, What Changed From Plan from the plan and `.ship/codex-rounds.md`.
+   It is not committed; `/ship-land` starts from it. Set
+   `CONTEXT_MD_STATUS="deferred to /ship-land"`.
 
 ## Phase 8.5 — Test prune report
 
@@ -1339,10 +1349,7 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
 
    The squash merge in Phase 7 doesn't update branch reachability, so `-d` may complain. Use `-D` if needed; the work is already squashed onto $ORIG_BRANCH.
 
-3. **Log + commit.** `squash`: in `$REPO`, on `$ORIG_BRANCH`. `mr`: in
-   `$WORKTREE`, on the review branch — `ship_log` turns the row into a
-   `Ship-Log:` commit trailer there, so it reaches the base branch's history with
-   the review and parallel MRs never touch a shared file (R-001).
+3. **Log + commit.** `squash`: in `$REPO`, on `$ORIG_BRANCH`. `mr`: nothing is committed now — rows wait in `$WORKTREE/.ship/ship-log-rows` and `/ship-land` replays them with the compound commit after the merge.
 
    ```bash
    # Only ships that actually ran codex carry a codex fragment. Ships that ran
@@ -1352,7 +1359,9 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
    if [ "${CODEX_ROUNDS:-0}" -gt 0 ] 2>/dev/null; then
      CODEX_LOG_FRAGMENT=", codex: ${CODEX_ROUNDS} round(s) ${CODEX_FINAL_VERDICT}"
    fi
-   SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}${CODEX_LOG_FRAGMENT}) | n |"
+   if [ -z "${SHIP_LOG_ROW:-}" ]; then
+     SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp, prune: ${PRUNE_STATUS}${CODEX_LOG_FRAGMENT}) | n |"
+   fi
    # shellcheck disable=SC1091
    source ~/.claude/skills/ship-workflow/lib/ship-log.sh
    # Each block runs in its own shell: resolve the mode here, never rely on a
@@ -1361,21 +1370,15 @@ runs in `--auto:yes`. Because it is expensive, Phase 9 flags it explicitly.
    source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
    MERGE_MODE=$(merge_mode)
    if [ "$MERGE_MODE" = "mr" ]; then
-     # Log and push from the review branch only. `cd ""` succeeds silently in
-     # bash and zsh, so an unset $WORKTREE would otherwise leave this in $REPO on
-     # the base branch — and the push would send the base branch to origin.
      (
-       [ -n "$WORKTREE" ] && cd "$WORKTREE" \
-         || { echo "Phase 9: WORKTREE is not set — nothing logged or pushed" >&2; exit 1; }
-       CUR=$(git branch --show-current)
-       # This ship's branch only: a WORKTREE left over from an earlier ship in the
-       # same session would otherwise push this row into that ship's review.
+       [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ] \
+         || { echo "Phase 9: WORKTREE is not set — nothing logged" >&2; exit 1; }
+       CUR=$(git -C "$WORKTREE" branch --show-current)
        case "$CUR" in
          "ship/${ID}-"*) : ;;
-         *) echo "Phase 9: refusing to log or push from '$CUR' — expected ship/${ID}-*" >&2
-            exit 1 ;;
+         *) echo "Phase 9: refusing to log into '$CUR' — expected ship/${ID}-*" >&2; exit 1 ;;
        esac
-       ship_log "$SHIP_LOG_ROW" && git push origin "$CUR"
+       (cd "$WORKTREE" && ship_log "$SHIP_LOG_ROW")
      )
    else
      ship_log "$SHIP_LOG_ROW"

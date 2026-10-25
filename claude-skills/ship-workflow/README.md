@@ -35,7 +35,7 @@ cd /path/to/your/repo
 | `/ship-next` | End-to-end ship cycle: worktree → brainstorm → spec → plan → execute → review → merge |
 | `/ship-compound` | Learning + promote patterns + close (ship-next Phase 8) |
 | `/ship-idea` | Capture idea (IDEA-NNN); ship-next files review findings with it |
-| `/ship-land` | Finish an item shipped with `merge_mode: mr` |
+| `/ship-land` | After an mr review merges, run `/ship-compound` at `origin/<base>` in a throwaway worktree, push with `[skip ci]`, then clean up (R-008) |
 | `/ship-init` | Scaffold a repo; `--upgrade` removes old per-repo command copies |
 
 **UA integration** — `/ship-next` auto-picks up `.ua/knowledge-graph.json` if present in the target repo. See spec `docs/superpowers/specs/2026-08-30-ua-ship-workflow-integration-design.md`.

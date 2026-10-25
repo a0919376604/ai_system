@@ -103,3 +103,15 @@ EOF
   [ "$(cat docs/product/ROADMAP.md)" = "committed" ] || return 1
   [ -z "$(git status --porcelain --untracked-files=no)" ]
 }
+
+@test "sync.sh writes the mirror at a linked worktree root when SHIP_SYNC_IN_WORKTREE=1" {
+  cd "$REPO"
+  git init -q -b main
+  git add -A
+  git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+  git worktree add -q -b ship/R-9-x "$SCRATCH/test-repo-wt"
+  cd "$SCRATCH/test-repo-wt" || return 1
+  run env HOME="$HOME_OVERRIDE" SHIP_SYNC_IN_WORKTREE=1 "$SHIP_LIB/sync.sh" --force
+  [ "$status" -eq 0 ]
+  cmp "$AIROS/10 Projects/test-repo/ROADMAP.md" docs/product/ROADMAP.md
+}

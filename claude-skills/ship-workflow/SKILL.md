@@ -12,7 +12,7 @@ them into `~/.claude/commands/` — and every repo uses those. A repo carries no
 - **`/ship-next [R-NNN] | --adhoc <desc> | --discard R-NNN`** — End-to-end ship cycle: open worktree → brainstorm → spec → plan → execute → strict code-review + security gate → squash-merge (or open an MR) → cleanup
 - **`/ship-compound`** — Write learning + promote patterns + close the Roadmap item (ship-next Phase 8 runs it)
 - **`/ship-idea <description>`** — Capture an idea (IDEA-NNN); ship-next Phase 6 files major and pre-existing findings with it
-- **`/ship-land [R-NNN]`** — Finish an item shipped via `merge_mode: mr`: verify the review merged, move the row to Done, remove the branch + worktree Phase 9 kept
+- **`/ship-land [R-NNN]`** — Finish an item shipped via `merge_mode: mr`: after the review merges, run `/ship-compound` in a throwaway worktree at `origin/<base>`, push with `[skip ci]`, then remove the branch + worktree Phase 9 kept (R-008)
 - **`/ship-init`** — Bootstrap a repo (folders, AIR-OS Product Brain stub); `--upgrade` removes old per-repo command copies
 
 - **UA integration**: `/ship-next` auto-detects `.ua/knowledge-graph.json` in the target repo and injects UA blast-radius context into Phase 3 (brainstorm), Phase 6 (review), and Phase 8 (compound). Silent no-op when UA absent. See `docs/superpowers/specs/2026-08-30-ua-ship-workflow-integration-design.md`.

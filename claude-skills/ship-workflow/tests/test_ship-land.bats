@@ -13,7 +13,7 @@ setup() { export CMD="$SHIP_SKILL_ROOT/commands/ship-land.md"; }
   # The whole point is that it finishes what mr mode deferred. Doing that on
   # an unmerged review would mark Done and delete the branch the review needs.
   grep -qiF 'merged' "$CMD" || { echo "no merge check"; return 1; }
-  grep -qF 'land_is_merged "$BRANCH" "origin/${BASE}"' "$CMD" || { echo "merge state is never verified"; return 1; }
+  grep -qF 'land_is_merged "$BRANCH" "$BASE"' "$CMD" || { echo "merge state is never verified"; return 1; }
 }
 
 @test "ship-land moves the row to Done and clears in-review" {
@@ -26,17 +26,16 @@ setup() { export CMD="$SHIP_SKILL_ROOT/commands/ship-land.md"; }
   grep -qF 'git branch -D "$BRANCH"' "$CMD" || { echo "branch is never deleted"; return 1; }
 }
 
-@test "ship-land folds deferred CONTEXT.md entries through the lib" {
-  grep -qF 'lib/ship-land.sh' "$CMD" || { echo "lib not sourced"; return 1; }
-  grep -qF 'land_context "$ID" "$BASE"' "$CMD" || { echo "deferred entries are never landed"; return 1; }
+@test "ship-land runs /ship-compound on the base branch in a throwaway worktree" {
+  for word in land_resolve 'worktree add' /ship-compound SHIP_COMMIT_SUFFIX land_push; do
+    grep -qF "$word" "$CMD" || return 1
+  done
 }
 
-@test "ship-land never writes _log.md or pulls the operator's checkout" {
-  # Both were in the first version: a local-only commit on the base branch that
-  # was never pushed, and a pull on a checkout that may be dirty or behind.
-  code=$(awk '/^[[:space:]]*```bash[[:space:]]*$/{f=1;next} /^[[:space:]]*```[[:space:]]*$/{f=0} f' "$CMD")
-  if echo "$code" | grep -qF '_log.md'; then echo "ship-land writes _log.md"; return 1; fi
-  if echo "$code" | grep -qE 'git pull'; then echo "ship-land pulls the operator checkout"; return 1; fi
+@test "ship-land never pulls or commits in the operator's checkout" {
+  ! grep -qF 'git pull' "$CMD"
+  ! grep -qE '^[[:space:]]*git commit' "$CMD"
+  grep -qF 'ship-log-rows' "$CMD"
 }
 
 @test "ship-land is registered as a ship-* command" {
@@ -53,4 +52,9 @@ setup() { export CMD="$SHIP_SKILL_ROOT/commands/ship-land.md"; }
 
 @test "ship-land refuses to run from inside a worktree" {
   grep -qF 'git rev-parse --path-format=absolute --git-common-dir' "$CMD" || { echo "no main-checkout guard"; return 1; }
+}
+
+@test "ship-compound step 2 picks the plan, not a review-fix plan" {
+  step=$(sed -n '/^2\. \*\*Identify/,/^3\. /p' "$SHIP_SKILL_ROOT/commands/ship-compound.md")
+  printf '%s\n' "$step" | grep -qF "grep -v -- '-review-fix-'"
 }

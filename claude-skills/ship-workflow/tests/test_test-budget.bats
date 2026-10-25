@@ -145,19 +145,6 @@ seed() {
 }
 
 
-@test "tb_shadow_active: Ship-Log trailers count, so an mr-only repo leaves shadow mode" {
-  # In merge_mode=mr the ship-next row is a commit trailer, never a file line.
-  # Counting the file alone would keep such a repo in shadow mode forever.
-  i=0; while [ "$i" -lt 3 ]; do
-    git commit -q --allow-empty -m "log: ship-next R-$i" \
-      -m "Ship-Log: | d | ship-next | R-$i | shipped (ratio 1bp vs baseline 1bp) | n |"
-    i=$((i+1))
-  done
-  [ ! -f docs/learnings/_log.md ]
-  run tb_shadow_active
-  [ "$status" -eq 1 ]
-}
-
 @test "tb_test_lines_added: sums added lines in test paths of one commit" {
   git commit -q --allow-empty -m base
   mkdir -p tests src

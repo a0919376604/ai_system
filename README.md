@@ -215,7 +215,7 @@ devsync stop my-repo   # 結束
 
 **`--auto:yes`**：全程不問問題，適合丟著跑一整晚。項目必須有 `↳ done when:`；問題一律選建議選項；major finding 自動開成 IDEA；3 輪還過不了就中止並保留 worktree。
 
-**`merge_mode: mr`**（寫在 `.claude/ship-config.yml`）：不直接 merge，改成開 PR/MR，review 合併後執行 `/ship-land R-NNN` 收尾。
+**`merge_mode: mr`**（寫在 `.claude/ship-config.yml`）：不直接 merge，改成開 PR/MR，review 只帶工作內容；合併後執行 `/ship-land R-NNN`，在 `origin/<base>` 的暫存 worktree 跑 `/ship-compound`，以 `[skip ci]` 推送後清理 branch 和 worktree（R-008）。
 
 **中斷**：重跑 `/ship-next R-NNN` 會從上次的階段接續。
 
