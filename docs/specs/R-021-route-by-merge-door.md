@@ -93,12 +93,17 @@ ai-first: true
 - **`sn_door <worktree>`** (in lib/ship-next.sh) reads state (`ID`, `SLUG`, `ORIG_BRANCH`,
   `REPO`) and the spec `docs/specs/<ID>-<SLUG>.md`.
   - It collects reasons:
-    - the spec's `Door:` line, or `spec: no Door line`;
+    - the spec's `Door:` line, read only from its `## Decisions` section (other sections
+      may quote the syntax), or `spec: no Door line`;
     - every signal, each as `signal: <kind> <path or dependency>`.
   - It decides the door as in G1 and the mode as in G3.
   - It persists `SHIP_DOOR`, `SHIP_DOOR_REASONS` (reasons joined by `; `),
     `SHIP_MERGE_MODE` and `SHIP_AUTO_MERGE` (`1` only for an mr repo with a two-way door).
   - It prints `door: <door>` and then one reason per line.
+  - It recomputes and overwrites all four keys on every run, so a stale
+    `SHIP_MERGE_MODE` never survives a rerun.
+  - The signal diff range is the merge-base of `ORIG_BRANCH` and `HEAD`, as
+    `sn_new_deps` uses.
 - **`_sn_one_way_paths <base>`** prints the globs under `one_way_paths:` in
   `<base>:.claude/ship-config.yml`. It prints nothing when the file or the key is absent.
   - It reuses `_sr_base_file` (lib/security-review.sh) to read the file.
@@ -119,6 +124,10 @@ ai-first: true
 - **`sn_land`** uses `merge_mode` (it already loads state). After the mr branch opens the
   review, it calls `sn_auto_merge` when `SHIP_AUTO_MERGE=1`. A failure there does not
   fail `sn_land`.
+  - A ship whose mode is mr in a repo with no GitHub or GitLab `origin` stops with
+    exit 1, as the mr path already does. The message says a one-way door needs a
+    review, so the branch must be merged by hand after one. It never falls back to a
+    squash.
 - **ship-next Phase 3** step 1 requires a `Door: one-way|two-way — <why>` line in
   Decisions. When unsure, `one-way`.
 - **ship-next Phase 7:**
@@ -155,6 +164,14 @@ ai-first: true
 - My call (auto Q5): the agent writes Summary and Evidence, because a shell function
   cannot draw the diagram. Merge Danger is computed so the door cannot be misreported.
 - My call (auto Q6): the door goes into the log row and the summary.
+- My call (builder check): R-021 cannot route itself, because the live ship-next is
+  still the old one. Its Phase 7 is done by hand:
+  1. Push the branch.
+  2. Open a GitHub PR with the new body, built with this worktree's lib.
+  3. Mark the row in-review and keep the worktree.
+  4. After leric merges, run `/ship-land R-021`.
+- My call (builder check): a one-way ship in a repo without a forge remote stops. It
+  never falls back to a squash.
 - Door for this ship: `Door: one-way — it changes how every future ship merges, including
   when a human is skipped.` By its own rule this ship lands through a PR on ai_system's
   GitHub and waits for leric.
@@ -162,7 +179,7 @@ ai-first: true
 ## Seams
 | Seam | Interface | Guaranteed behavior |
 |---|---|---|
-| `sn_door` | `sn_door <worktree>` (cwd: the worktree) | Prints `door: one-way\|two-way` and one reason per line. Persists `SHIP_DOOR`, `SHIP_DOOR_REASONS`, `SHIP_MERGE_MODE`, `SHIP_AUTO_MERGE`. The door is two-way only with a spec `Door: two-way` and no signal. |
+| `sn_door` | `sn_door <worktree>` (cwd: the worktree) | Reads `Door:` only inside `## Decisions`. Prints `door: one-way\|two-way` and one reason per line. Persists `SHIP_DOOR`, `SHIP_DOOR_REASONS`, `SHIP_MERGE_MODE`, `SHIP_AUTO_MERGE`. The door is two-way only with a spec `Door: two-way` and no signal. |
 | `_sn_one_way_paths` | `_sn_one_way_paths <base>` | One glob per line from `one_way_paths:` in the base branch's `.claude/ship-config.yml`, unquoted. Nothing when absent. |
 | `merge_mode` | existing | Returns `$SHIP_MERGE_MODE` when it is `mr` or `squash`; otherwise unchanged. |
 | `forge_automerge_cmd` | `forge_automerge_cmd <url>` | Echoes `glab mr merge <url> --auto-merge --squash --yes` or `gh pr merge <url> --auto --squash`. Exit 1 for an unknown forge. |
