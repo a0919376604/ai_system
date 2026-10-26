@@ -571,7 +571,9 @@ sn_land() {
          exit 1
        }
        echo "opening review: $MR_CMD"
-       SHIP_REVIEW_URL=$(eval "$MR_CMD" | grep -oE 'https?://[^[:space:]]+' | tail -1)
+       # Only a URL naming a review counts: an outdated glab ends its output with an
+       # upgrade-notice link, and `tail -1` of every URL picked that (R-022).
+       SHIP_REVIEW_URL=$(eval "$MR_CMD" | command grep -oE 'https?://[^[:space:]]+/(merge_requests|pull)/[0-9]+' | tail -1)
        [ -n "$SHIP_REVIEW_URL" ] || {
          echo "the review command produced no URL — check it by hand before continuing" >&2
          exit 1

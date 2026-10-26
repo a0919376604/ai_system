@@ -167,7 +167,7 @@ case "$1 $2" in
 esac
 case "$*" in
   'mr view '*) printf '%s\n' "$STUB_VIEW_JSON" ;;
-  'mr create '*) echo https://g/grp/repo/-/merge_requests/42 ;;
+  'mr create '*) printf '%b\n' "${STUB_CREATE_OUT:-https://g/grp/repo/-/merge_requests/42}" ;;
   'mr merge '*) exit "${STUB_MERGE_EXIT:-0}" ;;
 esac
 STUB
@@ -348,4 +348,16 @@ body_fixture() {
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_land "$PWD" R-9 ship/R-9-x main title "$SCRATCH/body" 2> "$SCRATCH/stderr"'
   [ "$status" -ne 0 ]
   grep -qF 'a one-way door needs a review' "$SCRATCH/stderr"
+}
+
+@test "the review URL is the merge_requests one, never glab's upgrade notice" {
+  forge_stubs; git init -q --bare "$SCRATCH/gitlab.git"; git remote set-url origin "$SCRATCH/gitlab.git"
+  start_ship; commit_changes; sn_state_set "$PWD" SHIP_MERGE_MODE mr; echo body > "$SCRATCH/body"
+  notice='A new version of glab has been released: v1.124.0\nhttps://gitlab.com/gitlab-org/cli/-/releases/v1.124.0'
+  land() { STUB_CREATE_OUT="$1" bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_land "$PWD" R-9 ship/R-9-x main title "$SCRATCH/body"'; }
+  run land "https://g/grp/repo/-/merge_requests/42\n\n$notice"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(sed -n 's/^SHIP_REVIEW_URL=//p' .ship/state.env)" = https://g/grp/repo/-/merge_requests/42 ] || return 1
+  run land "$notice"
+  [ "$status" -ne 0 ] && [[ "$output" == *"produced no URL"* ]]
 }
