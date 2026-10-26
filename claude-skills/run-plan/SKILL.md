@@ -181,6 +181,8 @@ IMPORTANT: Do NOT read or execute any files under ~/.claude/, ~/.agents/, .claud
 
 Your task: implement the plan below. Execute tasks in numerical order; within each task, execute steps in order.
 
+Before the first task: if .ship/tdd-rules.md or .ship/ponytail-rules.md exist in the working directory, read them. They are this repo's TDD rules and the ponytail ladder (written by /ship-next); follow them in every task, review fix-plans included.
+
 WORKFLOW:
 1. Use the exact code/text shown in each step. Do not improvise beyond the REPAIR RULE below.
 2. Use TDD discipline where the plan asks for it: write failing test, confirm fail, then implement.
