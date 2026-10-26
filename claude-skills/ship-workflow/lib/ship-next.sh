@@ -250,8 +250,11 @@ sn_door() {
   cd "$1" || return
   local wt="$PWD" spec_line door reasons paths f glob dep repo_mode mode auto_merge
   source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/merge-mode.sh"
-  spec_line=$(awk '/^## Decisions/{d=1;next} /^## /{d=0} d && /Door:[[:space:]]*(one-way|two-way)/ {print; exit}' \
-    "docs/specs/${ID}-${SLUG}.md" 2>/dev/null | sed 's/^.*Door:/Door:/')
+  spec_line=$(awk '/^## Decisions/{d=1;next} /^## /{d=0} d && /^[-*[:space:]]*Door:[[:space:]]*(one-way|two-way)/ {
+      if (!first) first=$0
+      if ($0 ~ /^[-*[:space:]]*Door:[[:space:]]*one-way/) {first=$0; exit}
+    } END {if (first) print first}' \
+    "docs/specs/${ID}-${SLUG}.md" 2>/dev/null | sed 's/^[-*[:space:]]*Door:[[:space:]]*/Door: /')
   door=one-way
   reasons="spec: ${spec_line:-no Door line}"
   case "$spec_line" in 'Door: two-way'*) door=two-way ;; esac

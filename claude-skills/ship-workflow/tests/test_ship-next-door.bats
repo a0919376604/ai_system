@@ -301,3 +301,31 @@ body_fixture() {
   [ "$SHIP_AUTO_MERGE" = 0 ]
   [[ "$SHIP_DOOR_REASONS" == *'door check failed'* ]]
 }
+
+@test "quoted two-way mention cannot override a one-way Door" {
+  start_ship
+  printf '## Decisions\n- My call: a `Door: two-way` ship auto-merges\n- Door: one-way — drops a column\n' > docs/specs/R-9-x.md
+  commit_changes
+  door
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = 'door: one-way' ]
+  [[ "$output" == *'spec: Door: one-way — drops a column'* ]]
+}
+@test "a quoted Door alone is no Door line" {
+  start_ship
+  printf '## Decisions\n- My call: a `Door: two-way` ship auto-merges\n' > docs/specs/R-9-x.md
+  commit_changes
+  door
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = 'door: one-way' ]
+  [[ "$output" == *'spec: no Door line'* ]]
+}
+@test "a later one-way Door overrides a counted two-way Door" {
+  start_ship
+  printf '\n- Door: one-way — drops a column\n' >> docs/specs/R-9-x.md
+  commit_changes
+  door
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = 'door: one-way' ]
+  [[ "$output" == *'spec: Door: one-way — drops a column'* ]]
+}
