@@ -31,3 +31,4 @@
 | 2026-10-26 12:40 | ship-compound | R-015 | shipped | y |
 | 2026-10-26 12:40 | ship-next | R-015 | shipped (review: 3 attempts, blockers fixed; security 0) | y |
 | 2026-10-26 16:33 | ship-compound | R-016 | shipped | n |
+| 2026-10-26 16:33 | ship-next | R-016 | shipped (review: blocking=0, major=0, ponytail=1, spec_gaps=1, ratio 2465bp vs baseline 1553bp, codex: 1 round(s) done_with_concerns) | n |
