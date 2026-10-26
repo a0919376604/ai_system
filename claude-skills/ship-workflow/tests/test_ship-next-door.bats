@@ -285,7 +285,7 @@ body_fixture() {
   export SN_PIPELINE_WAIT=0 STUB_VIEW_JSON='{"head_pipeline":{"id":7,"status":"running"}}'
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/x'
   [ "$status" -eq 1 ]
-  [[ "$output" == *WARN* ]]
+  [[ "$output" == *WARN* ]] || return 1
   ! grep -q '^mr merge ' "$CALLS"
 }
 
@@ -335,7 +335,7 @@ body_fixture() {
   export SN_PIPELINE_WAIT=0 STUB_VIEW_JSON='{"head_pipeline":{"id":7,"status":"failed"}}'
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/grp/repo/-/merge_requests/42'
   [ "$status" -eq 1 ]
-  [[ "$output" == *'WARN: pipeline failed — auto-merge not set'* ]]
+  [[ "$output" == *'WARN: pipeline failed — auto-merge not set'* ]] || return 1
   ! grep -q '^mr merge ' "$CALLS"
 }
 

@@ -79,3 +79,20 @@ Conventions:
 ### Task 6: full suite
 `cd claude-skills/ship-workflow && bats tests/`. Expected: only the known `cwd-guard`
 failure.
+
+## Execution log
+
+- Tasks 1–5: completed in order, each with a failing regression check followed by
+  a green scoped suite and its own commit. Scoped suite: 41 tests pass.
+- Deviation: added explicit `|| return 1` to two new non-final WARN assertions —
+  the full-suite hygiene guard requires this so failed assertions cannot be ignored.
+  No assertion was removed or weakened.
+- Task 6 initial full run: 697 tests, with the known linked-worktree cwd-guard
+  failure and the two assertion-hygiene violations above. Repaired the latter;
+  final full-suite result follows.
+- Task 6 final full run: 696 passed, 1 known pre-existing failure out of 697
+  (`cwd-guard: exits 0 when not in a git repo at all`, test_cwd-guard.bats:23).
+  The full suite is not entirely green; no new failures remain. Output:
+  /tmp/R-021-review-fix-2-tests-final.log.
+- Final status: DONE_WITH_CONCERNS (the assertion repair above and the documented
+  baseline failure). No remote push, branch switch, amended commit, or hook bypass.
