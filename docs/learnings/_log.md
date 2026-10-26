@@ -30,3 +30,4 @@
 | 2026-10-26 12:06 | ship-next | R-014 | shipped (small-change lane; review 0/0; security 0) | y |
 | 2026-10-26 12:40 | ship-compound | R-015 | shipped | y |
 | 2026-10-26 12:40 | ship-next | R-015 | shipped (review: 3 attempts, blockers fixed; security 0) | y |
+| 2026-10-26 16:33 | ship-compound | R-016 | shipped | n |
