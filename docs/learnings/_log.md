@@ -26,3 +26,4 @@
 | 2026-10-25 20:58 | ship-next | R-012 | shipped (small-change lane; review: blocking=1 fixed, major=1 fixed; security 0) | y |
 | 2026-10-26 07:38 | ship-compound | R-013 | shipped | n |
 | 2026-10-26 07:39 | ship-next | R-013 | shipped (review: blocking=0, major=0, ratio 1647bp vs baseline 1537bp, codex: 3 round(s) done) | n |
+| 2026-10-26 12:06 | ship-compound | R-014 | shipped | y |
