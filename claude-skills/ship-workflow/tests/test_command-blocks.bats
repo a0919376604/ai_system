@@ -715,3 +715,36 @@ land_case() {
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [[ "$output" == *"spec review: 2 gap(s) found on attempt 1, all closed"* ]]
 }
+
+rows_block() { block ship-refactor-scan.md '^3\. \*\*Write rows' '^4\. \*\*Report back'; }
+
+@test "ship-refactor-scan step 3: syncs, writes the rows file into the vault ROADMAP's Next, mirrors it (AC-10c)" {
+  vault=$(make_fake_airos "$SCRATCH" repo)
+  printf 'airos_vault: %s\nairos_projects_dir: "10 Projects"\n' "$vault" > "$HOME/.claude/ship-workflow.yml"
+  VP="$vault/10 Projects/repo"; mkdir -p "$VP/Reports"
+  printf '%s\n' $'new\t1\tA 收進一個 module\tsa\toa\t' > "$VP/Reports/refactor-scan-T.rows.tsv"
+  rows_block > "$SCRATCH/s3.sh"; [ -s "$SCRATCH/s3.sh" ]
+  run env STAMP=T bash "$SCRATCH/s3.sh"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  awk '/^## 🔜 Next/{f=1;next} /^## /{f=0} f' "$VP/ROADMAP.md" | grep -qF 'A 收進一個 module（報告：Reports/refactor-scan-T.html#c1）'
+  grep -qF 'A 收進一個 module' docs/product/ROADMAP.md
+}
+@test "ship-refactor-scan: one bash block per step 0, 1, 3, 4; step 2 has none" {
+  [ -n "$(block ship-refactor-scan.md '^0\. \*\*Resolve' '^1\. \*\*Read the method')" ]
+  [ -n "$(block ship-refactor-scan.md '^1\. \*\*Read the method' '^2\. \*\*Pick')" ]
+  [ -z "$(block ship-refactor-scan.md '^2\. \*\*Pick' '^3\. \*\*Write rows')" ]
+  [ -n "$(block ship-refactor-scan.md '^4\. \*\*Report back' '^## ')" ]
+}
+
+@test "ship-refactor-scan step 3 under zsh: syncs, writes the rows file into the vault ROADMAP's Next, mirrors it (AC-10c)" {
+  command -v zsh >/dev/null || skip "zsh not installed"
+  vault=$(make_fake_airos "$SCRATCH" repo)
+  printf 'airos_vault: %s\nairos_projects_dir: "10 Projects"\n' "$vault" > "$HOME/.claude/ship-workflow.yml"
+  VP="$vault/10 Projects/repo"; mkdir -p "$VP/Reports"
+  printf '%s\n' $'new\t1\tA 收進一個 module\tsa\toa\t' > "$VP/Reports/refactor-scan-T.rows.tsv"
+  rows_block > "$SCRATCH/s3.sh"; [ -s "$SCRATCH/s3.sh" ]
+  run env STAMP=T zsh "$SCRATCH/s3.sh"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  awk '/^## 🔜 Next/{f=1;next} /^## /{f=0} f' "$VP/ROADMAP.md" | grep -qF 'A 收進一個 module（報告：Reports/refactor-scan-T.html#c1）'
+  grep -qF 'A 收進一個 module' docs/product/ROADMAP.md
+}

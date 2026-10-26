@@ -2,8 +2,9 @@
 # roadmap-insert.sh — modify ROADMAP.md "🔥 Now" section.
 #
 # Usage:
-#   roadmap-insert.sh <ROADMAP.md> <R-NNN> <description> [--adhoc] [--epic] [--done-when "<criteria>"] [--est <duration>]
+#   roadmap-insert.sh <ROADMAP.md> <R-NNN> <description> [--next] [--adhoc] [--epic] [--done-when "<criteria>"] [--est <duration>]
 #       Insert a new R-NNN line at the top of "Now".
+#       --next       → insert under "Next", without status=in-progress (insert mode only).
 #       --adhoc      → add adhoc-inserted=true marker
 #       --epic       → add (epic) suffix to RID (marks parent of decomposition)
 #       --done-when  → add a "done when" annotation on a second line
@@ -52,6 +53,7 @@ fi
 MODE="insert"           # insert | child | mark-warning | mark-epic
 DESC=""
 ADHOC=0
+NEXT=0
 EPIC=0
 CHILD_PARENT=""
 WARN_REASON=""
@@ -76,6 +78,7 @@ _sh2() { if [ "$1" -gt 1 ]; then echo 2; else echo 1; fi; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --next)         NEXT=1; shift ;;
     --adhoc)        ADHOC=1; shift ;;
     --epic)         EPIC=1; shift ;;
     --child)        MODE="child"; CHILD_PARENT="${2:-}"; shift "$(_sh2 $#)" ;;
@@ -95,7 +98,15 @@ TMP="${ROADMAP}.tmp"
 
 case "$MODE" in
   insert)
-    # Default mode: insert new line at top of Now (plus optional done-when annotation)
+    # Insert at the selected heading (plus optional annotations).
+    heading='^## 🔥 Now'
+    if [ "$NEXT" -eq 1 ]; then
+      heading='^## 🔜 Next'
+      if ! grep -q "$heading" "$ROADMAP"; then
+        echo "ERROR: no '## 🔜 Next' heading found in $ROADMAP" >&2
+        exit 1
+      fi
+    fi
     if [ -z "$DESC" ]; then
       echo "ERROR: insert mode requires <description>" >&2
       exit 2
@@ -103,7 +114,7 @@ case "$MODE" in
     suffix=""
     [ -n "$EST" ]      && suffix=" · est=${EST}"
     [ "$ADHOC" -eq 1 ] && suffix="${suffix} · adhoc-inserted=true"
-    suffix="${suffix} · status=in-progress"
+    if [ "$NEXT" -ne 1 ]; then suffix="${suffix} · status=in-progress"; fi
     if [ "$EPIC" -eq 1 ]; then
       NEW_LINE="- [ ] **${RID} (epic)** ${DESC}${suffix}"
     else
@@ -116,10 +127,10 @@ case "$MODE" in
     [ -n "$DONE_WHEN" ] && DONE_LINE="    ↳ done when: ${DONE_WHEN}"
 
     # The explain line goes through ENVIRON: `awk -v` would turn a typed `\n` into a break.
-    EXPLAIN_LINE="$EXPLAIN_LINE" awk -v line="$NEW_LINE" -v done_line="$DONE_LINE" '
+    EXPLAIN_LINE="$EXPLAIN_LINE" awk -v heading="$heading" -v line="$NEW_LINE" -v done_line="$DONE_LINE" '
       BEGIN { explain = ENVIRON["EXPLAIN_LINE"] }
       { print }
-      /^## 🔥 Now/ && !inserted {
+      $0 ~ heading && !inserted {
         print line
         if (explain   != "") print explain
         if (done_line != "") print done_line

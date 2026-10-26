@@ -347,3 +347,34 @@ EOF
   grep -qxF '    ↳ explain: a\nb' "$ROADMAP" || return 1
   grep -qxF '      ↳ explain: c\td' "$ROADMAP"
 }
+
+@test "roadmap-insert --next: row, explain, done-when under Next, above existing rows, no status (AC-6)" {
+  sed -i.bak '/^## 🔥 Now/a\
+- [ ] **R-001** now item' "$ROADMAP" && rm "$ROADMAP.bak"
+  sed -i.bak '/^## 🔜 Next/a\
+- [ ] **R-002** next item' "$ROADMAP" && rm "$ROADMAP.bak"
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-003 "d" --next --summary s --done-when w
+  next_ln=$(grep -n '^## 🔜 Next' "$ROADMAP" | cut -d: -f1)
+  [ "$(sed -n "$((next_ln+1))p" "$ROADMAP")" = "- [ ] **R-003** d" ]
+  [ "$(sed -n "$((next_ln+2))p" "$ROADMAP")" = "    ↳ explain: s" ]
+  [ "$(sed -n "$((next_ln+3))p" "$ROADMAP")" = "    ↳ done when: w" ]
+  [ "$(sed -n "$((next_ln+4))p" "$ROADMAP")" = "- [ ] **R-002** next item" ]
+  now_ln=$(grep -n '^## 🔥 Now' "$ROADMAP" | cut -d: -f1)
+  [ "$(sed -n "$((now_ln+1))p" "$ROADMAP")" = "- [ ] **R-001** now item" ]
+  ! grep -F 'R-003' "$ROADMAP" | grep -qF 'status='
+}
+@test "roadmap-insert --next: into an empty Next section" {   # Review Focus 5
+  "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-010 "e" --next
+  next_ln=$(grep -n '^## 🔜 Next' "$ROADMAP" | cut -d: -f1)
+  later_ln=$(grep -n '^## 🕐 Later' "$ROADMAP" | cut -d: -f1)
+  r_ln=$(grep -n 'R-010' "$ROADMAP" | cut -d: -f1)
+  [ "$next_ln" -lt "$r_ln" ] && [ "$r_ln" -lt "$later_ln" ]
+}
+@test "roadmap-insert --next: no Next heading -> exit 1, file untouched (AC-7)" {
+  sed -i.bak '/^## 🔜 Next/d' "$ROADMAP" && rm "$ROADMAP.bak"
+  before=$(shasum "$ROADMAP")
+  run "$SHIP_LIB/roadmap-insert.sh" "$ROADMAP" R-011 "f" --next
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no '## 🔜 Next' heading"* ]] || return 1
+  [ "$(shasum "$ROADMAP")" = "$before" ]
+}

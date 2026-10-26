@@ -1,17 +1,18 @@
 ---
 name: ship-workflow
-description: Per-repo product development workflow integrating Superpowers (brainstorm/spec/plan/build) with Compound Engineering (roadmap/decision/learnings). Five ship-* slash commands, installed once per machine. Use when bootstrapping a repo for it, capturing an idea, or shipping a ROADMAP row through the /ship-next mega-command (worktree → brainstorm → spec → plan → execute → review → merge).
+description: Per-repo product development workflow integrating Superpowers (brainstorm/spec/plan/build) with Compound Engineering (roadmap/decision/learnings). Six ship-* slash commands, installed once per machine. Use when bootstrapping a repo for it, capturing an idea, scanning a repo for refactors, or shipping a ROADMAP row through the /ship-next mega-command (worktree → brainstorm → spec → plan → execute → review → merge).
 ---
 
 # Ship Workflow
 
-Product development workflow built around one mega-command, `/ship-next`. Its five
+Product development workflow built around one mega-command, `/ship-next`. Its six
 commands are installed **once per machine** — `ai_system`'s `./sync.sh restore` links
 them into `~/.claude/commands/` — and every repo uses those. A repo carries no copies.
 
 - **`/ship-next [R-NNN] | --adhoc <desc> | --discard R-NNN`** — End-to-end ship cycle: open worktree → brainstorm → spec → plan → execute → strict code-review + security gate → squash-merge (or open an MR) → cleanup
 - **`/ship-compound`** — Write learning + promote patterns + close the Roadmap item (ship-next Phase 8 runs it)
 - **`/ship-idea <description>`** — Capture an idea (IDEA-NNN); ship-next Phase 6 files major and pre-existing findings with it
+- **`/ship-refactor-scan [<direction>]`** — Scan for deepening opportunities with Pocock's improve-codebase-architecture (churn × lines hotspots, HTML report in the vault); picked candidates become 🔜 Next rows for /ship-next (R-025)
 - **`/ship-land [R-NNN]`** — Finish an item shipped via `merge_mode: mr`: after the review merges, run `/ship-compound` in a throwaway worktree at `origin/<base>`, push with `[skip ci]`, then remove the branch + worktree Phase 9 kept (R-008)
 - **`/ship-init`** — Bootstrap a repo (folders, AIR-OS Product Brain stub); `--upgrade` removes old per-repo command copies
 
@@ -30,7 +31,7 @@ them into `~/.claude/commands/` — and every repo uses those. A repo carries no
 
 ```bash
 # Install (once per machine, in the ai_system checkout, on main)
-$ ./sync.sh restore     # links ship-workflow, run-plan, code-review-skill + the 5 commands
+$ ./sync.sh restore     # links ship-workflow, run-plan, code-review-skill + the 6 commands
 
 # Per-repo init
 $ cd /path/to/your/repo

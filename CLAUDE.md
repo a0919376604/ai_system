@@ -8,7 +8,7 @@ the Roadmap 檢視 Obsidian plugin (R-013): plain JS, no build, no npm dependenc
 ## The main checkout stays on `main`
 
 `./sync.sh restore` links `~/.claude/skills/{ship-workflow,run-plan,code-review-skill}`
-and the five ship-* commands into this checkout's working tree. Every session on the
+and the six ship-* commands into this checkout's working tree. Every session on the
 machine therefore runs whatever this checkout holds, uncommitted edits included.
 
 - Keep the main checkout on `main` and clean. `/ship-next` warns when it is not.

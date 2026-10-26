@@ -1,6 +1,6 @@
 # Ship Workflow
 
-A Claude Code skill: a product development workflow built around `/ship-next`, with five commands installed once per machine.
+A Claude Code skill: a product development workflow built around `/ship-next`, with six commands installed once per machine.
 
 ## What it gives you
 
@@ -18,7 +18,7 @@ This skill lives in `ai_system/claude-skills/ship-workflow/`. In the ai_system c
 on `main`, run once per machine:
 
 ```bash
-./sync.sh restore   # links ship-workflow, run-plan, code-review-skill and the 5 commands
+./sync.sh restore   # links ship-workflow, run-plan, code-review-skill and the 6 commands
 ./sync.sh status    # every line should say ok
 ```
 
@@ -35,6 +35,7 @@ cd /path/to/your/repo
 | `/ship-next` | End-to-end ship cycle: worktree → brainstorm → spec → plan → execute → review → merge |
 | `/ship-compound` | Learning + promote patterns + close (ship-next Phase 8) |
 | `/ship-idea` | Capture idea (IDEA-NNN); ship-next files review findings with it |
+| `/ship-refactor-scan [<direction>]` | Scan for deepening opportunities with Pocock's improve-codebase-architecture (churn × lines hotspots, HTML report in the vault); picked candidates become 🔜 Next rows for /ship-next (R-025) |
 | `/ship-land` | After an mr review merges, run `/ship-compound` at `origin/<base>` in a throwaway worktree, push with `[skip ci]`, then clean up (R-008) |
 | `/ship-init` | Scaffold a repo; `--upgrade` removes old per-repo command copies |
 

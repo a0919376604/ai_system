@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# R-004 §3.3: sync.sh installs ship-workflow's three skills and five commands as
+# R-004 §3.3: sync.sh installs ship-workflow's three skills and six commands as
 # symlinks into this checkout, and backs up the two config files the repo keeps. The
 # old sync.sh mirrored all of ~/.claude/skills with rsync: its restore would have
 # reinstalled 40 removed skills and overwritten a newer global CLAUDE.md.
@@ -15,7 +15,7 @@ setup() {
   mkdir -p "$R/claude-skills/ship-workflow/commands" "$R/claude-skills/run-plan" \
            "$R/claude-skills/code-review-skill" "$R/config/claude" "$R/devsync"
   cp "$SHIP_SKILL_ROOT/../../sync.sh" "$R/sync.sh"
-  for c in ship-next ship-compound ship-idea ship-land ship-init; do
+  for c in ship-next ship-compound ship-idea ship-land ship-init ship-refactor-scan; do
     echo "$c" > "$R/claude-skills/ship-workflow/commands/$c.md"
   done
   echo "global rules" > "$R/config/claude/CLAUDE.md"
@@ -36,13 +36,13 @@ snapshot() {  # every path under HOME, with link targets
    done)
 }
 
-@test "restore links the 3 skills and 5 commands, moves a real dir aside, clears only our dangling links" {
+@test "restore links the 3 skills and 6 commands, moves a real dir aside, clears only our dangling links" {
   run bash "$R/sync.sh" restore --yes
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   for s in ship-workflow run-plan code-review-skill; do
     [ "$(readlink "$HOME/.claude/skills/$s")" = "$R/claude-skills/$s" ] || { echo "skill $s"; return 1; }
   done
-  for c in ship-next ship-compound ship-idea ship-land ship-init; do
+  for c in ship-next ship-compound ship-idea ship-land ship-init ship-refactor-scan; do
     [ "$(readlink "$HOME/.claude/commands/$c.md")" = "$HOME/.claude/skills/ship-workflow/commands/$c.md" ] || { echo "cmd $c"; return 1; }
     [ -f "$HOME/.claude/commands/$c.md" ] || return 1
   done
