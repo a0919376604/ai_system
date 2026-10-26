@@ -479,6 +479,32 @@ EOF
   sn_state_set "$WORKTREE" SHIP_BODY "$SHIP_BODY"
 }
 
+sn_auto_merge() {
+  local url="$1" cli pipeline elapsed=0 wait="${SN_PIPELINE_WAIT:-90}" cmd
+  source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/merge-mode.sh"
+  cli=$(forge_cli) || { echo "WARN: unknown forge — auto-merge not set" >&2; return 1; }
+  if [ "$cli" = glab ] && ! command -v jq >/dev/null 2>&1; then
+    echo "WARN: jq not found — auto-merge not set" >&2; return 1
+  fi
+  while :; do
+    case "$cli" in
+      glab) pipeline=$(glab mr view "$url" -F json | jq -r '.head_pipeline.id // empty') || pipeline= ;;
+      gh) pipeline=$(gh pr checks "$url" 2>/dev/null) ;;
+    esac
+    if [ -n "$pipeline" ]; then
+      cmd=$(forge_automerge_cmd "$url") || return 1
+      if eval "$cmd"; then return 0; fi
+      echo "WARN: auto-merge command failed on $url — a human merges it" >&2
+      return 1
+    fi
+    [ "$elapsed" -lt "$wait" ] || break
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+  echo "WARN: no pipeline on $url after ${wait}s — auto-merge not set; a human merges it" >&2
+  return 1
+}
+
 sn_land() {
   sn_state_load "$1"
   local WORKTREE="$1" ID="$2" BRANCH="$3" ORIG_BRANCH="$4" SHIP_TITLE="$5" SHIP_BODY="$6"
@@ -507,7 +533,7 @@ sn_land() {
          exit 1
        }
        MR_CMD=$(forge_mr_cmd "$BRANCH" "$ORIG_BRANCH" "$SHIP_TITLE" "$SHIP_BODY") || {
-         echo "unknown forge for origin — push succeeded, open the review by hand" >&2
+         echo "unknown forge for origin — push succeeded, open the review by hand$(if [ "${SHIP_DOOR:-}" = one-way ]; then printf ' — a one-way door needs a review; merge it by hand after one'; fi)" >&2
          exit 1
        }
        echo "opening review: $MR_CMD"
@@ -517,6 +543,9 @@ sn_land() {
          exit 1
        }
        echo "review open: $SHIP_REVIEW_URL"
+       SHIP_AUTO_MERGED=0
+       if [ "${SHIP_AUTO_MERGE:-0}" = 1 ] && sn_auto_merge "$SHIP_REVIEW_URL"; then SHIP_AUTO_MERGED=1; fi
+       sn_state_set "$WORKTREE" SHIP_AUTO_MERGED "$SHIP_AUTO_MERGED"
        ;;
    esac
   MERGE_SHA=$(git rev-parse HEAD)
@@ -567,6 +596,7 @@ sn_capture() {
 }
 
 sn_cleanup() {
+  if [ -f "$1/.ship/state.env" ]; then sn_state_load "$1"; fi
   local WORKTREE="$1" BRANCH="$2"
    # Each block runs in its own shell: resolve the mode here, never rely on a
    # MERGE_MODE set by an earlier block.

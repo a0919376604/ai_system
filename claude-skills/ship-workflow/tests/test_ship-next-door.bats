@@ -153,3 +153,62 @@ assert_paths() {
   run zsh -c 'grep() { return 1; }; source "$SHIP_LIB/ship-next.sh"; sn_door "$PWD"'
   assert_paths
 }
+
+forge_stubs() {
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  export PATH="$BATS_TEST_TMPDIR/bin:$PATH"
+  export CALLS="$BATS_TEST_TMPDIR/calls"
+  cat > "$BATS_TEST_TMPDIR/bin/glab" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >> "$CALLS"
+case "$*" in
+  'mr view '*) printf '%s\n' "$STUB_VIEW_JSON" ;;
+  'mr create '*) echo https://g/mr/1 ;;
+  'mr merge '*) exit "${STUB_MERGE_EXIT:-0}" ;;
+esac
+STUB
+  cp "$BATS_TEST_TMPDIR/bin/glab" "$BATS_TEST_TMPDIR/bin/gh"
+  chmod +x "$BATS_TEST_TMPDIR/bin/glab" "$BATS_TEST_TMPDIR/bin/gh"
+  git remote add origin https://gitlab.example/x.git
+}
+@test "no pipeline: no merge" {
+  forge_stubs
+  export STUB_VIEW_JSON='{"head_pipeline":null}' SN_PIPELINE_WAIT=0
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/mr/1'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *WARN* ]]
+  ! grep -q '^mr merge ' "$CALLS"
+}
+@test "a pipeline: auto-merge is set" {
+  forge_stubs
+  export STUB_VIEW_JSON='{"head_pipeline":{"id":7}}'
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/mr/1'
+  [ "$status" -eq 0 ]
+  grep -qxF 'mr merge https://g/mr/1 --auto-merge --squash --yes' "$CALLS"
+}
+@test "a failing merge command does not fail sn_land" {
+  forge_stubs
+  git init -q --bare "$SCRATCH/gitlab.git"
+  git remote set-url origin "$SCRATCH/gitlab.git"
+  start_ship
+  commit_changes
+  git push -q -u origin ship/R-9-x
+  sn_state_set "$PWD" SHIP_MERGE_MODE mr
+  sn_state_set "$PWD" SHIP_AUTO_MERGE 1
+  export STUB_VIEW_JSON='{"head_pipeline":{"id":7}}' STUB_MERGE_EXIT=1
+  echo body > "$SCRATCH/body"
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_land "$PWD" R-9 ship/R-9-x main title "$SCRATCH/body"'
+  [ "$status" -eq 0 ]
+  grep -qxF 'mr merge https://g/mr/1 --auto-merge --squash --yes' "$CALLS"
+  sn_state_load "$PWD"
+  [ "$SHIP_AUTO_MERGED" = 0 ]
+}
+@test "sn_cleanup keeps a one-way ship worktree in a squash repo" {
+  export WT="$SCRATCH/wt"
+  git worktree add -qb ship/R-9-x "$WT"
+  sn_state_set "$WT" SHIP_MERGE_MODE mr
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_cleanup "$WT" ship/R-9-x'
+  [ "$status" -eq 0 ]
+  [ -d "$WT" ]
+  git show-ref --verify refs/heads/ship/R-9-x
+}
