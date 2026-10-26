@@ -32,6 +32,7 @@ You are wrapping up a Roadmap item.
    - Key Decisions — from the spec's `## Decisions`; the spec leaves the repo in step 9
    - What Changed From Plan
    - Bugs
+   - Lessons → checks
    - Reusable Patterns
    - Technical Debt
    - Future Follow-ups
@@ -105,29 +106,66 @@ source ~/.claude/skills/ship-workflow/lib/context-md.sh
    fi
    ```
 
-6b. **Promote a testing lesson into the repo's TDD rules.** If this ship's
-   learning is about *how to write tests here* — a seam that kept getting
-   violated, a fixture that kept rippling, an assertion shape that kept
-   lying — append it. The Phase 6 review tags are the trigger: a finding
-   tagged `[seam-violation]`, `[assertion-roulette]` or `[weak-assertion]`
-   is a candidate.
+6b. **Promote lessons into checks.**
+
+   **Candidates:** this ship's blocking and major findings (🔴/`[blocking]`,
+   🟡/`[important]`/`[major]`) from
+   `/tmp/ship-next-{review,spec,security}-${ID}-*.md`, when present, plus the
+   learning's Bugs. Keep recurring classes, not one-off typos. Discover reports
+   with `find`, not an unmatched shell glob.
+
+   **Mechanical or judgment:** a fixed syntactic pattern, banned call,
+   file-location rule, format, or behaviour a test can pin is mechanical;
+   everything else is judgment. When this ship repeats a mistake covered by an
+   existing judgment rule, promote that rule to mechanical now.
+
+   **Levels:** architecture first — remove the second way so the mistake cannot
+   be written. Then a check in the repo being compounded (test or lint), whose
+   failure message names the fix. Usually the fix's regression test is already
+   the check. An `sn_mech_gates` gate is an option only when the repo is ai_system
+   itself, and must be proven through the bats test that exercises it.
+
+   **Prove, then record:** use `tdd_rules_prove` with the real mistake's commit,
+   the check command, and only the check paths to overlay. Inspect the red tail
+   to confirm it fails on the mistake, not a missing dependency. Record a proven
+   check with `tdd_rules_append "$ID" "<rule>" "<check>"`; this promotes an existing
+   judgment rule in place and keeps its original source. A failed proof becomes
+   a judgment rule. In auto mode, log it with
+   `~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P8" "lesson kept as judgment — proof failed" "<rule>"`.
+   **Judgment rules:** use `tdd_rules_append "$ID" "<rule>"`.
 
    ```bash
    # shellcheck disable=SC1091
    source ~/.claude/skills/ship-workflow/lib/tdd-rules.sh
    # One line, imperative, no repo-specific numbers that will go stale.
-   # tdd_rules_append "$ID" "Never assert on log output; assert on the return value."
+   # tdd_rules_prove "<red-ref>" "<check-command>" "<check-path>"
+   # tdd_rules_append "$ID" "<rule>" "<check>"
+   # tdd_rules_append "$ID" "<rule>"
 
    if tdd_rules_over_cap; then
      echo "WARN: this repo has $(tdd_rules_count) learned TDD rules in docs/tdd-rules.md + docs/tdd-rules.d/ (cap ${TDD_RULES_MAX})." >&2
      echo "      Review the oldest by their ← R-NNN source and drop what no longer applies." >&2
    fi
    UNSOURCED=$(tdd_rules_unsourced)
-   [ -n "$UNSOURCED" ] && printf 'WARN: rules with no source, so they can never be pruned:\n%s\n' "$UNSOURCED" >&2
+   if [ -n "$UNSOURCED" ]; then
+     printf 'WARN: rules with no source, so they can never be pruned:\n%s\n' "$UNSOURCED" >&2
+   fi
+   tdd_rules_table
    ```
 
-   **A rule with no `← R-NNN` cannot be judged later.** Forty unprunable rules
-   is the context problem this workflow exists to prevent, wearing a new hat.
+   **Commit when changed, before step 9.** Stage the actual check files with
+   `git add -- <check files> docs/tdd-rules.d`, skipping any absent path; include
+   `docs/tdd-rules.md` when it changed. Replace the count placeholders with this
+   step's actual counts before committing.
+
+   ```bash
+   # Stage each actual check file, when present: git add -- <check files>
+   if [ -d docs/tdd-rules.d ]; then git add -- docs/tdd-rules.d; fi
+   if [ -f docs/tdd-rules.md ]; then git add -- docs/tdd-rules.md; fi
+   git diff --cached --quiet || git commit -m "lesson: ${ID} — <n> check(s), <m> judgment rule(s)"
+   ```
+
+   The learning's `## Lessons → checks` gets one line per lesson: `- <rule> — enforced by <check> · proof: <proof line>` or `- <rule> — judgment`.
 
 7. **Update ROADMAP.** The work is on the base branch (squash: Phase 7 landed it; mr: `/ship-land` runs this after the merge). Edit the AIR-OS ROADMAP.md: find the `${ID}` line under "🔥 Now"; strip `adhoc-inserted=true`, `status=in-progress`, `status=in-review` and the ` · mr=<url>` annotation if present; move it to "✅ Done" with `· ✅ $(date +%Y-%m-%d)`; atomic write via `.tmp` + `mv`. If the `${ID}` row is already under "✅ Done" (a re-run of `/ship-land`), leave the ROADMAP as it is.
 

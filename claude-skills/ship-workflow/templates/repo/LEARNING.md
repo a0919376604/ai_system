@@ -21,6 +21,9 @@ shipped-date: {{date}}
 
 ## What Changed From Plan
 ## Bugs
+## Lessons → checks
+> Each lesson: the check that enforces it, with its proof, or `judgment`.
+
 ## Reusable Patterns
 > Patterns worth promoting to 40 Knowledge/ or 30 Engineering/ (handled by `/ship-compound`).
 

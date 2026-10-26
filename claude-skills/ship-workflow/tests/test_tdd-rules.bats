@@ -156,3 +156,88 @@ mkrules() { printf '%s\n' "$@" > docs/tdd-rules.md; }
   run zsh -c "source '$SHIP_LIB/tdd-rules.sh'; tdd_rules_count"
   [ "$output" = "1" ]
 }
+
+@test "tdd_rules_append: an enforcer is recorded on the rule line" {
+  tdd_rules_append R-9 "Quote X." "tests/t.bats::quotes"
+  tdd_rules_append R-9 "Quote X." "tests/t.bats::quotes"
+  grep -qxF -- '- Quote X. ← R-9 · enforced by tests/t.bats::quotes' docs/tdd-rules.d/R-9.md
+  [ "$(wc -l < docs/tdd-rules.d/R-9.md)" -eq 1 ]
+}
+
+@test "tdd_rules_append: an enforcer promotes an existing judgment rule in place" {
+  mkdir -p docs/tdd-rules.d
+  printf '%s\n' '- Quote X. ← R-3' > docs/tdd-rules.d/R-3.md
+  tdd_rules_append R-9 "Quote X." "tests/t.bats::quotes"
+  tdd_rules_append R-9 "Quote X." "tests/t.bats::quotes"
+  [ "$(cat docs/tdd-rules.d/R-3.md)" = '- Quote X. ← R-3 · enforced by tests/t.bats::quotes' ]
+  [ ! -e docs/tdd-rules.d/R-9.md ]
+}
+
+@test "tdd_rules_append: promotion matches rule text literally" {
+  mkdir -p docs/tdd-rules.d
+  printf '%s\n' '- Tag it [ponytail:yagni] & quote a/b.* ← R-3' '- Tag it X ← R-3' > docs/tdd-rules.d/R-3.md
+  tdd_rules_append R-9 'Tag it [ponytail:yagni] & quote a/b.*' e1
+  printf '%s\n' '- Tag it [ponytail:yagni] & quote a/b.* ← R-3 · enforced by e1' '- Tag it X ← R-3' > expected
+  cmp expected docs/tdd-rules.d/R-3.md
+  [ ! -e docs/tdd-rules.d/R-9.md ]
+}
+
+@test "tdd_rules_append: promotes a legacy-file rule in place" {
+  mkrules '- Old rule. ← R-001'
+  tdd_rules_append R-9 'Old rule.' e2
+  [ "$(cat docs/tdd-rules.md)" = '- Old rule. ← R-001 · enforced by e2' ]
+}
+
+mixed_rules() {
+  mkdir -p docs/tdd-rules.d
+  printf '%s\n' '- Judge me. ← R-1' > docs/tdd-rules.d/R-1.md
+  printf '%s\n' '- Checked. ← R-2 · enforced by tests/a.bats::x' > docs/tdd-rules.d/R-2.md
+}
+
+@test "render and count skip enforced rules" {
+  mixed_rules
+  run tdd_rules_render R-9 /dev/null
+  [[ "$output" == *'- Judge me. ← R-1'* ]] || return 1
+  [[ "$output" != *'Checked.'* ]] || return 1
+  [ "$(tdd_rules_count)" = 1 ]
+}
+
+@test "tdd_rules_table lists every rule with its enforcer" {
+  mixed_rules
+  mkrules '- Legacy rule.'
+  run tdd_rules_table
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = '| Rule | Enforced by | Source |' ]
+  [[ "${lines[1]}" =~ ^\|[[:space:]-]+\|[[:space:]-]+\|[[:space:]-]+\|$ ]] || return 1
+  [ "${lines[2]}" = '| Legacy rule. | judgment | — |' ]
+  [ "${lines[3]}" = '| Judge me. | judgment | R-1 |' ]
+  [ "${lines[4]}" = '| Checked. | tests/a.bats::x | R-2 |' ]
+  [ "${#lines[@]}" -eq 5 ]
+}
+
+@test "tdd_rules_table prints nothing without rules" {
+  run tdd_rules_table
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "a pipe in an enforcer is escaped" {
+  tdd_rules_append R-9 'Quote X.' 'tests/t.bats::a|b'
+  run tdd_rules_table
+  [ "${lines[2]}" = '| Quote X. | tests/t.bats::a\|b | R-9 |' ]
+}
+
+@test "prose saying enforced by stays judgment" {
+  mkrules '- Say who it is enforced by. ← R-5'
+  [ "$(tdd_rules_count)" = 1 ]
+  run tdd_rules_table
+  [ "${lines[2]}" = '| Say who it is enforced by. | judgment | R-5 |' ]
+}
+
+@test "tdd_rules_append: repeated unsourced legacy promotion is idempotent" {
+  mkrules '- Legacy rule.'
+  tdd_rules_append R-9 'Legacy rule.' check
+  tdd_rules_append R-9 'Legacy rule.' check
+  [ "$(cat docs/tdd-rules.md)" = '- Legacy rule. · enforced by check' ]
+  [ ! -e docs/tdd-rules.d/R-9.md ]
+}
