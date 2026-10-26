@@ -347,8 +347,8 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
 
 ### Task 6: Full suite
 
-- [ ] **Step 1: Run.** `cd claude-skills/ship-workflow && bats tests/`. Expected: all pass except the known `cwd-guard: exits 0 when not in a git repo at all` (AC-15).
-- [ ] **Step 2: Fix what fails.** Fix any other failure within scope. A failure that also fails on `main` is reported, not fixed. Commit any fix as `fix(R-021): …`.
+- [x] **Step 1: Run.** `cd claude-skills/ship-workflow && bats tests/`. Expected: all pass except the known `cwd-guard: exits 0 when not in a git repo at all` (AC-15).
+- [x] **Step 2: Fix what fails.** Fix any other failure within scope. A failure that also fails on `main` is reported, not fixed. Commit any fix as `fix(R-021): …`.
 
 
 ## Execution log
@@ -356,3 +356,7 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
 - Tasks 1–4: completed in order with failing tests observed before implementation and all prescribed scoped checks green (25, 59, 114 and 141 tests respectively). Commits: dc6e1f6, 5681ed2, b70fc91, a7f4533.
 - Deviation: Phase 8 explicitly sources merge-mode.sh before the prescribed state-loading expression — ship-next.sh does not define merge_mode at source time, so the expression otherwise fails in a fresh shell.
 - Task 5: all five prescribed text tests failed before editing; 19 scoped checks now pass, including execution of the Phase 8/9 mode blocks in fresh bash and zsh shells.
+- Final read-only review: no important new defects; all five Review Focus cases verified. Deferred minor: GitHub checks and delayed polling have no dedicated tests; the prescribed Task 3 tests exercise GitLab and zero-wait/pipeline-present paths.
+- Deviation: added explicit `|| return 1` to the new door tests' double-bracket assertions — the full-suite hygiene guard showed that intermediate `[[ ... ]]` assertions can otherwise be silently ignored by Bats. Assertions are strengthened, not removed or loosened.
+- Task 6: first full run found the known cwd-guard baseline failure and the new assertion-hygiene failure. After the local assertion repair, `bats tests/test_ship-next-door.bats tests/test_suite-hygiene.bats` passed 19/19. Final `cd claude-skills/ship-workflow && bats tests/`: 689 passed out of 690; only `cwd-guard: exits 0 when not in a git repo at all` failed, as explicitly expected by the plan. No baseline fix made.
+- Final status: DONE_WITH_CONCERNS (two documented local deviations; known baseline failure; deferred minor coverage gap). Stayed on ship/R-021-route-by-merge-door, with no remote push or amended commit.

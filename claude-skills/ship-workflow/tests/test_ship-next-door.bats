@@ -42,9 +42,9 @@ paths_changes() {
 }
 assert_paths() {
   [ "$status" -eq 0 ]
-  [[ "$output" == *'signal: one_way_paths backend/app/domain/push_recipients.py'* ]]
-  [[ "$output" == *'signal: one_way_paths backend/app/api/auth.py'* ]]
-  [[ "$output" == *'signal: one_way_paths backend/x/y.py'* ]]
+  [[ "$output" == *'signal: one_way_paths backend/app/domain/push_recipients.py'* ]] || return 1
+  [[ "$output" == *'signal: one_way_paths backend/app/api/auth.py'* ]] || return 1
+  [[ "$output" == *'signal: one_way_paths backend/x/y.py'* ]] || return 1
 }
 
 @test "two-way spec, plain change: squash" {
@@ -64,7 +64,7 @@ assert_paths() {
   commit_changes
   door
   [ "${lines[0]}" = 'door: one-way' ]
-  [[ "$output" == *'spec: no Door line'* ]]
+  [[ "$output" == *'spec: no Door line'* ]] || return 1
   sn_state_load "$PWD"
   [ "$SHIP_MERGE_MODE" = mr ]
 }
@@ -75,7 +75,7 @@ assert_paths() {
   commit_changes
   door
   [ "${lines[0]}" = 'door: one-way' ]
-  [[ "$output" == *'signal: migration backend/migrations/versions/0042_x.py'* ]]
+  [[ "$output" == *'signal: migration backend/migrations/versions/0042_x.py'* ]] || return 1
 }
 @test "a new dependency forces one-way; a version bump does not" {
   echo '{"dependencies":{"a":"1"}}' > package.json
@@ -85,7 +85,7 @@ assert_paths() {
   commit_changes
   door
   [ "${lines[0]}" = 'door: one-way' ]
-  [[ "$output" == *'signal: new dependency left-pad (package.json)'* ]]
+  [[ "$output" == *'signal: new dependency left-pad (package.json)'* ]] || return 1
   echo '{"dependencies":{"a":"2"}}' > package.json
   commit_changes
   door
@@ -98,8 +98,8 @@ assert_paths() {
   commit_changes
   door
   [ "${lines[0]}" = 'door: one-way' ]
-  [[ "$output" == *'signal: deploy Dockerfile.backend'* ]]
-  [[ "$output" == *'signal: deploy .github/workflows/ci.yml'* ]]
+  [[ "$output" == *'signal: deploy Dockerfile.backend'* ]] || return 1
+  [[ "$output" == *'signal: deploy .github/workflows/ci.yml'* ]] || return 1
 }
 @test "one_way_paths come from the base branch" {
   paths_config
@@ -176,7 +176,7 @@ STUB
   export STUB_VIEW_JSON='{"head_pipeline":null}' SN_PIPELINE_WAIT=0
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/mr/1'
   [ "$status" -eq 1 ]
-  [[ "$output" == *WARN* ]]
+  [[ "$output" == *WARN* ]] || return 1
   ! grep -q '^mr merge ' "$CALLS"
 }
 @test "a pipeline: auto-merge is set" {
@@ -253,15 +253,15 @@ body_fixture() {
   sn_state_set "$PWD" SHIP_REVIEW_URL https://g/mr/1
   sn_state_set "$PWD" SHIP_AUTO_MERGED 0
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_summary "$PWD" R-9'
-  [[ "$output" == *'• door: one-way → awaiting human review: https://g/mr/1'* ]]
+  [[ "$output" == *'• door: one-way → awaiting human review: https://g/mr/1'* ]] || return 1
   sn_state_set "$PWD" SHIP_DOOR two-way
   sn_state_set "$PWD" SHIP_MERGE_MODE squash
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_summary "$PWD" R-9'
-  [[ "$output" == *'• door: two-way → squash-merged'* ]]
+  [[ "$output" == *'• door: two-way → squash-merged'* ]] || return 1
   sn_state_set "$PWD" SHIP_MERGE_MODE mr
   sn_state_set "$PWD" SHIP_AUTO_MERGED 1
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_summary "$PWD" R-9'
-  [[ "$output" == *'• door: two-way → auto-merge set (merges after CI)'* ]]
+  [[ "$output" == *'• door: two-way → auto-merge set (merges after CI)'* ]] || return 1
 }
 @test "log row carries the door" {
   start_ship
