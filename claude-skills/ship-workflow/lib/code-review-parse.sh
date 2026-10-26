@@ -98,6 +98,10 @@ count_praise() {
 # Category tags are matched anywhere on the line, since severity already
 # occupies the line-start position.
 
+count_ponytail() {
+  grep -cE '\[ponytail:(delete|stdlib|native|yagni|shrink)\]' "$FILE" || true
+}
+
 count_seam_violation() {
   grep -ciE '\[seam-violation\]' "$FILE" || true
 }
@@ -124,6 +128,7 @@ MAJOR=$(count_major)
 MINOR=$(count_minor)
 PRAISE=$(count_praise)
 SEAM_VIOLATION=$(count_seam_violation)
+PONYTAIL=$(count_ponytail)
 ASSERTION_ROULETTE=$(count_assertion_roulette)
 WEAK_ASSERTION=$(count_weak_assertion)
 PRE_EXISTING=$(count_pre_existing)
@@ -135,6 +140,7 @@ MAJOR=$(echo -n "$MAJOR" | tr -d '[:space:]')
 MINOR=$(echo -n "$MINOR" | tr -d '[:space:]')
 PRAISE=$(echo -n "$PRAISE" | tr -d '[:space:]')
 SEAM_VIOLATION=$(echo -n "$SEAM_VIOLATION" | tr -d '[:space:]')
+PONYTAIL=$(echo -n "$PONYTAIL" | tr -d '[:space:]')
 ASSERTION_ROULETTE=$(echo -n "$ASSERTION_ROULETTE" | tr -d '[:space:]')
 WEAK_ASSERTION=$(echo -n "$WEAK_ASSERTION" | tr -d '[:space:]')
 PRE_EXISTING=$(echo -n "$PRE_EXISTING" | tr -d '[:space:]')
@@ -149,3 +155,4 @@ echo "ASSERTION_ROULETTE_COUNT=${ASSERTION_ROULETTE}"
 echo "WEAK_ASSERTION_COUNT=${WEAK_ASSERTION}"
 echo "PRE_EXISTING_COUNT=${PRE_EXISTING:-0}"
 echo "SECURITY_COUNT=${SECURITY:-0}"
+echo "PONYTAIL_COUNT=${PONYTAIL:-0}"

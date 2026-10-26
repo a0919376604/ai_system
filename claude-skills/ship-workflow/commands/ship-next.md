@@ -514,6 +514,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    sn_state_set "$WORKTREE" PRAISE_COUNT "${PRAISE_COUNT:-0}"
    sn_state_set "$WORKTREE" SECURITY_COUNT "${SECURITY_COUNT:-0}"
    sn_state_set "$WORKTREE" PRE_EXISTING_COUNT "${PRE_EXISTING_COUNT:-0}"
+   sn_state_set "$WORKTREE" PONYTAIL_COUNT "${PONYTAIL_COUNT:-0}"
    sn_state_set "$WORKTREE" CODEX_FINAL_VERDICT "${CODEX_FINAL_VERDICT:-0}"
    sn_state_set "$WORKTREE" CODEX_ROUNDS "${CODEX_ROUNDS:-0}"
    ```

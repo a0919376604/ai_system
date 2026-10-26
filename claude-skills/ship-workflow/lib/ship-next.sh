@@ -67,9 +67,74 @@ sn_status() {
   return 0
 }
 
+# _sn_dep_names <kind> — dependency names in the manifest on stdin, one per line.
+# Only real dependency sections count (R-015 review: scripts, engines, overrides,
+# classifiers, keywords and lint selections are not dependencies).
+_sn_dep_names() {
+  case "$1" in
+    package.json)
+      command -v jq >/dev/null 2>&1 || { echo "WARN: jq not found — package.json dependencies not checked" >&2; return 0; }
+      jq -r '[.dependencies, .devDependencies, .peerDependencies, .optionalDependencies]
+             | map(select(type == "object") | keys[]) | .[]' 2>/dev/null ;;
+    requirements)
+      awk '{ l=$0; sub(/#.*/,"",l); gsub(/^[ \t]+|[ \t]+$/,"",l)
+             if (l == "" || l ~ /^-/) next
+             n=l; sub(/[<>=!~;\[ ].*/,"",n); print n }' | _sn_pep503 ;;
+    pyproject)
+      awk '
+        /^[ \t]*\[/ { t=$0; gsub(/[ \t\[\]]/,"",t); inarr=0; next }
+        t == "project" && /^[ \t]*dependencies[ \t]*=/ { inarr=1 }
+        (t == "project.optional-dependencies" || t == "dependency-groups") && /=[ \t]*\[/ { inarr=1 }
+        inarr {
+          rest=$0
+          sub(/^[ \t]*("[^"]*"|[A-Za-z0-9_.-]+)[ \t]*=[ \t]*/,"",rest)   # only a "key =" opener
+          gsub(/\{[^}]*\}/,"",rest)                              # {include-group = "…"} is not a package
+          sub(/^[ \t]*#.*/,"",rest); sub(/[ \t]#.*$/,"",rest)  # comments
+          bare=rest; gsub(/"[^"]*"/,"",bare)                     # brackets outside strings
+          while (match(rest, /"[A-Za-z0-9][A-Za-z0-9._-]*/)) {
+            print substr(rest, RSTART+1, RLENGTH-1)
+            rest=substr(rest, RSTART+RLENGTH); sub(/^[^"]*"/,"",rest)
+          }
+          if (bare ~ /\]/) inarr=0
+          next
+        }
+        (t == "tool.poetry.dependencies" || t ~ /^tool\.poetry\.group\..*\.dependencies$/) &&
+          /^[ \t]*[A-Za-z0-9][A-Za-z0-9._-]*[ \t]*=/ {
+          n=$0; sub(/^[ \t]*/,"",n); sub(/[ \t]*=.*/,"",n); if (n != "python") print n }' | _sn_pep503 ;;
+  esac
+}
+
+# _sn_pep503 — Python package names compare case-insensitively with -, _ and .
+# equivalent (PEP 503), so "FastAPI" -> "fastapi" is an edit, not a new dependency.
+_sn_pep503() { tr 'A-Z' 'a-z' | sed -E 's/[-_.]+/-/g'; }
+
+# sn_new_deps <base> <head> — one "<file>\t<name>" line per dependency present in a
+# manifest at <head> but not at merge-base(<base>,<head>) (R-015). Comparing parsed
+# dependency sets, not diff lines, means formatting edits and version bumps never count.
+sn_new_deps() {
+  local base="$1" head="$2" mb f kind old new
+  mb=$(git merge-base "$base" "$head" 2>/dev/null) || return 0
+  # quotePath off: a non-ASCII directory would otherwise arrive C-quoted and match no case.
+  git -c core.quotePath=false diff --name-only "$mb" "$head" 2>/dev/null | while IFS= read -r f; do
+    case "$(basename "$f")" in
+      package.json) kind=package.json ;;
+      requirements*.txt) kind=requirements ;;
+      pyproject.toml) kind=pyproject ;;
+      *) continue ;;
+    esac
+    old=$(git show "$mb:$f" 2>/dev/null | tr -d '\r' | _sn_dep_names "$kind" | sort -u)
+    new=$(git show "$head:$f" 2>/dev/null | tr -d '\r' | _sn_dep_names "$kind" | sort -u)
+    printf '%s\n' "$new" | while IFS= read -r n; do
+      [ -n "$n" ] || continue
+      printf '%s\n' "$old" | grep -qxF -- "$n" || printf '%s\t%s\n' "$f" "$n"
+    done
+  done
+}
+
 sn_mech_gates() {
   local WORKTREE="$1" ORIG_BRANCH="$2" PLAN_FILE
   cd "$WORKTREE" || return
+  sn_state_load "$WORKTREE"   # ID, SLUG for the dependency gate
   # shellcheck disable=SC1091
   source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/test-budget.sh"
 
@@ -105,6 +170,23 @@ sn_mech_gates() {
     [ "$TEST_BUDGET_VERDICT" = "blocking" ] && MECH_BLOCKERS=$((MECH_BLOCKERS + 1))
   fi
 
+  # (d) A new dependency needs a reason in the spec's Decisions (R-015; ponytail:
+  # never add a dependency for what a few lines can do). Explicit marker only.
+  local spec_file="docs/specs/${ID:-}-${SLUG:-}.md" dep_file dep
+  while IFS="$(printf '\t')" read -r dep_file dep; do
+    [ -n "$dep" ] || continue
+    # Whole-name match on any "New dependency:" line, so one line can list several
+    # ("New dependency: react, react-dom — new LIFF app") and react-dom never vouches for react.
+    if [ -f "$spec_file" ] && grep -F 'New dependency:' "$spec_file" | sed 's/.*New dependency://' \
+         | tr -c 'A-Za-z0-9@/._-' '\n' | _sn_pep503 | grep -qxF -- "$(printf '%s' "$dep" | _sn_pep503)"; then
+      continue
+    fi
+    echo "🛑 blocking: new dependency ${dep} (${dep_file}) without a 'New dependency: ${dep}' line in the spec's Decisions" >&2
+    MECH_BLOCKERS=$((MECH_BLOCKERS + 1))
+  done <<EOF
+$(sn_new_deps "$ORIG_BRANCH" HEAD)
+EOF
+
   # (c) Extra review checks handed to the LLM reviewer.
   mkdir -p .ship
   cat > .ship/review-extra-checks.md <<'CHECKS'
@@ -118,6 +200,15 @@ categories by appending the literal tag to the finding line:
   neither introduces nor worsens it. Put the tag right after the severity tag and add
   an indented line `Base evidence: <file>:<line> exists unchanged on <base branch>`.
   A pre-existing finding is reported but never blocks this ship.
+
+Over-engineering (ponytail-review's vocabulary; `.ship/ponytail-rules.md` is the ladder).
+These findings are nit or important, never blocking on their own:
+
+- `[ponytail:delete]` — dead code, unused flexibility, a speculative feature
+- `[ponytail:stdlib]` — hand-rolled what the standard library ships (name the function)
+- `[ponytail:native]` — a dependency or code doing what the platform already does (name the feature)
+- `[ponytail:yagni]` — an abstraction with one implementation, config nobody sets, a layer with one caller
+- `[ponytail:shrink]` — the same logic in fewer lines (show the shorter form)
 
 Keep your usual severity tag as well; these categories are orthogonal to severity.
 CHECKS
@@ -344,7 +435,7 @@ sn_log() {
      CODEX_LOG_FRAGMENT=", codex: ${CODEX_ROUNDS} round(s) ${CODEX_FINAL_VERDICT}"
    fi
    if [ -z "${SHIP_LOG_ROW:-}" ]; then
-     SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp${CODEX_LOG_FRAGMENT}) | n |"
+     SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ponytail=${PONYTAIL_COUNT:-0}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp${CODEX_LOG_FRAGMENT}) | n |"
    fi
    # shellcheck disable=SC1091
    source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/ship-log.sh"
@@ -397,7 +488,7 @@ ${CODEX_LAST_FINDINGS}
 • security review: $(if [ "$(cat "/tmp/ship-${ID}-security-review-state" 2>/dev/null)" = off ]; then echo "off (ship-config on ${ORIG_BRANCH})"; else echo "${SECURITY_COUNT:-0} finding(s), pre-existing ${PRE_EXISTING_COUNT:-0} → IDEA-NNN"; fi)
 • CONTEXT.md: ${CONTEXT_MD_STATUS}
 • Test budget: ship ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp (${TEST_BUDGET_VERDICT})
-• ponytail: ${PONYTAIL_STATUS}${CODEX_SUMMARY_BLOCK}
+• ponytail: ${PONYTAIL_STATUS} · ${PONYTAIL_COUNT:-0} over-engineering finding(s)${CODEX_SUMMARY_BLOCK}
 • decisions log: ${WORKTREE}/.claude/.ship-auto-decisions.md (kept in worktree pre-cleanup; copy if you want post-mortem)"
 
      printf '%s\n' "$SUMMARY"

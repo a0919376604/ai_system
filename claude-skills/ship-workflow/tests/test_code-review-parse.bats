@@ -298,3 +298,13 @@ EOF
   run "$SHIP_LIB/code-review-parse.sh" "$SCRATCH/n.md"
   echo "$output" | grep -qx 'SECURITY_COUNT=1'
 }
+
+@test "PONYTAIL_COUNT counts lines tagged [ponytail:<tag>]" {
+  f="$BATS_TEST_TMPDIR/r.md"
+  printf '%s\n' '🟢 [nit] [ponytail:yagni] a.py:3 — AbstractRepo with one implementation' \
+                '🟡 [important] [ponytail:yagni] b.py:9 — config nobody sets' \
+                '🟢 [nit] c.py:1 — typo' > "$f"
+  run "$SHIP_LIB/code-review-parse.sh" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PONYTAIL_COUNT=2"* ]] || { echo "$output"; return 1; }
+}

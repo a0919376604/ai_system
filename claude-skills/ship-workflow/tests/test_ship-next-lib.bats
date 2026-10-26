@@ -371,3 +371,119 @@ section() { awk -v h="## Phase $1 " 'index($0, h) == 1 {f=1; next} /^## /{f=0} f
   done
   sed -n '/^sn_codex_after_exit()/,/^}/p' "$SHIP_LIB/ship-next.sh" | grep -qF 'sn_status "$WORKTREE" blocked'
 }
+
+dep_fixture() {
+  cd "$WT"
+  git init -q -b main && git config user.email t@t && git config user.name t
+  printf '{\n  "name": "app",\n  "version": "1.0.0",\n  "dependencies": {\n    "react": "^19.0.0"\n  }\n}\n' > package.json
+  printf 'fastapi==0.110\n' > requirements.txt
+  git add . && git commit -qm base
+  git checkout -qb ship/R-1-x
+}
+
+@test "sn_new_deps lists added dependencies, not version bumps, comments or lockfiles" {
+  dep_fixture
+  printf '{\n  "name": "app",\n  "version": "1.0.1",\n  "dependencies": {\n    "react": "^19.0.0",\n    "left-pad": "^1.3.0"\n  }\n}\n' > package.json
+  printf 'fastapi==0.110\n# pinned for R-1\nrequests==2.31\n' > requirements.txt
+  echo '{"lockfileVersion": 3, "x": "1.0.0"}' > package-lock.json
+  git add . && git commit -qm deps
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_new_deps main HEAD'
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'package.json\tleft-pad\nrequirements.txt\trequests')" ]
+}
+
+@test "mechanical gates block a new dependency the spec does not justify, and pass a justified one" {
+  dep_fixture
+  printf '{\n  "name": "app",\n  "version": "1.0.0",\n  "dependencies": {\n    "react": "^19.0.0",\n    "left-pad": "^1.3.0"\n  }\n}\n' > package.json
+  git add . && git commit -qm dep
+  mkdir -p docs/specs && printf '## Decisions\n- something else\n' > docs/specs/R-1-x.md
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_state_set "$WT" ID R-1; sn_state_set "$WT" SLUG x; sn_mech_gates "$WT" main "$WT/no-plan.md"; sn_state_load "$WT"; echo "MB=$MECH_BLOCKERS"'
+  [[ "$output" == *"left-pad"* ]] || return 1
+  [ "$(printf '%s\n' "$output" | tail -1)" = "MB=1" ] || { echo "$output"; return 1; }
+  printf '## Decisions\n- New dependency: left-pad — nothing in the stdlib pads\n' > docs/specs/R-1-x.md
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_mech_gates "$WT" main "$WT/no-plan.md"; sn_state_load "$WT"; echo "MB=$MECH_BLOCKERS"'
+  [ "$(printf '%s\n' "$output" | tail -1)" = "MB=0" ] || { echo "$output"; return 1; }
+}
+
+@test "review extra checks list the five ponytail tags" {
+  dep_fixture
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_mech_gates "$WT" main "$WT/no-plan.md" >/dev/null 2>&1; cat "$WT/.ship/review-extra-checks.md"'
+  for t in delete stdlib native yagni shrink; do
+    [[ "$output" == *"[ponytail:$t]"* ]] || { echo "missing $t"; return 1; }
+  done
+}
+
+@test "one New dependency line can list several names, matched as whole names" {
+  dep_fixture
+  printf '{\n  "dependencies": {\n    "react": "^19.0.0",\n    "react-dom": "^19.0.0",\n    "left-pad": "^1.3.0"\n  }\n}\n' > package.json
+  git add . && git commit -qm deps
+  mkdir -p docs/specs && printf '## Decisions\n- New dependency: `react-dom`, left-pad — needed for X\n' > docs/specs/R-1-x.md
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_state_set "$WT" ID R-1; sn_state_set "$WT" SLUG x; sn_mech_gates "$WT" main "$WT/no-plan.md"; sn_state_load "$WT"; echo "MB=$MECH_BLOCKERS"'
+  [ "$(printf '%s\n' "$output" | tail -1)" = "MB=0" ] || { echo "$output"; return 1; }
+}
+
+@test "sn_new_deps ignores pyproject lists that are not dependencies, and finds real ones" {
+  cd "$WT" && git init -q -b main && git config user.email t@t && git config user.name t
+  printf '[project]\nname = "app"\ndependencies = [\n  "fastapi>=0.110",\n]\nclassifiers = [\n  "License :: OSI",\n]\n\n[tool.ruff.lint]\nselect = [\n  "E",\n]\n' > pyproject.toml
+  git add . && git commit -qm base && git checkout -qb ship/R-1-x
+  printf '[project]\nname = "app"\ndependencies = [\n  "fastapi>=0.110",\n  "httpx[http2]>=0.27",\n]\nclassifiers = [\n  "License :: OSI",\n  "Programming Language :: Python",\n]\nkeywords = [\n  "llm",\n]\n\n[project.optional-dependencies]\ndev = ["pytest>=8", "ruff"]\n\n[tool.ruff.lint]\nselect = [\n  "E",\n  "F",\n  "UP",\n]\n' > pyproject.toml
+  git commit -qam edit
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_new_deps main HEAD'
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'pyproject.toml\thttpx\npyproject.toml\tpytest\npyproject.toml\truff')" ] || { echo "$output"; return 1; }
+}
+
+@test "sn_new_deps ignores package.json scripts, engines and overrides" {
+  cd "$WT" && git init -q -b main && git config user.email t@t && git config user.name t
+  printf '{\n  "scripts": {\n    "test": "vitest"\n  },\n  "dependencies": {\n    "react": "^19.0.0"\n  }\n}\n' > package.json
+  git add . && git commit -qm base && git checkout -qb ship/R-1-x
+  printf '{\n  "scripts": {\n    "test": "vitest",\n    "precommit": "git diff --check"\n  },\n  "engines": {\n    "node": ">=20",\n    "pnpm": ">=9"\n  },\n  "overrides": {\n    "semver": "^7.6.0"\n  },\n  "dependencies": {\n    "react": "^19.0.0"\n  }\n}\n' > package.json
+  git commit -qam edit
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_new_deps main HEAD'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ] || { echo "$output"; return 1; }
+}
+
+@test "sn_new_deps reads plain multi-line pyproject entries, extras, comments, dependency-groups and name case" {
+  cd "$WT" && git init -q -b main && git config user.email t@t && git config user.name t
+  printf '[project]\ndependencies = [\n  "uvicorn[standard]>=0.29",\n  "FastAPI>=0.110",\n  "pydantic",\n]\n' > pyproject.toml
+  git add . && git commit -qm base && git checkout -qb ship/R-1-x
+  printf '[project]\ndependencies = [\n  "uvicorn[standard]>=0.29",\n  "fastapi>=0.111",\n  "pydantic",\n  "httpx>=0.27",\n  # "celery",  (later)\n]\n\n[dependency-groups]\ndev = [\n  "pytest>=8",\n]\n' > pyproject.toml
+  git commit -qam edit
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_new_deps main HEAD'
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'pyproject.toml\thttpx\npyproject.toml\tpytest')" ] || { echo "$output"; return 1; }
+}
+
+@test "sn_new_deps finds a manifest under a non-ASCII directory" {
+  cd "$WT" && git init -q -b main && git config user.email t@t && git config user.name t
+  mkdir -p 前端 && printf '{"dependencies": {"react": "^19.0.0"}}\n' > 前端/package.json
+  git add . && git commit -qm base && git checkout -qb ship/R-1-x
+  printf '{"dependencies": {"react": "^19.0.0", "zod": "^3.23.0"}}\n' > 前端/package.json
+  git commit -qam edit
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_new_deps main HEAD'
+  [ "$output" = "$(printf '前端/package.json\tzod')" ] || { echo "$output"; return 1; }
+}
+
+@test "sn_new_deps skips include-group tables and quoted keys, and reads CRLF files" {
+  cd "$WT" && git init -q -b main && git config user.email t@t && git config user.name t
+  printf 'fastapi==0.110\r\n' > requirements.txt
+  printf '[project]\nname = "app"\n' > pyproject.toml
+  git add . && git commit -qm base && git checkout -qb ship/R-1-x
+  printf 'fastapi==0.110\r\nrequests==2.31\r\n' > requirements.txt
+  printf '[project]\nname = "app"\n\n[project.optional-dependencies]\n"dev" = ["ruff"]\n\n[dependency-groups]\nci = [\n  {include-group = "test"},\n  "coverage",\n]\n' > pyproject.toml
+  git commit -qam edit
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_new_deps main HEAD'
+  [ "$output" = "$(printf 'pyproject.toml\tcoverage\npyproject.toml\truff\nrequirements.txt\trequests')" ] || { echo "$output" | cat -v; return 1; }
+}
+
+@test "a New dependency line written with underscores or dots clears the normalized name" {
+  cd "$WT" && git init -q -b main && git config user.email t@t && git config user.name t
+  printf 'fastapi==0.110\n' > requirements.txt
+  git add . && git commit -qm base && git checkout -qb ship/R-1-x
+  printf 'fastapi==0.110\ntyping_extensions>=4\nzope.interface\n' > requirements.txt
+  git commit -qam deps
+  mkdir -p docs/specs && printf '## Decisions\n- New dependency: typing_extensions, zope.interface — needed\n' > docs/specs/R-1-x.md
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_state_set "$WT" ID R-1; sn_state_set "$WT" SLUG x; sn_mech_gates "$WT" main "$WT/no-plan.md"; sn_state_load "$WT"; echo "MB=$MECH_BLOCKERS"'
+  [ "$(printf '%s\n' "$output" | tail -1)" = "MB=0" ] || { echo "$output"; return 1; }
+}
