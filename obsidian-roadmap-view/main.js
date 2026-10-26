@@ -20,6 +20,43 @@ function closeBracket(s) {
   return -1;
 }
 
+// The option a row says was picked: `mockup 定案 X` or `方案 X 定案` on the row, else the first `方案 X` on a
+// `↳` line that mentions a mockup (never done-when text, where 方案 can mean anything).
+const OPTION = "([A-Z]|[甲乙丙丁])(?![A-Za-z])";
+function pickedOf(row, ann) {
+  const own = row.match(new RegExp(`mockup 定案\\s*${OPTION}`)) || row.match(new RegExp(`方案\\s*${OPTION}\\s*定案`));
+  if (own) return own[1];
+  for (const a of ann) {
+    if (!/mockup/i.test(a) || a.startsWith("↳ done when:")) continue;
+    const m = a.match(new RegExp(`方案\\s*${OPTION}`));
+    if (m) return m[1];
+  }
+  return null;
+}
+
+// 完成條件 as a list: split at `；`, `;` and ` · ` outside brackets, quotes and backticks.
+const OPENS = "（(「『[【", CLOSES = "）)」』]】";
+function splitConditions(text) {
+  const s = String(text || "");
+  const out = [];
+  const stack = [];
+  let cur = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    const top = stack[stack.length - 1];
+    if (top === "`") { if (c === "`") stack.pop(); cur += c; continue; }
+    if (c === "`") { stack.push("`"); cur += c; continue; }
+    const o = OPENS.indexOf(c);
+    if (o >= 0) { stack.push(CLOSES[o]); cur += c; continue; }
+    if (c === top) { stack.pop(); cur += c; continue; }
+    if (!stack.length && (c === "；" || c === ";")) { out.push(cur); cur = ""; continue; }
+    if (!stack.length && s.startsWith(" · ", i)) { out.push(cur); cur = ""; i += 2; continue; }
+    cur += c;
+  }
+  out.push(cur);
+  return out.map((x) => x.trim()).filter(Boolean);
+}
+
 function itemFrom(row, m, ann, section, line) {
   const rest = row.slice(m[0].length).trim();
   let tags = "";
@@ -61,7 +98,7 @@ function itemFrom(row, m, ann, section, line) {
     undeployed: undeployed ? (undeployed[1] || "") : null,
     blocked: pick(/blocked:\s*([^·\]\n]*[^·\]\n\s])/),
     needsBrainstorm: /needs-brainstorm/.test(row),
-    picked: pick(/mockup 定案\s*([^\s·\]]+)/),
+    picked: pickedOf(row, ann),
     inReview: /status=in-review/.test(row),
     epic: /epic/i.test(m[6]) || !!m[7] || /^EPIC\b/.test(tags),
     commit: pick(/`([0-9a-f]{7,10})`/),
@@ -181,29 +218,74 @@ function elementEnd(scan, start, name) {
   return -1;
 }
 
+// The mockup's styles, a copy with style/script bodies blanked (same length, so a `<div`
+// inside them is not counted), and every `.panel` element with its extent.
+function panelsOf(html) {
+  const styles = (html.match(/<style\b[^>]*>[\s\S]*?<\/style>/gi) || []).join("\n");
+  const scan = html.replace(/<(style|script)\b[\s\S]*?<\/\1>/gi, (s) => " ".repeat(s.length));
+  const panels = [];
+  for (const m of scan.matchAll(/<([a-zA-Z][\w-]*)\b([^>]*)>/g)) {
+    const cls = classesOf(m[2]);
+    if (cls.includes("panel")) panels.push({ at: m.index, name: m[1], cls, end: elementEnd(scan, m.index, m[1]) });
+  }
+  // An option, 現況 or facts panel whose markup never closes ends where the next one starts
+  // (they are siblings); otherwise its headings would be read as the next panel's.
+  const top = (p) => p.cls.some((c) => /^opt/.test(c) || c === "now" || c === "facts");
+  panels.forEach((p, i) => {
+    if (p.end > 0 || !top(p)) return;
+    const next = panels.slice(i + 1).find(top);
+    if (next) p.end = next.at;
+  });
+  return { styles, scan, panels };
+}
+
+// One element of the mockup as a document of its own, with every style and no script.
+function wrapDoc(styles, el) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">${styles}
+<style>html,body{margin:0;background:#fff;overflow:hidden}body{padding:12px}.panel{margin:0!important}</style>
+</head><body>${el.replace(/<script\b[\s\S]*?<\/script>/gi, "")}</body></html>`;
+}
+
 // A string scanner, not DOMParser: testable under node and the same on every platform.
 function currentStateDoc(html) {
   if (typeof html !== "string" || !html) return null;
-  const styles = (html.match(/<style\b[^>]*>[\s\S]*?<\/style>/gi) || []).join("\n");
-  // Blank out style/script bodies (same length) so a `<div` inside them is not counted.
-  const scan = html.replace(/<(style|script)\b[\s\S]*?<\/\1>/gi, (s) => " ".repeat(s.length));
-  const tags = [];
-  for (const m of scan.matchAll(/<([a-zA-Z][\w-]*)\b([^>]*)>/g)) {
-    const cls = classesOf(m[2]);
-    if (cls.includes("panel")) tags.push({ at: m.index, name: m[1], cls });
-  }
-  const pick = tags.find((t) => t.cls.includes("now")) || tags.find((t) => !t.cls.includes("facts"));
-  const end = pick ? elementEnd(scan, pick.at, pick.name) : -1;
-  let el = end > 0 ? html.slice(pick.at, end) : null;
+  const { styles, panels } = panelsOf(html);
+  const pick = panels.find((t) => t.cls.includes("now")) || panels.find((t) => !t.cls.includes("facts"));
+  let el = pick && pick.end > 0 ? html.slice(pick.at, pick.end) : null;
   if (!el) {
     const b = html.match(/<body\b[^>]*>([\s\S]*)<\/body>/i);
     el = b && b[1].trim() ? b[1] : null;
   }
-  if (!el) return null;
-  el = el.replace(/<script\b[\s\S]*?<\/script>/gi, "");
-  return `<!DOCTYPE html><html><head><meta charset="utf-8">${styles}
-<style>html,body{margin:0;background:#fff;overflow:hidden}body{padding:12px}.panel{margin:0!important}</style>
-</head><body>${el}</body></html>`;
+  return el ? wrapDoc(styles, el) : null;
+}
+
+const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", nbsp: " " };
+const textOf = (h) => h.replace(/<[^>]+>/g, " ").replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (_, e) => ENTITIES[e])
+  .replace(/\s+/g, " ").trim();
+
+// The picked option's panel: the first `opt*` panel with a heading — right before it, or its
+// own first — that starts with 方案/版面 X (after an optional "4 · "); else class `opt<X>`.
+// A heading that only mentions 方案 X mid-sentence does not count.
+function optionDoc(html, picked) {
+  if (typeof html !== "string" || !html || !picked) return null;
+  const { styles, scan, panels } = panelsOf(html);
+  const heads = [...scan.matchAll(/<h([1-4])\b[^>]*>([\s\S]*?)<\/h\1>/gi)].map((m) => ({ at: m.index, text: m[2] }));
+  const opts = panels.filter((p) => p.end > 0 && p.cls.some((c) => /^opt/.test(c))).map((p) => {
+    const inside = heads.find((h) => h.at > p.at && h.at < p.end);
+    const floor = Math.max(0, ...panels.filter((q) => q.end > 0 && q.end <= p.at).map((q) => q.end));
+    const before = heads.filter((h) => h.at >= floor && h.at < p.at).pop();
+    return { ...p, labels: [before, inside].filter(Boolean).map((h) => textOf(h.text).slice(0, 80)) };
+  });
+  const named = new RegExp(`^(\\d+\\s*[·.、:：]\\s*)?(方案|版面)\\s*${picked}(?![A-Za-z])`);
+  let label = "";
+  let by = "label";
+  let hit = opts.find((o) => (label = o.labels.find((l) => named.test(l)) || "") !== "");
+  if (!hit && /^[A-Z]$/.test(picked)) {
+    by = "class";
+    hit = opts.find((o) => o.cls.includes(`opt${picked}`));
+    label = hit ? hit.labels[hit.labels.length - 1] || "" : "";   // its own heading, else the one before it
+  }
+  return hit ? { doc: wrapDoc(styles, html.slice(hit.at, hit.end)), label, by } : null;
 }
 
 // ---------------------------------------------------------------- rendering
@@ -305,7 +387,8 @@ class RoadmapView extends ItemView {
     this.folds = new Set();     // titles of the detail page's open folds
     this.listScroll = 0;        // the list's scroll position when a card was opened
     this.shown = null;          // the screen last drawn: a tab, or `detail:<id>`
-    this.docs = new Map();      // mockup path → { mtime, doc }
+    this.docs = new Map();      // "<mockup path>#now|opt:X" → { mtime, doc, label, h }
+    this.chosen = new Map();    // thumbnail slot → the docs key it last drew, to pre-size a redraw
     this.renders = 0;
     this.gen = 0;
     this.resetThumbs();
@@ -454,8 +537,14 @@ class RoadmapView extends ItemView {
     this.chips(left, r.item, r.status);
     left.createDiv({ cls: "rv-title", text: r.item.headline });
     if (r.item.explain) left.createDiv({ cls: "rv-exp", text: r.item.explain });
-    if (r.mockups.length) this.lazyThumb(c.createDiv({ cls: "rv-thumb" }), `${d.dir}/${r.mockups[0]}`, r.item.id, 70);
-    else c.addClass("rv-nothumb");
+    if (r.mockups.length) {
+      // A done item shows what was built: its picked option, else 現況.
+      const done = r.status.group === "recent" || r.status.group === "done";
+      const now = this.nowSource(d, r);
+      const opt = done && r.item.picked ? this.optionSource(d, r) : null;
+      const find = opt ? async () => (await opt()) || now() : now;   // optionSource skips what it cannot read
+      this.lazyThumb(c.createDiv({ cls: "rv-thumb" }), `${d.dir}|card:${r.item.id}`, find, 70);
+    } else c.addClass("rv-nothumb");
     c.addEventListener("click", () => {
       this.listScroll = this.contentEl.scrollTop || 0;
       this.detail = r.item.id;
@@ -471,10 +560,36 @@ class RoadmapView extends ItemView {
     this.chips(root, item, status);
     root.createDiv({ cls: "rv-title rv-headline", text: item.headline });
     root.createDiv({ cls: item.explain ? "rv-exp rv-full" : "rv-exp rv-faint", text: item.explain || "還沒有白話說明" });
+    if (r.mockups.length && item.picked) {
+      // From the cache when this item's option was drawn before, so a refresh moves nothing;
+      // hidden until found the first time, so a missing option never flashes.
+      const fromCard = this.chosen.get(`${d.dir}|card:${item.id}`);
+      const optKey = this.chosen.get(`${d.dir}|opt:${item.id}`) || (fromCard && fromCard.includes("#opt:") ? fromCard : null);
+      const cached = this.docs.get(optKey);
+      const seen = cached && cached.doc && optKey.endsWith(`#opt:${item.picked}`) ? cached : null;
+      const lbl = root.createDiv({ cls: "rv-lbl", text: `採用方案 ${item.picked}` });
+      const box = root.createDiv({ cls: "rv-big" });
+      const cap = root.createDiv({ cls: "rv-cap", text: seen && seen.label ? `${seen.label} · 點圖放大` : "點圖放大" });
+      if (!seen) {   // the box stays laid out (an observer must still see it), just invisible
+        lbl.style.display = "none";
+        cap.style.display = "none";
+        box.style.visibility = "hidden";
+      }
+      this.lazyThumb(box, `${d.dir}|opt:${item.id}`, this.optionSource(d, r), 0, {
+        presize: optKey,
+        label: (l) => {
+          cap.setText(l ? `${l} · 點圖放大` : "點圖放大");
+          lbl.style.display = "";
+          cap.style.display = "";
+          box.style.visibility = "";
+        },
+        missing: () => { lbl.remove(); box.remove(); cap.remove(); },   // no such panel: say nothing
+      });
+    }
     if (r.mockups.length) {
       root.createDiv({ cls: "rv-lbl", text: "MOCKUP · 現況" });
       const big = root.createDiv({ cls: "rv-big" });
-      this.lazyThumb(big, `${d.dir}/${r.mockups[0]}`, item.id, 0);
+      this.lazyThumb(big, `${d.dir}|now:${item.id}`, this.nowSource(d, r), 0, { presize: `${d.dir}/${r.mockups[0]}#now` });
       root.createDiv({ cls: "rv-cap", text: "點圖放大" });
     }
     root.createDiv({ cls: "rv-lbl", text: "相關文件" });
@@ -500,8 +615,12 @@ class RoadmapView extends ItemView {
       det.open = this.folds.has(title);   // a live refresh keeps what the reader opened
       det.addEventListener("toggle", () => { if (det.open) this.folds.add(title); else this.folds.delete(title); });
       for (const l of lines) det.createDiv({ cls: "rv-raw", text: l });
+      return det;
     };
-    if (item.doneWhen.length) fold("完成條件", item.doneWhen);
+    if (item.doneWhen.length) {
+      const ul = fold("完成條件", []).createEl("ul", { cls: "rv-dw" });
+      for (const line of item.doneWhen) for (const c of splitConditions(line)) ul.createEl("li", { text: c });
+    }
     fold("給 AI 的原文", [item.raw, ...item.ann]);
     const jump = root.createEl("a", { cls: "rv-link", text: "在 ROADMAP.md 打開這一行" });
     jump.addEventListener("click", async (e) => {
@@ -530,10 +649,37 @@ class RoadmapView extends ItemView {
     this.io = null;
   }
 
-  lazyThumb(box, path, id, maxHeight) {
-    const hit = this.docs.get(path);
+  // What a thumbnail shows is found lazily: `find` resolves to { key, title } of a cached
+  // entry, or null. `slot` (project dir + role + id) names the box across redraws;
+  // `on.label` / `on.missing` hear the result; `on.presize` is a cache key to size from first.
+  nowSource(d, r) {
+    const path = `${d.dir}/${r.mockups[0]}`;
+    return async () => {
+      const e = await this.entryFor(path, "now");
+      return e && e.doc ? { key: `${path}#now`, title: `${r.item.id} · 現況` } : null;
+    };
+  }
+
+  // A label match in any of the item's mockups beats a class match in an earlier one.
+  optionSource(d, r) {
+    const x = r.item.picked;
+    return async () => {
+      for (const by of ["label", "class"]) {
+        for (const m of r.mockups) {
+          const path = `${d.dir}/${m}`;
+          let e;
+          try { e = await this.entryFor(path, `opt:${x}`); } catch (err) { continue; }   // half-synced: try the next
+          if (e && e.doc && e.by === by) return { key: `${path}#opt:${x}`, title: `${r.item.id} · 採用方案 ${x}` };
+        }
+      }
+      return null;
+    };
+  }
+
+  lazyThumb(box, slot, find, maxHeight, on = {}) {
+    const hit = this.docs.get(this.chosen.get(slot) || on.presize);   // `presize`: what the card already measured
     if (hit && hit.h) fitBox(box, hit.h, maxHeight);   // a redraw does not collapse to 0 px first
-    const job = () => this.drawThumb(box, path, id, maxHeight);
+    const job = () => this.drawThumb(box, slot, find, maxHeight, on);
     if (typeof IntersectionObserver === "undefined") { this.enqueue(job); return; }
     if (!this.io) {
       this.io = new IntersectionObserver((entries) => {
@@ -562,29 +708,33 @@ class RoadmapView extends ItemView {
     }
   }
 
-  async drawThumb(box, path, id, maxHeight) {
-    let doc;
-    try { doc = await this.docFor(path); } catch (e) { box.setText("讀不到 mockup"); return; }
-    if (!doc) { box.setText("沒有現況"); return; }
+  async drawThumb(box, slot, find, maxHeight, on) {
+    let got;
+    try { got = await find(); } catch (e) { box.setText("讀不到 mockup"); return; }
+    const entry = got && this.docs.get(got.key);
+    if (!entry) { if (on.missing) on.missing(); else box.setText("沒有現況"); return; }
+    this.chosen.set(slot, got.key);
+    if (on.label) on.label(entry.label);
     box.addEventListener("click", (e) => {
       e.stopPropagation();   // a thumbnail tap zooms; it does not open the card
-      new ZoomModal(this.app, `${id} · 現況`, doc).open();
+      new ZoomModal(this.app, got.title, entry.doc).open();
     });
-    await thumb(box, doc, maxHeight, (h) => {
-      const hit = this.docs.get(path);
-      if (hit) hit.h = h;
-    });
+    await thumb(box, entry.doc, maxHeight, (h) => { entry.h = h; });
   }
 
-  async docFor(path) {
+  // One mockup's 現況 (`now`) or option panel (`opt:X`), cached per path + kind + mtime.
+  async entryFor(path, kind) {
     const adapter = this.app.vault.adapter;
     const st = await adapter.stat(path);
     if (!st) return null;
-    const hit = this.docs.get(path);
-    if (hit && hit.mtime === st.mtime) return hit.doc;
-    const doc = currentStateDoc(await adapter.read(path));
-    this.docs.set(path, { mtime: st.mtime, doc });
-    return doc;
+    const key = `${path}#${kind}`;
+    const hit = this.docs.get(key);
+    if (hit && hit.mtime === st.mtime) return hit;
+    const html = await adapter.read(path);
+    const o = kind === "now" ? { doc: currentStateDoc(html), label: "" } : optionDoc(html, kind.slice(4)) || { doc: null, label: "" };
+    const entry = { mtime: st.mtime, doc: o.doc, label: o.label, by: o.by };
+    this.docs.set(key, entry);
+    return entry;
   }
 }
 
@@ -644,5 +794,5 @@ class RoadmapViewPlugin extends Plugin {
   }
 }
 
-Object.assign(RoadmapViewPlugin, { parseRoadmap, mockupsFor, statusOf, currentStateDoc });
+Object.assign(RoadmapViewPlugin, { parseRoadmap, mockupsFor, statusOf, currentStateDoc, splitConditions, optionDoc });
 module.exports = RoadmapViewPlugin;

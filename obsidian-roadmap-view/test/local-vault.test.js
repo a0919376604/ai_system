@@ -36,3 +36,17 @@ test("the real mockups: each R-NNN mockup yields a 現況 document", { skip: !V 
     }
   }
 });
+
+test("the real vault: every picked option whose opt panel exists yields an option doc (R-024 AC-10)", { skip: !V && "no vault on this machine" }, () => {
+  for (const p of projects) {
+    const items = P.parseRoadmap(fs.readFileSync(path.join(p, "ROADMAP.md"), "utf8"));
+    const dir = path.join(p, "Proposals", "mockups");
+    const files = fs.existsSync(dir) ? fs.readdirSync(dir).map((f) => `Proposals/mockups/${f}`) : [];
+    for (const it of items.filter((i) => i.picked)) {
+      const htmls = P.mockupsFor(it, items, files).filter((f) => fs.existsSync(path.join(p, f)))
+        .map((f) => fs.readFileSync(path.join(p, f), "utf8"));
+      if (!htmls.some((h) => /class="[^"]*\bopt\w*/.test(h))) continue;   // AC-10: any opt* panel
+      assert.ok(htmls.some((h) => P.optionDoc(h, it.picked)), `${path.basename(p)} ${it.id} 方案 ${it.picked}`);
+    }
+  }
+});

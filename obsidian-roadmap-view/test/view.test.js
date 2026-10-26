@@ -538,7 +538,7 @@ test("a 現況 that loads after the 3 s timeout still keeps its height", async (
   const frame = big.findAll((e) => e.tag === "iframe")[0];
   frame.contentDocument = { body: { scrollHeight: 500 } };
   frame.fire("load");
-  assert.equal(view.docs.get(`${D}/Proposals/mockups/R-3-a-mockup.html`).h, 500);
+  assert.equal(view.docs.get(`${D}/Proposals/mockups/R-3-a-mockup.html#now`).h, 500);
   assert.ok(!big.hasClass("rv-slow"));
 });
 
@@ -555,4 +555,268 @@ test("when the open item's row disappears, a refresh goes back to the list where
   assert.equal(byText(view.contentEl, "← 返回"), undefined);
   assert.ok(byText(view.contentEl, "近況").hasClass("is-on"));
   assert.equal(view.contentEl.scrollTop, 300);
+});
+
+// --- R-024: 完成條件 as a list; the picked option -------------------------------------
+
+const OPT = (now, b) => `<html><head><style>.y{}</style></head><body><div class="panel now">${now}</div>`
+  + `<h2>方案 A · 甲版</h2><div class="panel optA">A 版</div><h2>方案 B · 乙版</h2><div class="panel optB">${b}</div></body></html>`;
+const PICKED = {
+  ...FILES,
+  [`${D}/ROADMAP.md`]: `## 🔥 Now
+- [x] **R-6** [FEATURE · mockup 定案 B · ✅ 2026-10-21] 做完的事
+    ↳ done when: 畫面上看得到；點得開 · 能放大（含「手機；平板」）
+    ↳ done when: 手機也行
+- [ ] **R-7** [FEATURE · mockup 定案 B] 還沒做完的事
+- [x] **R-8** [FEATURE · mockup 定案 C · ✅ 2026-10-22] 方案找不到的事
+`,
+  [`${D}/Proposals/mockups/R-6-a-mockup.html`]: OPT("六的現況", "六的方案B"),
+  [`${D}/Proposals/mockups/R-7-a-mockup.html`]: OPT("七的現況", "七的方案B"),
+  [`${D}/Proposals/mockups/R-8-a-mockup.html`]: OPT("八的現況", "八的方案B"),
+};
+const cardOf = (view, id) => view.contentEl.findAll((e) => e.hasClass("rv-card")).find((c) => c.textContent.includes(id));
+const framesIn = (el) => el.findAll((e) => e.tag === "iframe");
+
+test("a done item's card shows the picked option; a not-done or unmatched one shows 現況 (AC-6, AC-8)", async () => {
+  observed = [];
+  const { view } = await setup(PICKED);
+  byText(view.contentEl, "全部").fire("click");
+  await flush();
+  observed.forEach(seen);
+  await flush();
+  for (let i = 0; i < 3; i++) { view.contentEl.findAll((e) => e.tag === "iframe").forEach((f) => f.fire("load")); await flush(); }
+  const src = (id) => framesIn(cardOf(view, id))[0].attrs.srcdoc;
+  assert.ok(src("R-6").includes("六的方案B") && !src("R-6").includes("六的現況"));
+  assert.ok(src("R-7").includes("七的現況") && !src("R-7").includes("七的方案B"));
+  assert.ok(src("R-8").includes("八的現況"));   // 方案 C is not in its mockup
+});
+
+test("the detail page shows 採用方案 X with its caption first, then 現況; both zoom (AC-7)", async () => {
+  observed = [];
+  Modal.opened = [];
+  const { view } = await setup(PICKED);
+  byText(view.contentEl, "全部").fire("click");
+  await flush();
+  cardOf(view, "R-6").fire("click");
+  await flush();
+  const root = view.contentEl;
+  const lbls = root.findAll((e) => e.hasClass("rv-lbl")).map((e) => e.text);
+  assert.deepEqual(lbls.slice(0, 2), ["採用方案 B", "MOCKUP · 現況"]);
+  observed.forEach(seen);
+  await flush();
+  for (let i = 0; i < 3; i++) { framesIn(root).forEach((f) => f.fire("load")); await flush(); }
+  const [opt, now] = root.findAll((e) => e.hasClass("rv-big"));
+  assert.ok(framesIn(opt)[0].attrs.srcdoc.includes("六的方案B"));
+  assert.ok(framesIn(now)[0].attrs.srcdoc.includes("六的現況"));
+  assert.ok(root.findAll((e) => e.hasClass("rv-cap")).some((c) => c.text.startsWith("方案 B · 乙版")));
+  const lbl = root.findAll((e) => e.text === "採用方案 B")[0];
+  const cap = root.findAll((e) => e.hasClass("rv-cap"))[0];
+  assert.notEqual(lbl.style.display, "none");
+  assert.notEqual(cap.style.display, "none");
+  assert.notEqual(opt.style.visibility, "hidden");
+  opt.fire("click");
+  now.fire("click");
+  assert.deepEqual(Modal.opened.map((m) => m.title), ["R-6 · 採用方案 B", "R-6 · 現況"]);
+});
+
+test("a not-done item's detail page still shows the decided option; an unmatched one drops the section (AC-8)", async () => {
+  observed = [];
+  const { view } = await setup(PICKED);
+  byText(view.contentEl, "全部").fire("click");
+  await flush();
+  cardOf(view, "R-7").fire("click");
+  await flush();
+  observed.forEach(seen);
+  await flush();
+  assert.equal(view.contentEl.findAll((e) => e.hasClass("rv-lbl"))[0].text, "採用方案 B");
+  assert.ok(framesIn(view.contentEl.findAll((e) => e.hasClass("rv-big"))[0])[0].attrs.srcdoc.includes("七的方案B"));
+  byText(view.contentEl, "← 返回").fire("click");
+  await flush();
+  observed = [];
+  cardOf(view, "R-8").fire("click");
+  await flush();
+  observed.forEach(seen);
+  await flush();
+  const lbls = view.contentEl.findAll((e) => e.hasClass("rv-lbl")).map((e) => e.text);
+  assert.ok(!lbls.includes("採用方案 C"), lbls.join(","));
+  assert.equal(view.contentEl.findAll((e) => e.hasClass("rv-big")).length, 1);
+});
+
+test("完成條件 is one list of every line's split conditions, in order (AC-9)", async () => {
+  const { view } = await setup(PICKED);
+  byText(view.contentEl, "全部").fire("click");
+  await flush();
+  cardOf(view, "R-6").fire("click");
+  await flush();
+  const lists = view.contentEl.findAll((e) => e.tag === "ul" && e.hasClass("rv-dw"));
+  assert.equal(lists.length, 1);
+  assert.deepEqual(lists[0].children.map((li) => [li.tag, li.text]),
+    [["li", "畫面上看得到"], ["li", "點得開"], ["li", "能放大（含「手機；平板」）"], ["li", "手機也行"]]);
+});
+
+// --- R-024 review attempt 1 -------------------------------------------------------
+
+const TWO = {
+  ...FILES,
+  [`${D}/ROADMAP.md`]: `## 🔥 Now
+- [x] **R-9** [FEATURE · mockup 定案 B · ✅ 2026-10-21] 兩份 mockup 的事
+    ↳ mockup [[Proposals/mockups/second-mockup.html|二號（方案 B）]]
+- [x] **R-8** [FEATURE · mockup 定案 C · ✅ 2026-10-22] 方案找不到的事
+`,
+  // the item's own file comes first and has an unlabelled optB; the labelled 方案 B is in the second
+  [`${D}/Proposals/mockups/R-9-a-mockup.html`]: `<html><body><div class="panel now">九的現況</div><div class="panel optB">一號的B</div></body></html>`,
+  [`${D}/Proposals/mockups/second-mockup.html`]: OPT("二號的現況", "二號的方案B"),
+  [`${D}/Proposals/mockups/R-8-a-mockup.html`]: OPT("八的現況", "八的方案B"),
+};
+
+test("a label match in any of the item's mockups beats a class match in an earlier one", async () => {
+  observed = [];
+  const { view } = await setup(TWO);
+  byText(view.contentEl, "全部").fire("click");
+  await flush();
+  observed.forEach(seen);
+  await flush();
+  assert.ok(framesIn(cardOf(view, "R-9"))[0].attrs.srcdoc.includes("二號的方案B"));
+});
+
+test("a refresh draws the 採用方案 caption from the cache, so nothing below it moves", async () => {
+  observed = [];
+  const { view } = await setup(PICKED);
+  byText(view.contentEl, "全部").fire("click");
+  await flush();
+  cardOf(view, "R-6").fire("click");
+  await flush();
+  observed.forEach(seen);
+  await flush();
+  observed = [];
+  await view.render();   // nothing seen yet in this render
+  const caps = view.contentEl.findAll((e) => e.hasClass("rv-cap")).map((c) => c.text);
+  assert.equal(caps[0], "方案 B · 乙版 · 點圖放大");
+});
+
+test("an option that is not found shows no 採用方案 label while it is looked for", async () => {
+  observed = [];
+  const { view } = await setup(PICKED);
+  byText(view.contentEl, "全部").fire("click");
+  await flush();
+  cardOf(view, "R-8").fire("click");
+  await flush();
+  const lbl = view.contentEl.findAll((e) => e.text === "採用方案 C")[0];
+  assert.equal(lbl.style.display, "none");
+  observed.forEach(seen);
+  await flush();
+  assert.equal(view.contentEl.findAll((e) => e.text === "採用方案 C").length, 0);
+});
+
+test("a mockup that cannot be read is skipped: card and detail page use what can be found", async () => {
+  observed = [];
+  const { view, app } = await setup(TWO);
+  app.failRead = "second-mockup.html";   // half-synced on the phone
+  byText(view.contentEl, "全部").fire("click");
+  await flush();
+  observed.forEach(seen);
+  await flush();
+  assert.ok(framesIn(cardOf(view, "R-9"))[0].attrs.srcdoc.includes("一號的B"));
+  observed = [];
+  cardOf(view, "R-9").fire("click");
+  await flush();
+  observed.forEach(seen);
+  await flush();
+  assert.ok(framesIn(view.contentEl.findAll((e) => e.hasClass("rv-big"))[0])[0].attrs.srcdoc.includes("一號的B"));
+});
+
+test("the detail page's images start at the height the card already measured", async () => {
+  observed = [];
+  const { view } = await setup();
+  const card = cardOf(view, "R-3");
+  observed.filter((o) => card.contains(o.el)).forEach(seen);
+  await flush();
+  const f = framesIn(card)[0];
+  f.contentDocument = { body: { scrollHeight: 400 } };
+  f.fire("load");
+  await flush();
+  observed = [];
+  card.fire("click");
+  await flush();
+  const big = view.contentEl.findAll((e) => e.hasClass("rv-big"))[0];
+  assert.equal(framesIn(big).length, 0);              // not drawn yet
+  assert.equal(big.style.aspectRatio, "1100 / 400");  // but already sized
+});
+
+test("a thumbnail's remembered size belongs to its project, not to an id another project reuses", async () => {
+  observed = [];
+  const files = { ...FILES, "10 Projects/other/ROADMAP.md": "- [x] **R-3** 別的專案的 R-3 · ✅ 2026-10-20\n",
+    "10 Projects/other/Proposals/mockups/R-3-a-mockup.html": MOCK("別的") };
+  const { view, plugin } = await setup(files);
+  const card = cardOf(view, "R-3");
+  observed.filter((o) => card.contains(o.el)).forEach(seen);
+  await flush();
+  const f = framesIn(card)[0];
+  f.contentDocument = { body: { scrollHeight: 400 } };
+  f.fire("load");
+  await flush();
+  plugin.settings.project = "other";
+  observed = [];
+  await view.render();
+  byText(view.contentEl, "全部").fire("click");
+  await flush();
+  assert.equal(cardOf(view, "R-3").findAll((e) => e.hasClass("rv-thumb"))[0].style.aspectRatio, undefined);
+});
+
+// --- R-024 review attempt 2 -------------------------------------------------------
+
+test("a detail page opened from a drawn card starts with the option's size, caption and label", async () => {
+  observed = [];
+  const { view } = await setup(PICKED);
+  byText(view.contentEl, "全部").fire("click");
+  await flush();
+  const card = cardOf(view, "R-6");
+  observed.filter((o) => card.contains(o.el)).forEach(seen);
+  await flush();
+  const f = framesIn(card)[0];
+  f.contentDocument = { body: { scrollHeight: 300 } };
+  f.fire("load");
+  await flush();
+  observed = [];
+  card.fire("click");
+  await flush();
+  const root = view.contentEl;
+  const opt = root.findAll((e) => e.hasClass("rv-big"))[0];
+  assert.equal(framesIn(opt).length, 0);                 // no job has run yet
+  assert.equal(opt.style.aspectRatio, "1100 / 300");
+  assert.equal(root.findAll((e) => e.hasClass("rv-cap"))[0].text, "方案 B · 乙版 · 點圖放大");
+  assert.notEqual(root.findAll((e) => e.text === "採用方案 B")[0].style.display, "none");
+});
+
+test("while an option is looked for, its empty box is invisible too", async () => {
+  observed = [];
+  const { view } = await setup(PICKED);
+  byText(view.contentEl, "全部").fire("click");
+  await flush();
+  cardOf(view, "R-8").fire("click");
+  await flush();
+  assert.equal(view.contentEl.findAll((e) => e.hasClass("rv-big"))[0].style.visibility, "hidden");
+});
+
+test("a caption cached for another option, or for one without a heading, is not reused", async () => {
+  observed = [];
+  const { view, app } = await setup(PICKED);
+  byText(view.contentEl, "全部").fire("click");
+  await flush();
+  cardOf(view, "R-6").fire("click");
+  await flush();
+  observed.forEach(seen);
+  await flush();
+  // R-6 is now 定案 A, whose panel has a heading; then a heading-less C
+  const read = app.vault.adapter.read;
+  let picked = "A";
+  app.vault.adapter.read = async (p) => (p.endsWith("ROADMAP.md")
+    ? (await read(p)).replace("mockup 定案 B", `mockup 定案 ${picked}`) : read(p));
+  observed = [];
+  await view.render();
+  const caps = () => view.contentEl.findAll((e) => e.hasClass("rv-cap")).map((c) => c.text);
+  assert.ok(!caps().some((c) => c.startsWith("方案 B")), caps().join(" | "));
+  observed.forEach(seen);
+  await flush();
+  assert.equal(caps()[0], "方案 A · 甲版 · 點圖放大");
 });
