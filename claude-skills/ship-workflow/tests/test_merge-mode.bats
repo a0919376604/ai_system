@@ -133,3 +133,30 @@ teardown() { rm -rf "$SCRATCH"; }
   run merge_mode
   [ "$output" = "squash" ]
 }
+
+@test "merge_mode: a per-ship SHIP_MERGE_MODE wins over the repo config" {
+  mkdir -p .claude
+  echo 'merge_mode: squash' > .claude/ship-config.yml
+  SHIP_MERGE_MODE=mr run merge_mode
+  [ "$output" = mr ]
+  echo 'merge_mode: mr' > .claude/ship-config.yml
+  SHIP_MERGE_MODE=squash run merge_mode
+  [ "$output" = squash ]
+  SHIP_MERGE_MODE=bogus run merge_mode
+  [ "$output" = mr ]
+  SHIP_MERGE_MODE= run merge_mode
+  [ "$output" = mr ]
+}
+
+@test "forge_automerge_cmd: glab and gh forms" {
+  git remote add origin https://gitlab.example/x.git
+  run forge_automerge_cmd https://x/mr/1
+  [ "$status" -eq 0 ]
+  [ "$output" = 'glab mr merge https://x/mr/1 --auto-merge --squash --yes' ]
+  git remote set-url origin https://github.com/x/y.git
+  run forge_automerge_cmd https://x/pull/1
+  [ "$output" = 'gh pr merge https://x/pull/1 --auto --squash' ]
+  git remote set-url origin https://unknown.example/x.git
+  run forge_automerge_cmd https://x/1
+  [ "$status" -eq 1 ]
+}

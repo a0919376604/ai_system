@@ -12,6 +12,7 @@
 
 # merge_mode — echo squash|mr
 merge_mode() {
+  case "${SHIP_MERGE_MODE:-}" in mr|squash) echo "$SHIP_MERGE_MODE"; return 0 ;; esac
   local cfg="$(pwd)/.claude/ship-config.yml" v common
   if [ ! -f "$cfg" ]; then
     # A ship worktree may not carry the config: /ship-init --custom writes it
@@ -64,5 +65,16 @@ forge_mr_cmd() {
             "$branch" "$target" "'$title'" "$body" ;;
     gh)   printf 'gh pr create --head %s --base %s --title %s --body-file %s\n' \
             "$branch" "$target" "'$title'" "$body" ;;
+  esac
+}
+
+# forge_automerge_cmd <url> — echo the forge command without running it.
+forge_automerge_cmd() {
+  local cli
+  cli=$(forge_cli) || return 1
+  case "$cli" in
+    glab) printf 'glab mr merge %s --auto-merge --squash --yes\n' "$1" ;;
+    gh) printf 'gh pr merge %s --auto --squash\n' "$1" ;;
+    *) return 1 ;;
   esac
 }
