@@ -288,3 +288,16 @@ body_fixture() {
   [[ "$output" == *WARN* ]]
   ! grep -q '^mr merge ' "$CALLS"
 }
+
+@test "failed door check persists safe routing" {
+  start_ship
+  commit_changes
+  sn_state_set "$PWD" ORIG_BRANCH no-such-branch
+  door
+  [ "$status" -ne 0 ]
+  sn_state_load "$PWD"
+  [ "$SHIP_DOOR" = one-way ]
+  [ "$SHIP_MERGE_MODE" = mr ]
+  [ "$SHIP_AUTO_MERGE" = 0 ]
+  [[ "$SHIP_DOOR_REASONS" == *'door check failed'* ]]
+}

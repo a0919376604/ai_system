@@ -242,6 +242,10 @@ _sn_one_way_paths() {
 }
 
 sn_door() {
+  sn_state_set "$1" SHIP_DOOR one-way
+  sn_state_set "$1" SHIP_DOOR_REASONS 'door check failed — treated as one-way'
+  sn_state_set "$1" SHIP_MERGE_MODE mr
+  sn_state_set "$1" SHIP_AUTO_MERGE 0
   sn_state_load "$1"
   cd "$1" || return
   local wt="$PWD" spec_line door reasons paths f glob dep repo_mode mode auto_merge
