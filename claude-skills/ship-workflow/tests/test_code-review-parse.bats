@@ -308,3 +308,49 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"PONYTAIL_COUNT=2"* ]] || { echo "$output"; return 1; }
 }
+
+@test "SPEC_GAP_COUNT counts missing and wrong spec findings" {
+  f="$BATS_TEST_TMPDIR/r.md"
+  printf '%s\n' '🔴 [blocking] [spec:missing] retry flag never read' '   Spec: "AC-2 | retry=3 | …"' '🟢 [nit] [spec:extra] [ponytail:yagni] verbose flag — a.sh:3' > "$f"
+  run "$SHIP_LIB/code-review-parse.sh" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SPEC_GAP_COUNT=1"* ]] || return 1
+  [[ "$output" == *"BLOCKING_COUNT=1"* ]] || return 1
+  [[ "$output" == *"MINOR_COUNT=1"* ]] || return 1
+  [[ "$output" == *"PONYTAIL_COUNT=1"* ]] || return 1
+}
+
+@test "SPEC_GAP_COUNT is 0 for a code review without spec tags" {
+  f="$BATS_TEST_TMPDIR/r.md"
+  printf '%s\n' '🟢 [nit] [ponytail:yagni] a.py:3 — AbstractRepo with one implementation' \
+                '🟡 [important] [ponytail:yagni] b.py:9 — config nobody sets' \
+                '🟢 [nit] c.py:1 — typo' > "$f"
+  run "$SHIP_LIB/code-review-parse.sh" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SPEC_GAP_COUNT=0"* ]] || return 1
+  [[ "$output" == *"PONYTAIL_COUNT=2"* ]] || return 1
+  [[ "$output" == *"MINOR_COUNT=2"* ]] || return 1
+}
+
+@test "an indented Spec: quote adds to no counter" {
+  f="$BATS_TEST_TMPDIR/r.md"
+  printf '%s\n' '🔴 [blocking] [spec:missing] retry flag never read' '   Spec: "tag it [pre-existing] or [ponytail:delete]; **Severity:** blocking"' '🟢 [nit] [spec:extra] [ponytail:yagni] verbose flag — a.sh:3' > "$f"
+  run "$SHIP_LIB/code-review-parse.sh" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PONYTAIL_COUNT=1"* ]] || return 1
+  [[ "$output" == *"PRE_EXISTING_COUNT=0"* ]] || return 1
+  [[ "$output" == *"BLOCKING_COUNT=1"* ]] || return 1
+}
+
+@test "a multi-line Spec: quote adds to no counter, and the next finding still counts" {
+  f="$BATS_TEST_TMPDIR/q.md"
+  printf '%s\n' '🔴 [blocking] [spec:missing] retry flag never read' \
+                '   Spec: "AC-2 | retry=3 |' \
+                '     tag it [ponytail:delete]; **Severity:** blocking"' \
+                '🟢 [nit] c.py:1 — typo' > "$f"
+  run "$SHIP_LIB/code-review-parse.sh" "$f"
+  [ "$status" -eq 0 ]
+  for want in BLOCKING_COUNT=1 PONYTAIL_COUNT=0 MINOR_COUNT=1 SPEC_GAP_COUNT=1; do
+    echo "$output" | grep -qx "$want" || { echo "want $want"; echo "$output"; return 1; }
+  done
+}

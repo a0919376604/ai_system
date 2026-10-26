@@ -487,3 +487,93 @@ dep_fixture() {
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_state_set "$WT" ID R-1; sn_state_set "$WT" SLUG x; sn_mech_gates "$WT" main "$WT/no-plan.md"; sn_state_load "$WT"; echo "MB=$MECH_BLOCKERS"'
   [ "$(printf '%s\n' "$output" | tail -1)" = "MB=0" ] || { echo "$output"; return 1; }
 }
+
+spec_fixture() {
+  bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_state_set "$WT" ID R-9; sn_state_set "$WT" SLUG x; sn_state_set "$WT" ORIG_BRANCH main'
+  mkdir -p "$WT/docs/specs"
+  echo 'AC-1: X' > "$WT/docs/specs/R-9-x.md"
+}
+
+@test "spec review prompt names the spec, the diff and the format" {
+  spec_fixture
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_spec_review_render "$WT"'
+  [ "$status" -eq 0 ] || return 1
+  for text in 'docs/specs/R-9-x.md' 'git diff main...HEAD' '[spec:missing]' '[spec:wrong]' '[spec:extra]' '[ponytail:yagni]' 'Spec:' 'No spec gaps.'; do
+    command grep -qF "$text" "$WT/.ship/spec-review-prompt.md" || return 1
+  done
+}
+
+@test "spec review prompt refuses without a spec" {
+  spec_fixture
+  rm "$WT/docs/specs/R-9-x.md"
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_spec_review_render "$WT"'
+  [ "$status" -ne 0 ] || return 1
+  [[ "$output" == *"spec review: no spec at $WT/docs/specs/R-9-x.md"* ]] || return 1
+  [ ! -e "$WT/.ship/spec-review-prompt.md" ]
+}
+
+spec_report() {
+  printf '%s\n' '🔴 [blocking] [spec:missing] X' '   Spec: "a"' '🟢 [nit] [spec:extra] [ponytail:yagni] Y — a.sh:3'
+}
+
+@test "spec check accepts a well-formed report" {
+  spec_report > "$SCRATCH/report"
+  for shell in bash zsh; do
+    run "$shell" -c 'source "$SHIP_LIB/ship-next.sh"; sn_spec_review_check "$SCRATCH/report"'
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  done
+}
+
+@test "spec check accepts the no-gaps sentinel" {
+  for sentinel in 'No spec gaps.' $'No spec gaps. \r'; do
+    printf '%s\n' "$sentinel" > "$SCRATCH/report"
+    for shell in bash zsh; do
+      run "$shell" -c 'source "$SHIP_LIB/ship-next.sh"; sn_spec_review_check "$SCRATCH/report"'
+      [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    done
+  done
+}
+
+@test "spec check rejects malformed reports" {
+  cases=(
+    ''
+    'Looks fine to me.'
+    $'🟢 [nit] [spec:missing] X\n   Spec: "a"'
+    '🔴 [blocking] [spec:wrong] X — a.sh:1'
+    '🟢 [nit] [spec:extra] X — a.sh:1'
+    '🔴 [blocking] [spec:extra] [ponytail:yagni] X — a.sh:1'
+    $'🔴 [blocking] [pre-existing] [spec:missing] X\n   Spec: "a"'
+    '   🟢 [nit] [spec:missing] X'
+    '- **Severity:** blocking [spec:missing] X'
+    "$(spec_report)"$'\nNo spec gaps.'
+    $'🔴 [blocking] [spec:missing] X\n\n   Spec: "a"'
+  )
+  files=("$SCRATCH/missing")
+  n=0
+  for content in "${cases[@]}"; do
+    n=$((n + 1))
+    printf '%s' "$content" > "$SCRATCH/bad-$n"
+    files+=("$SCRATCH/bad-$n")
+  done
+  for shell in bash zsh; do
+    for file in "${files[@]}"; do
+      run "$shell" -c '
+        if [ -n "${ZSH_VERSION:-}" ] && command -v ugrep >/dev/null; then
+          grep() { ugrep "$@"; }
+        fi
+        source "$SHIP_LIB/ship-next.sh"
+        sn_spec_review_check "$1"
+      ' _ "$file"
+      [ "$status" -ne 0 ] || { echo "$shell accepted $file"; return 1; }
+      [[ "$output" == *"spec report:"* ]] || { echo "$output"; return 1; }
+    done
+  done
+}
+
+@test "spec check accepts a multi-line quote and a quote containing tags" {
+  printf '%s\n' '🔴 [blocking] [spec:missing] X' '   Spec: "line one' '     line two [pre-existing] [ponytail:delete]"' > "$SCRATCH/report"
+  for shell in bash zsh; do
+    run "$shell" -c 'source "$SHIP_LIB/ship-next.sh"; sn_spec_review_check "$SCRATCH/report"'
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  done
+}

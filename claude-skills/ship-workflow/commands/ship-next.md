@@ -15,7 +15,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 - `--adhoc <description>` — allocate next R-NNN, insert into "Now", continue.
 - `--discard R-NNN` — force-remove the worktree + branch for this R-NNN, exit.
 - `--resume R-NNN` — explicit "I know the worktree exists, just continue". Equivalent to invoking `/ship-next R-NNN` and answering `Y` to the resume prompt.
-- `--auto:yes` (alias `--auto`) — **fire-and-forget mode**. Runs the entire 9-phase cycle without interactive prompts: brainstorm clarifying questions auto-pick option 1; spec/plan review gates auto-approve; executor auto = codex /run-plan (subagent-driven if the `codex` CLI is missing, never inline); review loop iterates fix-plans automatically up to cap=3; major findings auto-forwarded to `IDEA-NNN` follow-ups. On cap=3 failure: abort with worktree retained + Discord push. Requires the ROADMAP row to have a `↳ done when:` annotation. Records every auto decision to `.claude/.ship-auto-decisions.md` (gitignored) in the worktree.
+- `--auto:yes` (alias `--auto`) — **fire-and-forget mode**. Runs the entire 9-phase cycle without interactive prompts: brainstorm clarifying questions auto-pick their recommended answer; spec/plan review gates auto-approve; executor auto = codex /run-plan (subagent-driven if the `codex` CLI is missing, never inline); review loop iterates fix-plans automatically up to cap=3; major findings auto-forwarded to `IDEA-NNN` follow-ups. On cap=3 failure: abort with worktree retained + Discord push. Requires the ROADMAP row to have a `↳ done when:` annotation. Records every auto decision to `.claude/.ship-auto-decisions.md` (gitignored) in the worktree.
   **Mutually exclusive with `--discard`** (deletion is destructive; auto must never delete).
 
 ## Pre-flight invariants
@@ -207,9 +207,10 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 1. **Invoke `superpowers:brainstorming`** with context: spec target `docs/specs/${ID}-${SLUG}.md`, project `<project_name>`.
    Require `## Seams`: a table (Seam | Interface | Guaranteed behavior) for every boundary introduced or changed. Tests may assert only declared seam behavior. Pass this in invocation context; do not modify a `superpowers` file.
    Require `## Decisions`: operator decisions and reasons, with your own calls marked as yours. Do not create a separate brainstorm file; `/ship-compound` copies these into the learning and mirrors the spec before removing it.
-   **In auto mode (`AUTO=1`):** the brainstorming skill is still invoked, but **every clarifying question is auto-answered by picking option 1**.
+   **Require grilling rounds:** Each round asks every question whose prerequisites are settled, numbered. Each question carries your recommended answer and is worded so "yes" accepts it. A question that depends on one still open in this round waits for the next round. Facts are yours to find: dispatch a sub-agent rather than asking the operator anything you could look up. Only decisions go to the operator. This invocation context overrides the skill's one-question-per-message habit; do not modify any superpowers file.
+   **In auto mode (`AUTO=1`):** the brainstorming skill is still invoked, but **every clarifying question is auto-answered with its recommended answer**.
    After each auto-answered question, log:
-   Run `~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P3" "brainstorm Q${N} auto-picked option 1" "<question summary truncated to 80 chars>"`.
+   Run `~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P3" "brainstorm Q${N} auto-picked recommended answer" "<question → answer, truncated to 80 chars>"`.
    When the brainstorming skill reaches the "Review spec first?" gate, auto-approve:
    Run `~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P3" "spec review → auto-approved"`.
 2. **Verify output**: `docs/specs/${ID}-${SLUG}.md` exists and has `## Decisions`.
@@ -406,6 +407,20 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
      exit 1
    fi
    ```
+1.4. **Spec review (every attempt, in parallel with code review)**
+   ```bash
+   : "${ID:?ID is not set}" "${attempt:?attempt is not set}" "${WORKTREE:?WORKTREE is not set}"
+   source ~/.claude/skills/ship-workflow/lib/ship-next.sh
+   SPEC_OUT="/tmp/ship-next-spec-${ID}-${attempt}.md"
+   sn_spec_review_render "$WORKTREE" || exit 1
+   ```
+   Give `.ship/spec-review-prompt.md` to a read-only sub-agent in the same message as the code review, with `$SPEC_OUT` as its output path.
+   ```bash
+   : "${ID:?ID is not set}" "${attempt:?attempt is not set}"
+   source ~/.claude/skills/ship-workflow/lib/ship-next.sh
+   SPEC_OUT="/tmp/ship-next-spec-${ID}-${attempt}.md"
+   sn_spec_review_check "$SPEC_OUT" || { echo "spec report malformed: re-run step 1.4 once; a second failure stops Phase 6" >&2; exit 3; }
+   ```
 1.5. **Security pass (once code review clears the attempt)** — run this separate review inside the loop after code review reports 0 blockers, including mechanical blockers. HIGH security findings block like code-review blockers.
    ```bash
    : "${ORIG_BRANCH:?ORIG_BRANCH is not set}" "${ID:?ID is not set}" "${attempt:?attempt is not set}"
@@ -451,16 +466,19 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
      REVIEW_TARGET=$(git diff ${ORIG_BRANCH}...HEAD)
      REVIEW_OUT=/tmp/ship-next-review-${ID}-${attempt}.md
      SEC_OUT=/tmp/ship-next-security-${ID}-${attempt}.md
-     rm -f "$REVIEW_OUT" "$SEC_OUT"   # never parse a report left by an earlier run
+     SPEC_OUT=/tmp/ship-next-spec-${ID}-${attempt}.md
+     rm -f "$REVIEW_OUT" "$SPEC_OUT" "$SEC_OUT"   # never parse a report left by an earlier run
      # Invoke awesome-skills/code-review-skill on REVIEW_TARGET; capture output to $REVIEW_OUT
+     # Step 1.4 runs the Spec review in parallel; it writes and checks $SPEC_OUT.
      # Read .ship/review-extra-checks.md when present.
-     PARSED=$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh "$REVIEW_OUT") || { echo "review parse failed — not passing the gate" >&2; exit 1; }
+     PARSED=$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh "$REVIEW_OUT" "$SPEC_OUT") || { echo "review parse failed — not passing the gate" >&2; exit 1; }
      eval "$PARSED"
+     [ -n "${SPEC_GAPS_FOUND:-}" ] || { SPEC_GAPS_FOUND="$SPEC_GAP_COUNT"; sn_state_set "$WORKTREE" SPEC_GAPS_FOUND "$SPEC_GAPS_FOUND"; }
      BLOCKING_COUNT=$((BLOCKING_COUNT + MECH_BLOCKERS))
      if [ "$BLOCKING_COUNT" -eq 0 ]; then
        # Only once code review reports 0 blockers, run steps 1.5 and 1.6.
        # They write and validate SEC_OUT; any failure stops here, never passes.
-       PARSED=$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh "$REVIEW_OUT" "$SEC_OUT") || { echo "review parse failed — not passing the gate" >&2; exit 1; }
+       PARSED=$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh "$REVIEW_OUT" "$SPEC_OUT" "$SEC_OUT") || { echo "review parse failed — not passing the gate" >&2; exit 1; }
        eval "$PARSED"
        BLOCKING_COUNT=$((BLOCKING_COUNT + MECH_BLOCKERS))
      fi
@@ -470,14 +488,14 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
      if [ "$BLOCKING_COUNT" -eq 0 ]; then break; fi
      if [ "$AUTO" = "0" ]; then
        echo "🛑 ${BLOCKING_COUNT} blocking finding(s):"
-       pre_existing_drop "$REVIEW_OUT" "$SEC_OUT" | grep -B1 -A3 -E '(\*\*Severity:\*\*[[:space:]]*blocking|\[blocking\]|🔴)'
+       pre_existing_drop "$REVIEW_OUT" "$SPEC_OUT" "$SEC_OUT" | grep -B1 -A3 -E '(\*\*Severity:\*\*[[:space:]]*blocking|\[blocking\]|🔴)'
      fi
      attempt=$((attempt + 1))
      if [ "$attempt" -gt 3 ]; then break; fi  # fall through to abort below
      # Build inline fix-plan
      FIX_PLAN=docs/plans/${ID}-${SLUG}-review-fix-${attempt}.md
      # ... (existing logic: write fix-plan, invoke subagent on it)
-     # The fix-plan covers the blocking findings from both $REVIEW_OUT and $SEC_OUT,
+     # The fix-plan covers the blocking findings from $REVIEW_OUT, $SPEC_OUT and $SEC_OUT,
      # never the [pre-existing] ones.
      if [ "$AUTO" = "1" ]; then
        ~/.claude/skills/ship-workflow/lib/auto-decision-log.sh "$WORKTREE" "P6" "building fix-plan attempt $attempt" "$FIX_PLAN with $BLOCKING_COUNT blockers"
@@ -546,7 +564,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
      ```bash
      if [ "$MAJOR_COUNT" -gt 0 ]; then
        source ~/.claude/skills/ship-workflow/lib/pre-existing.sh   # PRE_EXISTING_RE
-       MAJOR_LINES=$(grep -h -B0 -A2 -E '(\*\*Severity:\*\*[[:space:]]*major|\[major\]|🟡)' "$REVIEW_OUT" "$SEC_OUT" | grep -vE "$PRE_EXISTING_RE")
+       MAJOR_LINES=$(grep -h -B0 -A2 -E '(\*\*Severity:\*\*[[:space:]]*major|\[major\]|🟡)' "$REVIEW_OUT" "$SPEC_OUT" "$SEC_OUT" | grep -vE "$PRE_EXISTING_RE")
        IFS=$'\n'
        for finding in $(echo "$MAJOR_LINES" | awk '/^[🟡]|\[major\]|\*\*Severity/' | head -$MAJOR_COUNT); do
          finding_desc=$(echo "$finding" | sed 's/^[🟡[:space:]]*//' | head -c 120)

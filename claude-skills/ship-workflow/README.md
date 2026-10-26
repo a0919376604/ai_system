@@ -41,6 +41,8 @@ cd /path/to/your/repo
 
 ## Security review (ship-next Phase 6)
 
+**Spec review:** Every attempt also compares the diff with the spec, following Matt Pocock's two-axis `code-review`. Missing or wrong criteria block; extras carry `[ponytail:yagni]`. The report is format-checked before counting.
+
 Every review attempt runs a **separate security pass** next to code-review-skill, as in
 Anthropic's own pipeline. It is a vendored copy of Anthropic's open-source
 `/security-review` prompt (MIT; `templates/security-review/`) with five changes: it

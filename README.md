@@ -211,10 +211,10 @@ devsync stop my-repo   # 結束
 |---|---|
 | 1 | 同步 vault、選定 R-NNN |
 | 2 | 開 worktree |
-| 3 | 讀過去的 learning 和 `CONTEXT.md`，brainstorm 出 spec（必須有 `## Seams`） |
+| 3 | 讀過去的 learning 和 `CONTEXT.md`，brainstorm 出 spec（必須有 `## Seams`），問題一次問完、每題附建議答案 |
 | 4 | 寫 plan |
 | 5 | 執行 plan |
-| 6 | Code review 加獨立的 security review，blocking 必須歸零，最多修 3 輪 |
+| 6 | Code review 加獨立的 security review、Spec review（逐條對照 spec），blocking 必須歸零，最多修 3 輪 |
 | 7 | Squash merge，或開 PR/MR |
 | 8 | 寫 learning、Roadmap 移到 Done |
 | 9 | 刪除 worktree 和 branch |

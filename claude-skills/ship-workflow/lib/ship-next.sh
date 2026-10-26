@@ -220,6 +220,94 @@ CHECKS
   sn_state_set "$WORKTREE" SRC_LINES_ADDED "$SRC_LINES_ADDED"
 }
 
+# Render invocation context for the read-only Spec reviewer.
+sn_spec_review_render() {
+  sn_state_load "$1"
+  local spec="$1/docs/specs/${ID}-${SLUG}.md"
+  [ -f "$spec" ] || { echo "spec review: no spec at $spec" >&2; return 1; }
+  {
+    printf 'Read docs/specs/%s-%s.md in full. Read the diff with git diff %s...HEAD.\n' "$ID" "$SLUG" "$ORIG_BRANCH"
+    cat <<'PROMPT'
+Check the spec's acceptance criteria: Given-When-Then rows, AC-N rows, or a
+"done when" line. With no such rows, check its stated requirements.
+Report gaps only with evidence; do not block on criteria the diff cannot show.
+
+Missing, partial or wrong criteria use these forms:
+🔴 [blocking] [spec:missing] <what>
+   Spec: "<the spec line, quoted>"
+🔴 [blocking] [spec:wrong] <what> — <file>:<line>
+   Spec: "<the spec line, quoted>"
+
+Behaviour the spec did not ask for uses:
+🟢 [nit] [spec:extra] [ponytail:yagni] <what> — <file>:<line>
+Use 🟡 [important] in place of 🟢 [nit], keeping both tags, when it adds surface
+area (a flag, an option, a public function). Extras never block on their own.
+
+Before reporting a criterion as missing, look for it in the worktree, not only
+in the diff. A criterion met by existing code is not missing.
+Never tag a spec finding [pre-existing].
+When nothing is found, write the single line:
+No spec gaps.
+
+Write only the report to the output path you are given. Edit nothing else.
+PROMPT
+  } > "$1/.ship/spec-review-prompt.md"
+}
+
+# Fail closed before the report can be counted by code-review-parse.sh.
+sn_spec_review_check() {
+  [ -f "$1" ] || { echo "spec report: missing file: $1" >&2; return 1; }
+  awk '
+    function fail(reason, line) {
+      print "spec report: " reason ": " line > "/dev/stderr"
+      failed = 1
+      exit 1
+    }
+    function close_block() {
+      if (needs_quote && !quoted) fail("missing Spec: quote", finding)
+      finding = ""; needs_quote = 0; quoted = 0
+    }
+    {
+      sub(/\r$/, "")
+      sub(/[[:space:]]+$/, "")
+      if ($0 == "") { close_block(); next }
+      if ($0 ~ /^[[:space:]]/) {
+        if (finding == "") fail("detail outside finding", $0)
+        detail = $0
+        sub(/^[[:space:]]+/, "", detail)
+        if (index(detail, "🔴") == 1 || index(detail, "🟡") == 1 ||
+            index(detail, "🟢") == 1 || index(detail, "🎉") == 1 ||
+            index(detail, "[") == 1) fail("indented finding", $0)
+        if (index(detail, "Spec:") == 1) quoted = 1
+        next
+      }
+      close_block()
+      if ($0 == "No spec gaps.") { sentinel = 1; next }
+      blocking = index($0, "🔴") == 1 || index($0, "[blocking]") == 1
+      if (!(index($0, "🔴") == 1 || index($0, "🟡") == 1 ||
+            index($0, "🟢") == 1 ||
+            $0 ~ /^\[(blocking|important|major|minor|nit)\]/))
+        fail("expected spec finding", $0)
+      tags = $0
+      if (gsub(/\[spec:(missing|wrong|extra)\]/, "", tags) != 1)
+        fail("expected exactly one spec tag", $0)
+      if (index($0, "[pre-existing]")) fail("pre-existing spec finding", $0)
+      needs_quote = $0 ~ /\[spec:(missing|wrong)\]/
+      if (needs_quote && !blocking) fail("spec gap must block", $0)
+      if (!needs_quote && (blocking || !index($0, "[ponytail:yagni]")))
+        fail("extra must be non-blocking ponytail:yagni", $0)
+      finding = $0
+      findings++
+    }
+    END {
+      if (failed) exit 1
+      close_block()
+      if (findings && sentinel) fail("findings contradict sentinel", "No spec gaps.")
+      if (!findings && !sentinel) fail("empty report", "")
+    }
+  ' "$1"
+}
+
 sn_codex_after_exit() {
   local WORKTREE="$1" PLAN="$2" SLOT="$3"
   source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/codex-verdict.sh"
@@ -435,7 +523,7 @@ sn_log() {
      CODEX_LOG_FRAGMENT=", codex: ${CODEX_ROUNDS} round(s) ${CODEX_FINAL_VERDICT}"
    fi
    if [ -z "${SHIP_LOG_ROW:-}" ]; then
-     SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ponytail=${PONYTAIL_COUNT:-0}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp${CODEX_LOG_FRAGMENT}) | n |"
+     SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ponytail=${PONYTAIL_COUNT:-0}, spec_gaps=${SPEC_GAPS_FOUND:-0}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp${CODEX_LOG_FRAGMENT}) | n |"
    fi
    # shellcheck disable=SC1091
    source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/ship-log.sh"
@@ -486,6 +574,7 @@ ${CODEX_LAST_FINDINGS}
 • minor: ${MINOR_COUNT}
 • praise: ${PRAISE_COUNT}
 • security review: $(if [ "$(cat "/tmp/ship-${ID}-security-review-state" 2>/dev/null)" = off ]; then echo "off (ship-config on ${ORIG_BRANCH})"; else echo "${SECURITY_COUNT:-0} finding(s), pre-existing ${PRE_EXISTING_COUNT:-0} → IDEA-NNN"; fi)
+• spec review: ${SPEC_GAPS_FOUND:-0} gap(s) found on attempt 1, all closed
 • CONTEXT.md: ${CONTEXT_MD_STATUS}
 • Test budget: ship ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp (${TEST_BUDGET_VERDICT})
 • ponytail: ${PONYTAIL_STATUS} · ${PONYTAIL_COUNT:-0} over-engineering finding(s)${CODEX_SUMMARY_BLOCK}

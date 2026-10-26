@@ -22,6 +22,7 @@
 #   [seam-violation], [assertion-roulette], [weak-assertion].
 # Emits SEAM_VIOLATION_COUNT, ASSERTION_ROULETTE_COUNT, WEAK_ASSERTION_COUNT
 # alongside the four existing severity counters.
+# Also emits SPEC_GAP_COUNT for missing/wrong spec findings; ignores Spec: quotes.
 #
 # Word match is case-insensitive: blocking | major | important | minor | nit | praise.
 # Emoji match is exact codepoint.
@@ -58,7 +59,9 @@ FILE=$(mktemp "${TMPDIR:-/tmp}/crp-kept.XXXXXX")
 trap 'rm -f "$ALL" "$FILE"' EXIT
 # `awk 1` ends every file's last line. A plain `cat` glued the next report's first
 # line onto a report written without a trailing newline, hiding a HIGH finding.
-awk 1 "$@" > "$ALL"
+# An indented `Spec:` quote (R-016) and the indented lines that continue it are spec
+# text, not findings: a quoted tag must not reach an unanchored counter.
+awk 'FNR == 1 {q = 0} /^[[:space:]]+Spec:/ {q = 1; next} q && /^[[:space:]]+[^[:space:]]/ {next} {q = 0; print}' "$@" > "$ALL"
 
 # `[pre-existing]` findings (R-003) exist on the base branch already: they are
 # reported, but they never count toward any severity — so they can never block a
@@ -123,6 +126,11 @@ count_security() {
   grep -ciE '^[[:space:]]*(🔴|🟡|🟢|\[blocking\]|\[important\]|\[major\]|\[minor\]|\[nit\]).*\[security:' "$FILE" || true
 }
 
+count_spec_gap() {
+  # Finding lines only — not prose or indented detail lines that mention a category.
+  grep -ciE '^[[:space:]]*(🔴|🟡|🟢|\[blocking\]|\[important\]|\[major\]|\[minor\]|\[nit\]).*\[spec:(missing|wrong)\]' "$FILE" || true
+}
+
 BLOCKING=$(count_blocking)
 MAJOR=$(count_major)
 MINOR=$(count_minor)
@@ -133,6 +141,7 @@ ASSERTION_ROULETTE=$(count_assertion_roulette)
 WEAK_ASSERTION=$(count_weak_assertion)
 PRE_EXISTING=$(count_pre_existing)
 SECURITY=$(count_security)
+SPEC_GAP=$(count_spec_gap)
 
 # Strip whitespace that grep -c may inject on some bash versions
 BLOCKING=$(echo -n "$BLOCKING" | tr -d '[:space:]')
@@ -146,6 +155,8 @@ WEAK_ASSERTION=$(echo -n "$WEAK_ASSERTION" | tr -d '[:space:]')
 PRE_EXISTING=$(echo -n "$PRE_EXISTING" | tr -d '[:space:]')
 SECURITY=$(echo -n "$SECURITY" | tr -d '[:space:]')
 
+SPEC_GAP=$(echo -n "$SPEC_GAP" | tr -d '[:space:]')
+
 echo "BLOCKING_COUNT=${BLOCKING}"
 echo "MAJOR_COUNT=${MAJOR}"
 echo "MINOR_COUNT=${MINOR}"
@@ -156,3 +167,4 @@ echo "WEAK_ASSERTION_COUNT=${WEAK_ASSERTION}"
 echo "PRE_EXISTING_COUNT=${PRE_EXISTING:-0}"
 echo "SECURITY_COUNT=${SECURITY:-0}"
 echo "PONYTAIL_COUNT=${PONYTAIL:-0}"
+echo "SPEC_GAP_COUNT=${SPEC_GAP:-0}"

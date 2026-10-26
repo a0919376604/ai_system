@@ -12,7 +12,7 @@ p6() { awk '/^## Phase 6/,/^## Phase 7/' "$CMD"; }
 }
 
 @test "the loop parses the code review and the security review together" {
-  p6 | grep -qF 'code-review-parse.sh "$REVIEW_OUT" "$SEC_OUT"' || { echo "security findings are not counted"; return 1; }
+  p6 | grep -qF 'code-review-parse.sh "$REVIEW_OUT" "$SPEC_OUT" "$SEC_OUT"' || { echo "security findings are not counted"; return 1; }
 }
 
 @test "blockers from both reviews are printed, minus the anchored pre-existing ones" {
@@ -26,7 +26,8 @@ p6() { awk '/^## Phase 6/,/^## Phase 7/' "$CMD"; }
                 '   Base evidence: old.sh:1 exists unchanged on main' '' \
                 '🔴 [blocking] a.sh:2 — NEW-CODE' > "$d/rev.md"
   printf '%s\n' '🔴 [blocking] [security:sqli] b.sh:3 — NEW-SEC' > "$d/sec.md"
-  run bash -c "source '$SHIP_LIB/pre-existing.sh'; REVIEW_OUT='$d/rev.md'; SEC_OUT='$d/sec.md'; . '$d/print.sh'"
+  printf '%s\n' 'No spec gaps.' > "$d/spec.md"
+  run bash -c "source '$SHIP_LIB/pre-existing.sh'; REVIEW_OUT='$d/rev.md'; SPEC_OUT='$d/spec.md'; SEC_OUT='$d/sec.md'; . '$d/print.sh'"
   [[ "$output" == *NEW-CODE* ]] || return 1
   [[ "$output" == *NEW-SEC* ]] || return 1
   [[ "$output" != *OLD-DEFECT* ]] || { echo "printed a pre-existing finding as a blocker"; return 1; }
@@ -58,15 +59,16 @@ p6() { awk '/^## Phase 6/,/^## Phase 7/' "$CMD"; }
 @test "the loop clears the previous code-review report and refuses a failed parse" {
   # Both reports, at the top of every attempt: if step 1.5 is skipped, an earlier
   # run's "No security findings." must not be what the parse reads.
-  p6 | grep -B1 -F 'rm -f "$REVIEW_OUT" "$SEC_OUT"' | grep -qF 'SEC_OUT=/tmp/ship-next-security-' \
+  p6 | grep -B2 -F 'rm -f "$REVIEW_OUT" "$SPEC_OUT" "$SEC_OUT"' | grep -qF 'SEC_OUT=/tmp/ship-next-security-' \
     || { echo "a stale report can be reused"; return 1; }
-  p6 | grep -A1 -F 'PARSED=$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh "$REVIEW_OUT" "$SEC_OUT")' \
+  p6 | grep -qF 'code-review-parse.sh "$REVIEW_OUT" "$SPEC_OUT")' || return 1
+  p6 | grep -A1 -F 'PARSED=$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh "$REVIEW_OUT" "$SPEC_OUT" "$SEC_OUT")' \
     | grep -qF '|| {' || { echo "a failed parse passes the gate"; return 1; }
 }
 
 @test "step 4 files majors from both reports, minus pre-existing ones" {
   step=$(awk '/^4\. \*\*Major findings handling/,/^4\.5\. \*\*Pre-existing findings/' "$CMD")
-  echo "$step" | grep -F 'MAJOR_LINES=' | grep -qF '"$REVIEW_OUT" "$SEC_OUT"' || { echo "security importants are not filed"; return 1; }
+  echo "$step" | grep -F 'MAJOR_LINES=' | grep -qF '"$REVIEW_OUT" "$SPEC_OUT" "$SEC_OUT"' || { echo "security importants are not filed"; return 1; }
   echo "$step" | grep -qF 'grep -vE "$PRE_EXISTING_RE"' || { echo "pre-existing findings are filed as majors"; return 1; }
 }
 

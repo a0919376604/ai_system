@@ -443,7 +443,8 @@ p9_capture_block() { printf 'source %q\n' "$SHIP_LIB/ship-next.sh"; echo 'sn_cap
   # /ship-idea is a slash command, not a program: record what the block would file.
   { echo 'ship_idea() { printf "%s\n" "$2" >> "$SCRATCH/ideas.txt"; }'
     major_block | sed 's#/ship-idea #ship_idea #'; } > "$SCRATCH/s4.sh"
-  run env AUTO=1 MAJOR_COUNT=2 REVIEW_OUT="$SCRATCH/rev.md" SEC_OUT="$SCRATCH/sec.md" \
+  printf '%s\n' 'No spec gaps.' > "$SCRATCH/spec.md"
+  run env SPEC_OUT="$SCRATCH/spec.md" AUTO=1 MAJOR_COUNT=2 REVIEW_OUT="$SCRATCH/rev.md" SEC_OUT="$SCRATCH/sec.md" \
       WORKTREE="$REPO" ID=R-T10 bash "$SCRATCH/s4.sh"
   grep -qF 'a.sh:2 — first new major' "$SCRATCH/ideas.txt" || { cat "$SCRATCH/ideas.txt"; return 1; }
   grep -qF 'b.sh:3 — second new major' "$SCRATCH/ideas.txt" || { cat "$SCRATCH/ideas.txt"; return 1; }
@@ -690,4 +691,27 @@ land_case() {
       fi
     done
   done
+}
+
+@test "ship-next P9 (squash): the log row carries spec_gaps" {
+  echo 'merge_mode: squash' > .claude/ship-config.yml
+  git commit -q -am "squash mode"
+  mkdir -p "$SCRATCH/wt/.ship"
+  source "$SHIP_LIB/ship-next.sh"
+  sn_state_set "$SCRATCH/wt" SPEC_GAPS_FOUND 2
+  p9_log_block > "$SCRATCH/p9.sh"
+  run env WORKTREE="$SCRATCH/wt" ID=R-T16 bash "$SCRATCH/p9.sh"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  command grep -qF 'ponytail=0, spec_gaps=2' docs/learnings/_log.md
+}
+
+@test "ship-next P9: the auto summary reports the spec gaps" {
+  mkdir -p "$SCRATCH/wt/.ship"
+  source "$SHIP_LIB/ship-next.sh"
+  sn_state_set "$SCRATCH/wt" SPEC_GAPS_FOUND 2
+  { printf 'source %q\n' "$SHIP_LIB/ship-next.sh"; echo 'sn_summary "$WORKTREE" "$ID"'; } > "$SCRATCH/p94.sh"
+  run env WORKTREE="$SCRATCH/wt" ID=R-T16 AUTO=1 bash "$SCRATCH/p94.sh"
+  rm -f /tmp/ship-R-T16-*
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ "$output" == *"spec review: 2 gap(s) found on attempt 1, all closed"* ]]
 }
