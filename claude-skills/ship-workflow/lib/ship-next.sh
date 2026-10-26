@@ -220,6 +220,78 @@ CHECKS
   sn_state_set "$WORKTREE" SRC_LINES_ADDED "$SRC_LINES_ADDED"
 }
 
+# Shell case globs behave consistently even when the caller is zsh.
+_sn_glob_match() {
+  bash -c 'case "$2" in $1) exit 0;; esac; exit 1' _ "$1" "$2"
+}
+
+_sn_one_way_paths() {
+  if ! command -v _sr_base_file >/dev/null 2>&1; then
+    source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/security-review.sh"
+  fi
+  { _sr_base_file "$1" .claude/ship-config.yml || true; } | awk '
+    /^one_way_paths:/ { collect=1; next }
+    collect && /^[^[:space:]]/ { exit }
+    collect && /^[[:space:]]+- / {
+      sub(/^[[:space:]]+-[[:space:]]*/, "")
+      sub(/[[:space:]]+#.*$/, "")
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+      gsub(/^[\047"]|[\047"]$/, "")
+      if (length) print
+    }'
+}
+
+sn_door() {
+  sn_state_load "$1"
+  cd "$1" || return
+  local wt="$PWD" spec_line door reasons paths f glob dep repo_mode mode auto_merge
+  source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/merge-mode.sh"
+  spec_line=$(awk '/^## Decisions/{d=1;next} /^## /{d=0} d && /Door:[[:space:]]*(one-way|two-way)/ {print; exit}' \
+    "docs/specs/${ID}-${SLUG}.md" 2>/dev/null | sed 's/^.*Door:/Door:/')
+  door=one-way
+  reasons="spec: ${spec_line:-no Door line}"
+  case "$spec_line" in 'Door: two-way'*) door=two-way ;; esac
+  paths=$(git -c core.quotePath=false diff --name-only "$(git merge-base "$ORIG_BRANCH" HEAD)" HEAD) || return
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    for glob in '*migrations/*' '*/alembic/versions/*' 'db/migrate/*'; do
+      if _sn_glob_match "$glob" "$f"; then
+        reasons="$reasons; signal: migration $f"; door=one-way; break
+      fi
+    done
+    for glob in 'Dockerfile*' '*/Dockerfile*' 'docker-compose*' '*/docker-compose*' '.gitlab-ci.yml' '.github/workflows/*' 'env_template*' '*/env_template*'; do
+      if _sn_glob_match "$glob" "$f"; then
+        reasons="$reasons; signal: deploy $f"; door=one-way; break
+      fi
+    done
+  done <<< "$paths"
+  while IFS="$(printf '\t')" read -r f dep; do
+    [ -n "$dep" ] || continue
+    reasons="$reasons; signal: new dependency $dep ($f)"; door=one-way
+  done < <(sn_new_deps "$ORIG_BRANCH" HEAD)
+  while IFS= read -r glob; do
+    [ -n "$glob" ] || continue
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      if _sn_glob_match "$glob" "$f"; then
+        reasons="$reasons; signal: one_way_paths $f"; door=one-way
+      fi
+    done <<< "$paths"
+  done < <(_sn_one_way_paths "$ORIG_BRANCH")
+  repo_mode=$(SHIP_MERGE_MODE= merge_mode)
+  mode=mr; auto_merge=0
+  if [ "$door" = two-way ]; then
+    if [ "$repo_mode" = squash ]; then mode=squash; else auto_merge=1; fi
+  fi
+  sn_state_set "$wt" SHIP_DOOR "$door"
+  sn_state_set "$wt" SHIP_DOOR_REASONS "$reasons"
+  sn_state_set "$wt" SHIP_MERGE_MODE "$mode"
+  sn_state_set "$wt" SHIP_AUTO_MERGE "$auto_merge"
+  printf 'door: %s\n' "$door"
+  printf '%s\n' "$reasons" | sed 's/; /\
+/g'
+}
+
 # Render invocation context for the read-only Spec reviewer.
 sn_spec_review_render() {
   sn_state_load "$1"
