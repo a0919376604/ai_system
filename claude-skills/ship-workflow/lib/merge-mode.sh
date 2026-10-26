@@ -81,7 +81,12 @@ forge_automerge_cmd() {
   cli=$(forge_cli) || return 1
   case "$cli" in
     glab) iid=$(_sn_mr_iid "$1") || return 1
-          printf 'glab mr merge %s --auto-merge --squash --yes\n' "$iid" ;;
+          case "${2:-}" in *[!0-9a-f]*) echo "WARN: not a commit sha: $2" >&2; return 1 ;; esac
+          # `glab mr merge --auto-merge` sends `auto_merge`, which GitLab < 17.11 ignores
+          # and merges at once (R-023: line-oa 16.11.3 merged !311 mid-pipeline). The
+          # merge API takes the 16.x name and the 17.11+ name side by side.
+          printf 'glab api --method PUT projects/:id/merge_requests/%s/merge --field merge_when_pipeline_succeeds=true --field auto_merge=true --field squash=true%s\n' \
+            "$iid" "${2:+ --raw-field sha=$2}" ;;
     gh) printf 'gh pr merge %s --auto --squash\n' "$1" ;;
     *) return 1 ;;
   esac

@@ -169,6 +169,7 @@ case "$*" in
   'mr view '*) printf '%s\n' "$STUB_VIEW_JSON" ;;
   'mr create '*) printf '%b\n' "${STUB_CREATE_OUT:-https://g/grp/repo/-/merge_requests/42}" ;;
   'mr merge '*) exit "${STUB_MERGE_EXIT:-0}" ;;
+  'api --method PUT '*) def='{"state":"opened","merge_when_pipeline_succeeds":true}'; printf '%s\n' "${STUB_MERGE_JSON:-$def}"; exit "${STUB_MERGE_EXIT:-0}" ;;
 esac
 STUB
   cp "$BATS_TEST_TMPDIR/bin/glab" "$BATS_TEST_TMPDIR/bin/gh"
@@ -181,7 +182,7 @@ STUB
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/grp/repo/-/merge_requests/42'
   [ "$status" -eq 1 ]
   [[ "$output" == *WARN* ]] || return 1
-  ! grep -q '^mr merge ' "$CALLS"
+  ! grep -qE '^(mr merge|api --method PUT) ' "$CALLS"
 }
 @test "a pipeline: auto-merge is set" {
   forge_stubs
@@ -189,7 +190,7 @@ STUB
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/grp/repo/-/merge_requests/42'
   [ "$status" -eq 0 ]
   grep -qxF 'mr view 42 -F json' "$CALLS"
-  grep -qxF 'mr merge 42 --auto-merge --squash --yes' "$CALLS"
+  grep -qxF 'api --method PUT projects/:id/merge_requests/42/merge --field merge_when_pipeline_succeeds=true --field auto_merge=true --field squash=true' "$CALLS"
 }
 @test "a failing merge command does not fail sn_land" {
   forge_stubs
@@ -205,7 +206,7 @@ STUB
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_land "$PWD" R-9 ship/R-9-x main title "$SCRATCH/body"'
   [ "$status" -eq 0 ]
   grep -qxF 'mr view 42 -F json' "$CALLS"
-  grep -qxF 'mr merge 42 --auto-merge --squash --yes' "$CALLS"
+  grep -qE '^api --method PUT projects/:id/merge_requests/42/merge --field merge_when_pipeline_succeeds=true --field auto_merge=true --field squash=true --raw-field sha=[0-9a-f]{40}$' "$CALLS"
   sn_state_load "$PWD"
   [ "$SHIP_AUTO_MERGED" = 0 ]
 }
@@ -286,7 +287,7 @@ body_fixture() {
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/x'
   [ "$status" -eq 1 ]
   [[ "$output" == *WARN* ]] || return 1
-  ! grep -q '^mr merge ' "$CALLS"
+  ! grep -qE '^(mr merge|api --method PUT) ' "$CALLS"
 }
 
 @test "failed door check persists safe routing" {
@@ -336,7 +337,7 @@ body_fixture() {
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/grp/repo/-/merge_requests/42'
   [ "$status" -eq 1 ]
   [[ "$output" == *'WARN: pipeline failed — auto-merge not set'* ]] || return 1
-  ! grep -q '^mr merge ' "$CALLS"
+  ! grep -qE '^(mr merge|api --method PUT) ' "$CALLS"
 }
 
 @test "push failure explains that a one-way door needs review" {
@@ -360,4 +361,23 @@ body_fixture() {
   [ "$(sed -n 's/^SHIP_REVIEW_URL=//p' .ship/state.env)" = https://g/grp/repo/-/merge_requests/42 ] || return 1
   run land "$notice"
   [ "$status" -ne 0 ] && [[ "$output" == *"produced no URL"* ]]
+}
+
+@test "auto-merge: a merge that lands while the pipeline runs is an ERROR" {
+  forge_stubs
+  export SN_PIPELINE_WAIT=0 STUB_VIEW_JSON='{"head_pipeline":{"id":7,"status":"running"}}' STUB_MERGE_JSON='{"state":"merged","merge_when_pipeline_succeeds":false}'
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/grp/repo/-/merge_requests/42 abc'
+  [ "$status" -eq 1 ] || return 1
+  [[ "$output" == *"merged before its pipeline finished"* ]] || return 1
+  grep -qF -- '--raw-field sha=abc' "$CALLS"
+}
+
+@test "auto-merge: scheduled on a running pipeline, or merged after success, is fine" {
+  forge_stubs
+  export SN_PIPELINE_WAIT=0 STUB_VIEW_JSON='{"head_pipeline":{"id":7,"status":"running"}}'
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/grp/repo/-/merge_requests/42 abc'
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  export STUB_VIEW_JSON='{"head_pipeline":{"id":7,"status":"success"}}' STUB_MERGE_JSON='{"state":"merged"}'
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/grp/repo/-/merge_requests/42 abc'
+  [ "$status" -eq 0 ]
 }

@@ -502,7 +502,7 @@ EOF
 }
 
 sn_auto_merge() {
-  local url="$1" cli iid pipeline elapsed=0 wait="${SN_PIPELINE_WAIT:-90}" cmd
+  local url="$1" cli iid pipeline elapsed=0 wait="${SN_PIPELINE_WAIT:-90}" cmd resp state sched
   source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/merge-mode.sh"
   cli=$(forge_cli) || { echo "WARN: unknown forge — auto-merge not set" >&2; return 1; }
   if [ "$cli" = glab ] && ! command -v jq >/dev/null 2>&1; then
@@ -522,7 +522,21 @@ sn_auto_merge() {
       gh) pipeline=$(gh pr checks "$url" 2>/dev/null) ;;
     esac
     if [ -n "$pipeline" ]; then
-      cmd=$(forge_automerge_cmd "$url") || return 1
+      cmd=$(forge_automerge_cmd "$url" "${2:-}") || return 1
+      if [ "$cli" = glab ]; then
+        # The response is the guard: a stub cannot show what a real server does (R-023).
+        resp=$(eval "$cmd") || { echo "WARN: auto-merge request failed on $url — a human merges it" >&2; return 1; }
+        state=$(printf '%s' "$resp" | jq -r '.state // empty')
+        sched=$(printf '%s' "$resp" | jq -r '(.merge_when_pipeline_succeeds // false) or (.auto_merge_enabled // false)')
+        if [ "$state" = opened ] && [ "$sched" = true ]; then return 0; fi
+        if [ "$state" = merged ] && [ "$pipeline" = success ]; then return 0; fi
+        if [ "$state" = merged ]; then
+          echo "ERROR: $url merged before its pipeline finished — CI did not gate it" >&2
+          return 1
+        fi
+        echo "WARN: auto-merge not confirmed on $url (state=${state:-unknown}) — a human merges it" >&2
+        return 1
+      fi
       if eval "$cmd"; then return 0; fi
       echo "WARN: auto-merge command failed on $url — a human merges it" >&2
       return 1
@@ -580,7 +594,7 @@ sn_land() {
        }
        echo "review open: $SHIP_REVIEW_URL"
        SHIP_AUTO_MERGED=0
-       if [ "${SHIP_AUTO_MERGE:-0}" = 1 ] && sn_auto_merge "$SHIP_REVIEW_URL"; then SHIP_AUTO_MERGED=1; fi
+       if [ "${SHIP_AUTO_MERGE:-0}" = 1 ] && sn_auto_merge "$SHIP_REVIEW_URL" "$(git rev-parse "$BRANCH")"; then SHIP_AUTO_MERGED=1; fi
        sn_state_set "$WORKTREE" SHIP_AUTO_MERGED "$SHIP_AUTO_MERGED"
        ;;
    esac
