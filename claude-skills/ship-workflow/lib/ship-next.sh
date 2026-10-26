@@ -557,13 +557,17 @@ sn_land() {
        ;;
 
      mr)
+       local door_message=""
+       if [ "${SHIP_DOOR:-}" = one-way ]; then
+         door_message=' — a one-way door needs a review; merge it by hand after one'
+       fi
        # The branch must exist on the remote before a review can point at it.
        git push -u origin "$BRANCH" || {
-         echo "push failed — not opening a review for a branch the remote cannot see" >&2
+         echo "push failed — not opening a review for a branch the remote cannot see$door_message" >&2
          exit 1
        }
        MR_CMD=$(forge_mr_cmd "$BRANCH" "$ORIG_BRANCH" "$SHIP_TITLE" "$SHIP_BODY") || {
-         echo "unknown forge for origin — push succeeded, open the review by hand$(if [ "${SHIP_DOOR:-}" = one-way ]; then printf ' — a one-way door needs a review; merge it by hand after one'; fi)" >&2
+         echo "unknown forge for origin — push succeeded, open the review by hand$door_message" >&2
          exit 1
        }
        echo "opening review: $MR_CMD"

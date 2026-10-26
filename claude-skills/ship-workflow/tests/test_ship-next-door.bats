@@ -338,3 +338,14 @@ body_fixture() {
   [[ "$output" == *'WARN: pipeline failed — auto-merge not set'* ]]
   ! grep -q '^mr merge ' "$CALLS"
 }
+
+@test "push failure explains that a one-way door needs review" {
+  start_ship
+  commit_changes
+  sn_state_set "$PWD" SHIP_MERGE_MODE mr
+  sn_state_set "$PWD" SHIP_DOOR one-way
+  echo body > "$SCRATCH/body"
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_land "$PWD" R-9 ship/R-9-x main title "$SCRATCH/body" 2> "$SCRATCH/stderr"'
+  [ "$status" -ne 0 ]
+  grep -qF 'a one-way door needs a review' "$SCRATCH/stderr"
+}
