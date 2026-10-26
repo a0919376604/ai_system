@@ -202,7 +202,7 @@ mech_fixture() {
   printf '**R-1** Example\n↳ done when: Ready\n' > "$vault/10 Projects/wt/ROADMAP.md"
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_ship_body "$WT" R-1 x "$WT/body.md"'
   [ "$status" -eq 0 ]
-  [ "$(head -1 "$WT/body.md")" = '↳ done when: Ready' ]
+  grep -qxF '↳ done when: Ready' "$WT/body.md"
   ! grep -qE '^   [^ ]' "$WT/body.md" || { cat "$WT/body.md"; return 1; }
 }
 
@@ -598,7 +598,7 @@ spec_report() {
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_state_set "$WT" SPEC_GAPS_FOUND 2'
   run env -u SHIP_COAUTHOR bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_ship_body "$WT" R-1 x "$WT/body.md"'
   [ "$status" -eq 0 ] || return 1
-  [ "$(head -1 "$WT/body.md")" = '↳ done when: Ready' ] || { cat "$WT/body.md"; return 1; }
+  grep -qxF '↳ done when: Ready' "$WT/body.md" || { cat "$WT/body.md"; return 1; }
   grep -qxF 'Spec review: 2 gap(s) found on attempt 1, all closed' "$WT/body.md" || return 1
   [ "$(tail -1 "$WT/body.md")" = 'Co-Authored-By: Claude <noreply@anthropic.com>' ] || { tail -1 "$WT/body.md"; return 1; }
   run env SHIP_COAUTHOR='Co-Authored-By: T <t@x>' bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_ship_body "$WT" R-1 x "$WT/body.md"'

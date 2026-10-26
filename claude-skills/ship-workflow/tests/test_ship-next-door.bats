@@ -212,3 +212,64 @@ STUB
   [ -d "$WT" ]
   git show-ref --verify refs/heads/ship/R-9-x
 }
+
+body_fixture() {
+  export HOME="$SCRATCH/home"
+  local vault
+  vault=$(make_fake_airos "$SCRATCH" repo)
+  write_global_config "$HOME" "$vault"
+  printf '**R-9** Example\n↳ done when: Ready\n' > "$vault/10 Projects/repo/ROADMAP.md"
+  start_ship
+  sn_state_set "$PWD" SHIP_DOOR one-way
+  sn_state_set "$PWD" SHIP_DOOR_REASONS 'spec: no Door line; signal: migration m/1.py'
+}
+@test "body: Summary, Evidence, Merge Danger, Ship details in order" {
+  body_fixture
+  printf '## Summary\nS-LINE\n\n## Evidence\nE-LINE\n\n**Blast Radius:** low\nB-LINE\n' > .ship/pr-head.md
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_ship_body "$PWD" R-9 x "$PWD/body.md"'
+  [ "$status" -eq 0 ]
+  previous=0
+  for line in '## Summary' S-LINE '## Evidence' E-LINE '## Merge Danger' '**Door:** one-way' '- spec: no Door line' '- signal: migration m/1.py' '**Blast Radius:** low' B-LINE '## Ship details' '↳ done when: Ready'; do
+    current=$(grep -nxF -- "$line" body.md | cut -d: -f1)
+    [ "$current" -gt "$previous" ]
+    previous=$current
+  done
+  [ "$(tail -1 body.md)" = 'Co-Authored-By: Claude <noreply@anthropic.com>' ]
+}
+@test "body without pr-head.md warns and still carries Merge Danger" {
+  body_fixture
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_ship_body "$PWD" R-9 x "$PWD/body.md" 2> "$PWD/warnings"'
+  [ "$status" -eq 0 ]
+  grep -q WARN warnings
+  grep -qxF '## Merge Danger' body.md
+  grep -qxF '**Blast Radius:** unstated' body.md
+  grep -qxF '## Ship details' body.md
+}
+@test "summary carries the door and its landing result" {
+  start_ship
+  sn_state_set "$PWD" AUTO 1
+  sn_state_set "$PWD" SHIP_DOOR one-way
+  sn_state_set "$PWD" SHIP_MERGE_MODE mr
+  sn_state_set "$PWD" SHIP_REVIEW_URL https://g/mr/1
+  sn_state_set "$PWD" SHIP_AUTO_MERGED 0
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_summary "$PWD" R-9'
+  [[ "$output" == *'• door: one-way → awaiting human review: https://g/mr/1'* ]]
+  sn_state_set "$PWD" SHIP_DOOR two-way
+  sn_state_set "$PWD" SHIP_MERGE_MODE squash
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_summary "$PWD" R-9'
+  [[ "$output" == *'• door: two-way → squash-merged'* ]]
+  sn_state_set "$PWD" SHIP_MERGE_MODE mr
+  sn_state_set "$PWD" SHIP_AUTO_MERGED 1
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_summary "$PWD" R-9'
+  [[ "$output" == *'• door: two-way → auto-merge set (merges after CI)'* ]]
+}
+@test "log row carries the door" {
+  start_ship
+  sn_state_set "$PWD" SHIP_DOOR one-way
+  sn_state_set "$PWD" SHIP_MERGE_MODE squash
+  mkdir -p docs/learnings
+  printf '| date | cmd | id | what | n |\n' > docs/learnings/_log.md
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_log "$PWD" R-9 ""'
+  [ "$status" -eq 0 ]
+  grep -qF 'door=one-way' docs/learnings/_log.md
+}

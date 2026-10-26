@@ -452,7 +452,22 @@ sn_ship_body() {
 
    SHIP_TITLE="feat: ${ID} ${DESCRIPTION}"
    SHIP_BODY="$4"
-   cat > "$SHIP_BODY" <<EOF
+   {
+     if [ -f "$WORKTREE/.ship/pr-head.md" ]; then
+       awk '/^## / {blast=0} /^\*\*Blast Radius:\*\*/ {blast=1} !blast' "$WORKTREE/.ship/pr-head.md"
+     else
+       echo "WARN: missing $WORKTREE/.ship/pr-head.md — Summary and Evidence unavailable" >&2
+     fi
+     printf '\n## Merge Danger\n**Door:** %s\n' "${SHIP_DOOR:-one-way}"
+     printf '%s\n' "${SHIP_DOOR_REASONS:-}" | awk 'BEGIN {RS="; "} NF {sub(/\n$/, ""); print "- " $0}'
+     if [ -f "$WORKTREE/.ship/pr-head.md" ] && command grep -q '^\*\*Blast Radius:\*\*' "$WORKTREE/.ship/pr-head.md"; then
+       awk '/^## / {blast=0} /^\*\*Blast Radius:\*\*/ {blast=1} blast' "$WORKTREE/.ship/pr-head.md"
+     else
+       echo '**Blast Radius:** unstated'
+     fi
+     printf '\n## Ship details\n'
+   } > "$SHIP_BODY"
+   cat >> "$SHIP_BODY" <<EOF
 ↳ done when: ${DONE_WHEN}
 
 Tasks (from docs/plans/${ID}-${SLUG}.md):
@@ -636,7 +651,7 @@ sn_log() {
      CODEX_LOG_FRAGMENT=", codex: ${CODEX_ROUNDS} round(s) ${CODEX_FINAL_VERDICT}"
    fi
    if [ -z "${SHIP_LOG_ROW:-}" ]; then
-     SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ponytail=${PONYTAIL_COUNT:-0}, spec_gaps=${SPEC_GAPS_FOUND:-0}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp${CODEX_LOG_FRAGMENT}) | n |"
+     SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ponytail=${PONYTAIL_COUNT:-0}, spec_gaps=${SPEC_GAPS_FOUND:-0}, door=${SHIP_DOOR:-unset}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp${CODEX_LOG_FRAGMENT}) | n |"
    fi
    # shellcheck disable=SC1091
    source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/ship-log.sh"
@@ -681,6 +696,12 @@ sn_summary() {
 ${CODEX_LAST_FINDINGS}
 • full round history: ${CODEX_ROUNDS_ARCHIVE:-(not archived)}"
      fi
+     local landing="awaiting human review: ${SHIP_REVIEW_URL:-}"
+     if [ "$MERGE_MODE" = squash ]; then
+       landing=squash-merged
+     elif [ "${SHIP_AUTO_MERGED:-0}" = 1 ]; then
+       landing='auto-merge set (merges after CI)'
+     fi
      SUMMARY="✅ ${ID} ${DESCRIPTION} shipped (squash ${MERGE_SHA})
 • blocking: 0 ✓
 • major: ${MAJOR_COUNT} → IDEA-NNN auto-logged
@@ -688,6 +709,7 @@ ${CODEX_LAST_FINDINGS}
 • praise: ${PRAISE_COUNT}
 • security review: $(if [ "$(cat "/tmp/ship-${ID}-security-review-state" 2>/dev/null)" = off ]; then echo "off (ship-config on ${ORIG_BRANCH})"; else echo "${SECURITY_COUNT:-0} finding(s), pre-existing ${PRE_EXISTING_COUNT:-0} → IDEA-NNN"; fi)
 • spec review: ${SPEC_GAPS_FOUND:-0} gap(s) found on attempt 1, all closed
+• door: ${SHIP_DOOR:-unset} → ${landing}
 • CONTEXT.md: ${CONTEXT_MD_STATUS}
 • Test budget: ship ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp (${TEST_BUDGET_VERDICT})
 • ponytail: ${PONYTAIL_STATUS} · ${PONYTAIL_COUNT:-0} over-engineering finding(s)${CODEX_SUMMARY_BLOCK}
