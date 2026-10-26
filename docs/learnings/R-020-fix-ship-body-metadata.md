@@ -34,7 +34,7 @@ shipped-date: 2026-10-26
   - step 3 passes `--done-when "$DONE_WHEN_ZH"`;
   - step 4.5 uses `sn_done_when`;
   - Phase 7 says to set `SHIP_COAUTHOR`.
-- 4 tests. Suite: 662 tests; one known cwd-guard failure.
+- 4 tests. Suite: 664 tests, all green in the main checkout.
 
 ## Key Decisions
 - leric: 「好」 to fixing the two `sn_ship_body` defects as an `--adhoc` item.
