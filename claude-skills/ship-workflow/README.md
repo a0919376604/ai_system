@@ -84,3 +84,17 @@ cd ../.. && ./sync.sh restore
 ## Specification
 
 `docs/superpowers/specs/2026-06-14-ship-workflow-skill-design.md`
+
+### Door routing (ship-next Phase 7)
+
+Each ship takes its door from the spec's Decisions and mechanical diff signals.
+Missing doors, migrations, new dependencies, deploy files and base-branch
+`one_way_paths` force one-way. Two-way reviews enable auto-merge only once a
+pipeline or check exists; otherwise they warn and wait for a human.
+
+| repo `merge_mode` | door | this ship lands by |
+|---|---|---|
+| squash | two-way | squash merge, as today |
+| squash | one-way | push + PR/MR, in review, `/ship-land` after a human merges |
+| mr | two-way | push + MR, then auto-merge once the MR has a pipeline |
+| mr | one-way | push + MR, in review, waits for a human |

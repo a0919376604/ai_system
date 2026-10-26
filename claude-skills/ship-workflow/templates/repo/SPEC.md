@@ -19,6 +19,7 @@ What the operator decided in the brainstorm dialogue, and why. Mark your own cal
 as yours. There is no separate brainstorm file: `/ship-compound` carries these into
 the learning's `## Key Decisions` before the spec leaves the repo (R-006).
 
+- Door: one-way|two-way — <why; one-way when unsure>
 - <decision> — <why> (operator | my call)
 
 ## Seams

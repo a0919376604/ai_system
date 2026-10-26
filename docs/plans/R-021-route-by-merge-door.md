@@ -1,6 +1,6 @@
 # R-021 Route by merge door Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:**
 - Each ship gets a door (one-way or two-way) from the spec and from mechanical diff
@@ -78,7 +78,7 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
 - Produces: `forge_automerge_cmd <url>` echoes the command, or exits 1 for an unknown
   forge.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - **`merge_mode: a per-ship SHIP_MERGE_MODE wins over the repo config` (AC-8).**
     - Config `merge_mode: squash` with `SHIP_MERGE_MODE=mr` gives `mr`.
     - Config `mr` with `SHIP_MERGE_MODE=squash` gives `squash`.
@@ -89,12 +89,12 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
       `glab mr merge https://x/mr/1 --auto-merge --squash --yes`.
     - With a github.com URL, it is `gh pr merge https://x/pull/1 --auto --squash`.
     - With an unknown remote, the status is 1.
-- [ ] **Step 2: Run the tests and confirm they fail.** `bats tests/test_merge-mode.bats`.
-- [ ] **Step 3: Implement.**
+- [x] **Step 2: Run the tests and confirm they fail.** `bats tests/test_merge-mode.bats`.
+- [x] **Step 3: Implement.**
   - At the top of `merge_mode`: `case "${SHIP_MERGE_MODE:-}" in mr|squash) echo "$SHIP_MERGE_MODE"; return 0 ;; esac`.
   - Add `forge_automerge_cmd` beside `forge_mr_cmd`, using `forge_cli`.
-- [ ] **Step 4: Run the tests and confirm they pass.** `bats tests/test_merge-mode.bats tests/test_ship-next-merge-mode.bats`.
-- [ ] **Step 5: Commit.** `git commit -m "feat(R-021): merge_mode honours a per-ship mode; forge_automerge_cmd"`
+- [x] **Step 4: Run the tests and confirm they pass.** `bats tests/test_merge-mode.bats tests/test_ship-next-merge-mode.bats`.
+- [x] **Step 5: Commit.** `git commit -m "feat(R-021): merge_mode honours a per-ship mode; forge_automerge_cmd"`
 
 ### Task 2: `sn_door` — the door, its reasons and the per-ship mode
 
@@ -116,7 +116,7 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
   - `sn_door <worktree>` prints `door: <door>` then one reason per line, and persists
     the four keys.
 
-- [ ] **Step 1: Write the failing tests.** Fixture:
+- [x] **Step 1: Write the failing tests.** Fixture:
   - A scratch git repo on `main` with `src/a.py` committed.
   - Optionally a `.claude/ship-config.yml` on `main`.
   - Then `git checkout -b ship/R-9-x`, with
@@ -162,8 +162,8 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
     then change the spec to two-way, commit, and rerun. The state has
     `SHIP_DOOR=two-way` and `SHIP_MERGE_MODE=squash`.
   - **`zsh gives the same door`.** The AC-6 case under `zsh -c`.
-- [ ] **Step 2: Run the tests and confirm they fail.** `bats tests/test_ship-next-door.bats`.
-- [ ] **Step 3: Implement.**
+- [x] **Step 2: Run the tests and confirm they fail.** `bats tests/test_ship-next-door.bats`.
+- [x] **Step 3: Implement.**
   - **`_sn_glob_match`:** as in Global Constraints.
   - **`_sn_one_way_paths <base>`:**
     - `_sr_base_file "$base" .claude/ship-config.yml | awk` to collect the indented
@@ -186,8 +186,8 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
        door is two-way; otherwise `mr`. `SHIP_AUTO_MERGE=1` only when `REPO_MODE` is mr
        and the door is two-way.
     6. Set all four keys and print the result.
-- [ ] **Step 4: Run the tests and confirm they pass.** `bats tests/test_ship-next-door.bats tests/test_ship-next-lib.bats`.
-- [ ] **Step 5: Commit.** `git commit -m "feat(R-021): sn_door — door, reasons and per-ship merge mode"`
+- [x] **Step 4: Run the tests and confirm they pass.** `bats tests/test_ship-next-door.bats tests/test_ship-next-lib.bats`.
+- [x] **Step 5: Commit.** `git commit -m "feat(R-021): sn_door — door, reasons and per-ship merge mode"`
 
 ### Task 3: `sn_auto_merge`, `sn_land` and `sn_cleanup`
 
@@ -201,7 +201,7 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
 - Produces: `sn_auto_merge <url>` returns 0 when auto-merge was set, and 1 with a WARN
   otherwise. `sn_land` persists `SHIP_AUTO_MERGED`.
 
-- [ ] **Step 1: Write the failing tests.** Stub CLIs: write `glab` and `gh` scripts into
+- [x] **Step 1: Write the failing tests.** Stub CLIs: write `glab` and `gh` scripts into
   `$BATS_TEST_TMPDIR/bin`, prepended to `PATH`. Each appends `"$*"` to
   `$BATS_TEST_TMPDIR/calls`. The `glab mr view` stub prints `$STUB_VIEW_JSON`. The
   origin remote is set to a gitlab URL.
@@ -224,8 +224,8 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
     - A squash repo (no config), plus a linked worktree with state
       `SHIP_MERGE_MODE=mr`.
     - `sn_cleanup "$WT" "$BRANCH"` leaves the worktree directory and the branch.
-- [ ] **Step 2: Run the tests and confirm they fail.** `bats tests/test_ship-next-door.bats`.
-- [ ] **Step 3: Implement.**
+- [x] **Step 2: Run the tests and confirm they fail.** `bats tests/test_ship-next-door.bats`.
+- [x] **Step 3: Implement.**
   - **`sn_auto_merge`:**
     - Return 1 with a WARN if `jq` is missing for glab.
     - Poll every 5 s until `SN_PIPELINE_WAIT` seconds have passed, at least once. For
@@ -241,8 +241,8 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
     - Change the unknown-forge message to add `— a one-way door needs a review; merge it by hand after one` when `SHIP_DOOR` is `one-way`.
   - **`sn_cleanup`:** call `sn_state_load "$1"` first, guarded by
     `[ -f "$1/.ship/state.env" ]`.
-- [ ] **Step 4: Run the tests and confirm they pass.** `bats tests/test_ship-next-door.bats tests/test_ship-next-lib.bats tests/test_command-blocks.bats`.
-- [ ] **Step 5: Commit.** `git commit -m "feat(R-021): auto-merge only after a pipeline; sn_cleanup follows the ship's mode"`
+- [x] **Step 4: Run the tests and confirm they pass.** `bats tests/test_ship-next-door.bats tests/test_ship-next-lib.bats tests/test_command-blocks.bats`.
+- [x] **Step 5: Commit.** `git commit -m "feat(R-021): auto-merge only after a pipeline; sn_cleanup follows the ship's mode"`
 
 ### Task 4: Body template, log row and summary
 
@@ -260,7 +260,7 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
 - Consumes: `SHIP_DOOR`, `SHIP_DOOR_REASONS`, `SHIP_MERGE_MODE`, `SHIP_AUTO_MERGED`,
   `SHIP_REVIEW_URL` (state); `<worktree>/.ship/pr-head.md`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - **`body: Summary, Evidence, Merge Danger, Ship details in order` (AC-11).**
     - `.ship/pr-head.md` is
       `## Summary\nS-LINE\n\n## Evidence\nE-LINE\n\n**Blast Radius:** low\nB-LINE\n`.
@@ -285,8 +285,8 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
     - A squash default `sn_log` row (reuse the `p9_log_block` pattern in
       `tests/test_command-blocks.bats`, or an equivalent minimal repo) contains
       `door=one-way`.
-- [ ] **Step 2: Run the tests and confirm they fail.** `bats tests/test_ship-next-door.bats`.
-- [ ] **Step 3: Implement.**
+- [x] **Step 2: Run the tests and confirm they fail.** `bats tests/test_ship-next-door.bats`.
+- [x] **Step 3: Implement.**
   - **`sn_ship_body`:** print the pr-head lines that are not in the Blast Radius block;
     that block runs from the `**Blast Radius:**` line to the next `## ` or EOF. Then:
     - a blank line and `## Merge Danger`;
@@ -299,8 +299,8 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
     `spec_gaps=…`.
   - **`sn_summary`:** add the `• door:` line after the spec review line, with the three
     landing phrases above.
-- [ ] **Step 4: Run the tests and confirm they pass.** `bats tests/test_ship-next-door.bats tests/test_ship-next-lib.bats tests/test_ship-next-security.bats tests/test_command-blocks.bats tests/test_ponytail-integration.bats`.
-- [ ] **Step 5: Commit.** `git commit -m "feat(R-021): Pocock body — Summary, Evidence, Merge Danger; door in log and summary"`
+- [x] **Step 4: Run the tests and confirm they pass.** `bats tests/test_ship-next-door.bats tests/test_ship-next-lib.bats tests/test_ship-next-security.bats tests/test_command-blocks.bats tests/test_ponytail-integration.bats`.
+- [x] **Step 5: Commit.** `git commit -m "feat(R-021): Pocock body — Summary, Evidence, Merge Danger; door in log and summary"`
 
 ### Task 5: Command text, spec template, README
 
@@ -311,7 +311,7 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
   - `claude-skills/ship-workflow/README.md`
 - Create: `claude-skills/ship-workflow/tests/test_ship-next-door-text.bats`
 
-- [ ] **Step 1: Write the failing tests** (AC-14). Use `awk` phase ranges as in
+- [x] **Step 1: Write the failing tests** (AC-14). Use `awk` phase ranges as in
   `tests/test_ship-next-grilling.bats`.
   - Phase 3 contains `Door: one-way|two-way`.
   - Phase 7 contains `sn_door "$WORKTREE"` and `.ship/pr-head.md`.
@@ -320,8 +320,8 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
     `MERGE_MODE=$(merge_mode)`. Extract it with the `block` helper style, or `awk` from
     `0a\.` to `^0\. `.
   - `templates/repo/SPEC.md` contains `Door:`.
-- [ ] **Step 2: Run the tests and confirm they fail.** `bats tests/test_ship-next-door-text.bats`.
-- [ ] **Step 3: Edit.**
+- [x] **Step 2: Run the tests and confirm they fail.** `bats tests/test_ship-next-door-text.bats`.
+- [x] **Step 3: Edit.**
   - **Phase 3 step 1:** after the `## Decisions` requirement, add: "The Decisions must
     hold one line `Door: one-way|two-way — <why>`, Pocock's merge danger. One-way means
     hard to walk back: schema or data changes, deletions, messages sent to users, auth,
@@ -342,10 +342,17 @@ These inputs are not named in the ACs but will occur. Each has a test in the own
     Decisions section.
   - **README:** add a short "Door routing (ship-next Phase 7)" paragraph with the
     routing table from spec G3.
-- [ ] **Step 4: Run the tests and confirm they pass.** `bats tests/test_ship-next-door-text.bats tests/test_no-positional-params.bats tests/test_block-endings.bats tests/test_templates-seams.bats`.
-- [ ] **Step 5: Commit.** `git commit -m "feat(R-021): ship-next text — Door in spec, sn_door and pr-head in Phase 7, per-ship mode"`
+- [x] **Step 4: Run the tests and confirm they pass.** `bats tests/test_ship-next-door-text.bats tests/test_no-positional-params.bats tests/test_block-endings.bats tests/test_templates-seams.bats`.
+- [x] **Step 5: Commit.** `git commit -m "feat(R-021): ship-next text — Door in spec, sn_door and pr-head in Phase 7, per-ship mode"`
 
 ### Task 6: Full suite
 
 - [ ] **Step 1: Run.** `cd claude-skills/ship-workflow && bats tests/`. Expected: all pass except the known `cwd-guard: exits 0 when not in a git repo at all` (AC-15).
 - [ ] **Step 2: Fix what fails.** Fix any other failure within scope. A failure that also fails on `main` is reported, not fixed. Commit any fix as `fix(R-021): …`.
+
+
+## Execution log
+
+- Tasks 1–4: completed in order with failing tests observed before implementation and all prescribed scoped checks green (25, 59, 114 and 141 tests respectively). Commits: dc6e1f6, 5681ed2, b70fc91, a7f4533.
+- Deviation: Phase 8 explicitly sources merge-mode.sh before the prescribed state-loading expression — ship-next.sh does not define merge_mode at source time, so the expression otherwise fails in a fresh shell.
+- Task 5: all five prescribed text tests failed before editing; 19 scoped checks now pass, including execution of the Phase 8/9 mode blocks in fresh bash and zsh shells.
