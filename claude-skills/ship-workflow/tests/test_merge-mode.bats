@@ -152,7 +152,7 @@ teardown() { rm -rf "$SCRATCH"; }
   git remote add origin https://gitlab.example/x.git
   run forge_automerge_cmd https://g/grp/repo/-/merge_requests/42
   [ "$status" -eq 0 ]
-  [ "$output" = 'glab mr merge 42 --auto-merge --squash --yes' ]
+  [ "$output" = 'glab api --method PUT projects/:id/merge_requests/42/merge --field merge_when_pipeline_succeeds=true --field auto_merge=true --field squash=true' ]
   git remote set-url origin https://github.com/x/y.git
   run forge_automerge_cmd https://x/pull/1
   [ "$output" = 'gh pr merge https://x/pull/1 --auto --squash' ]
