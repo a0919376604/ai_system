@@ -185,7 +185,7 @@ STUB
 }
 @test "a pipeline: auto-merge is set" {
   forge_stubs
-  export SN_PIPELINE_WAIT=0 STUB_VIEW_JSON='{"head_pipeline":{"id":7}}'
+  export SN_PIPELINE_WAIT=0 STUB_VIEW_JSON='{"head_pipeline":{"id":7,"status":"running"}}'
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/grp/repo/-/merge_requests/42'
   [ "$status" -eq 0 ]
   grep -qxF 'mr view 42 -F json' "$CALLS"
@@ -200,7 +200,7 @@ STUB
   git push -q -u origin ship/R-9-x
   sn_state_set "$PWD" SHIP_MERGE_MODE mr
   sn_state_set "$PWD" SHIP_AUTO_MERGE 1
-  export SN_PIPELINE_WAIT=0 STUB_VIEW_JSON='{"head_pipeline":{"id":7}}' STUB_MERGE_EXIT=1
+  export SN_PIPELINE_WAIT=0 STUB_VIEW_JSON='{"head_pipeline":{"id":7,"status":"running"}}' STUB_MERGE_EXIT=1
   echo body > "$SCRATCH/body"
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_land "$PWD" R-9 ship/R-9-x main title "$SCRATCH/body"'
   [ "$status" -eq 0 ]
@@ -282,7 +282,7 @@ body_fixture() {
 
 @test "bad MR URL: warns without merging" {
   forge_stubs
-  export SN_PIPELINE_WAIT=0 STUB_VIEW_JSON='{"head_pipeline":{"id":7}}'
+  export SN_PIPELINE_WAIT=0 STUB_VIEW_JSON='{"head_pipeline":{"id":7,"status":"running"}}'
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/x'
   [ "$status" -eq 1 ]
   [[ "$output" == *WARN* ]]
@@ -328,4 +328,13 @@ body_fixture() {
   [ "$status" -eq 0 ]
   [ "${lines[0]}" = 'door: one-way' ]
   [[ "$output" == *'spec: Door: one-way — drops a column'* ]]
+}
+
+@test "failed pipeline warns without merging" {
+  forge_stubs
+  export SN_PIPELINE_WAIT=0 STUB_VIEW_JSON='{"head_pipeline":{"id":7,"status":"failed"}}'
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/grp/repo/-/merge_requests/42'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'WARN: pipeline failed — auto-merge not set'* ]]
+  ! grep -q '^mr merge ' "$CALLS"
 }

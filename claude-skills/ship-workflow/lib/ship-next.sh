@@ -511,7 +511,14 @@ sn_auto_merge() {
   if [ "$cli" = glab ]; then iid=$(_sn_mr_iid "$url") || return 1; fi
   while :; do
     case "$cli" in
-      glab) pipeline=$(glab mr view "$iid" -F json | jq -r '.head_pipeline.id // empty') || pipeline= ;;
+      glab)
+        pipeline=$(glab mr view "$iid" -F json | jq -r '.head_pipeline.status // empty') || pipeline=
+        case "$pipeline" in
+          running|pending|created|waiting_for_resource|preparing|scheduled|success) ;;
+          '') ;;
+          *) echo "WARN: pipeline $pipeline — auto-merge not set" >&2; return 1 ;;
+        esac
+        ;;
       gh) pipeline=$(gh pr checks "$url" 2>/dev/null) ;;
     esac
     if [ -n "$pipeline" ]; then
