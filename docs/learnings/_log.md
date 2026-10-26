@@ -36,3 +36,5 @@
 | 2026-10-26 21:15 | ship-next | R-017 | shipped (review: blocking=0, major=0, ponytail=0, spec_gaps=0, ratio 1952bp vs baseline 1566bp, codex: 1 round(s) done_with_concerns) | n |
 | 2026-10-26 21:27 | ship-compound | R-020 | shipped | n |
 | 2026-10-26 21:27 | ship-next | R-020 | shipped (review: blocking=0, major=0, ponytail=0, spec_gaps=0, ratio 3000bp vs baseline 1573bp) | n |
+| 2026-10-26 22:14 | ship-next | R-021 | shipped (review: blocking=0, major=0, ponytail=0, spec_gaps=1, door=one-way, ratio 2496bp vs baseline 1595bp, codex: 1 round(s) done_with_concerns) | n |
+| 2026-10-26 22:27 | ship-compound | R-021 | shipped | n |
