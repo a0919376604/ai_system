@@ -56,7 +56,7 @@ ai-first: true
 - **G4.** Auto-merge is never set on an MR that has no pipeline.
   - **glab:** wait up to 90 s for the MR's head pipeline. glab 1.99's `mr merge`
     "merges immediately" when no pipeline is running. When one exists, run
-    `glab mr merge <url> --auto-merge --squash --yes`.
+    `glab mr merge <iid> --auto-merge --squash --yes` (glab takes an MR iid or branch, not a URL; the iid comes from `…/merge_requests/<iid>`).
   - **gh:** require at least one check on the PR, then `gh pr merge <url> --auto --squash`.
   - **No pipeline or check, or the command fails:** print a WARN and leave the MR for a
     human. The ship continues as in-review.
@@ -172,9 +172,9 @@ ai-first: true
   4. After leric merges, run `/ship-land R-021`.
 - My call (builder check): a one-way ship in a repo without a forge remote stops. It
   never falls back to a squash.
-- Door for this ship: `Door: one-way — it changes how every future ship merges, including
-  when a human is skipped.` By its own rule this ship lands through a PR on ai_system's
-  GitHub and waits for leric.
+- Door: one-way — it changes how every future ship merges, including when a human is
+  skipped. By its own rule this ship lands through a PR on ai_system's GitHub and waits
+  for leric.
 
 ## Seams
 | Seam | Interface | Guaranteed behavior |
@@ -182,7 +182,7 @@ ai-first: true
 | `sn_door` | `sn_door <worktree>` (cwd: the worktree) | Reads `Door:` only inside `## Decisions`. Prints `door: one-way\|two-way` and one reason per line. Persists `SHIP_DOOR`, `SHIP_DOOR_REASONS`, `SHIP_MERGE_MODE`, `SHIP_AUTO_MERGE`. The door is two-way only with a spec `Door: two-way` and no signal. |
 | `_sn_one_way_paths` | `_sn_one_way_paths <base>` | One glob per line from `one_way_paths:` in the base branch's `.claude/ship-config.yml`, unquoted. Nothing when absent. |
 | `merge_mode` | existing | Returns `$SHIP_MERGE_MODE` when it is `mr` or `squash`; otherwise unchanged. |
-| `forge_automerge_cmd` | `forge_automerge_cmd <url>` | Echoes `glab mr merge <url> --auto-merge --squash --yes` or `gh pr merge <url> --auto --squash`. Exit 1 for an unknown forge. |
+| `forge_automerge_cmd` | `forge_automerge_cmd <url>` | Echoes `glab mr merge <iid> --auto-merge --squash --yes` (glab takes an MR iid or branch, not a URL; the iid comes from `…/merge_requests/<iid>`) or `gh pr merge <url> --auto --squash`. Exit 1 for an unknown forge. |
 | `sn_auto_merge` | `sn_auto_merge <url>` | Runs the merge command only once a pipeline or check exists within `SN_PIPELINE_WAIT` seconds. Otherwise it prints WARN and returns 1 without merging. |
 | `sn_land` | existing | Lands by `merge_mode` (per ship). With `SHIP_AUTO_MERGE=1` it calls `sn_auto_merge` after the review opens. Its failure does not fail `sn_land`. |
 | `sn_ship_body` | existing | The body is `## Summary` and `## Evidence` (from `.ship/pr-head.md`), then `## Merge Danger` (door, reasons, Blast Radius), then `## Ship details` (the previous content). It warns when `.ship/pr-head.md` is missing. |
@@ -201,7 +201,7 @@ ai-first: true
 | AC-7 | an mr repo, spec two-way, no signal | `sn_door` | two-way; `SHIP_MERGE_MODE=mr`, `SHIP_AUTO_MERGE=1` |
 | AC-8 | state `SHIP_MERGE_MODE=mr` in a repo whose config says squash (and the reverse) | `merge_mode` after `sn_state_load` | `mr` (`squash`) |
 | AC-9 | a stub `glab` whose `mr view` reports no head pipeline; `SN_PIPELINE_WAIT=0` | `sn_auto_merge <url>` | returns 1, WARN; `glab mr merge` never called |
-| AC-10 | a stub `glab` reporting a pipeline | `sn_auto_merge <url>` | calls `glab mr merge <url> --auto-merge --squash --yes`; returns 0 |
+| AC-10 | a stub `glab` reporting a pipeline | `sn_auto_merge <url>` | calls `glab mr merge <iid> --auto-merge --squash --yes` (glab takes an MR iid or branch, not a URL; the iid comes from `…/merge_requests/<iid>`); returns 0 |
 | AC-11 | `.ship/pr-head.md` with Summary, Evidence and `**Blast Radius:** low`; state door one-way with 2 reasons | `sn_ship_body` | sections in the order Summary, Evidence, Merge Danger, Ship details; Merge Danger has `**Door:** one-way`, 2 reason bullets and `**Blast Radius:** low`; `↳ done when:` is inside Ship details; the co-author line is last |
 | AC-12 | no `.ship/pr-head.md` | `sn_ship_body` | WARN on stderr; the body still has Merge Danger with `**Blast Radius:** unstated` and Ship details |
 | AC-13 | state `SHIP_DOOR=one-way` | `sn_log` (squash default row) / `sn_summary` | the row contains `door=one-way`; the summary has a `• door: one-way` line |
