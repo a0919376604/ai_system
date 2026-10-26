@@ -161,9 +161,13 @@ forge_stubs() {
   cat > "$BATS_TEST_TMPDIR/bin/glab" <<'STUB'
 #!/bin/sh
 printf '%s\n' "$*" >> "$CALLS"
+case "$1 $2" in
+  'mr view'|'mr merge')
+    case "$3" in ''|*[!0-9]*) echo 'unknown MR' >&2; exit 2 ;; esac ;;
+esac
 case "$*" in
   'mr view '*) printf '%s\n' "$STUB_VIEW_JSON" ;;
-  'mr create '*) echo https://g/mr/1 ;;
+  'mr create '*) echo https://g/grp/repo/-/merge_requests/42 ;;
   'mr merge '*) exit "${STUB_MERGE_EXIT:-0}" ;;
 esac
 STUB
@@ -173,18 +177,19 @@ STUB
 }
 @test "no pipeline: no merge" {
   forge_stubs
-  export STUB_VIEW_JSON='{"head_pipeline":null}' SN_PIPELINE_WAIT=0
-  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/mr/1'
+  export SN_PIPELINE_WAIT=0 STUB_VIEW_JSON='{"head_pipeline":null}' SN_PIPELINE_WAIT=0
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/grp/repo/-/merge_requests/42'
   [ "$status" -eq 1 ]
   [[ "$output" == *WARN* ]] || return 1
   ! grep -q '^mr merge ' "$CALLS"
 }
 @test "a pipeline: auto-merge is set" {
   forge_stubs
-  export STUB_VIEW_JSON='{"head_pipeline":{"id":7}}'
-  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/mr/1'
+  export SN_PIPELINE_WAIT=0 STUB_VIEW_JSON='{"head_pipeline":{"id":7}}'
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/grp/repo/-/merge_requests/42'
   [ "$status" -eq 0 ]
-  grep -qxF 'mr merge https://g/mr/1 --auto-merge --squash --yes' "$CALLS"
+  grep -qxF 'mr view 42 -F json' "$CALLS"
+  grep -qxF 'mr merge 42 --auto-merge --squash --yes' "$CALLS"
 }
 @test "a failing merge command does not fail sn_land" {
   forge_stubs
@@ -195,11 +200,12 @@ STUB
   git push -q -u origin ship/R-9-x
   sn_state_set "$PWD" SHIP_MERGE_MODE mr
   sn_state_set "$PWD" SHIP_AUTO_MERGE 1
-  export STUB_VIEW_JSON='{"head_pipeline":{"id":7}}' STUB_MERGE_EXIT=1
+  export SN_PIPELINE_WAIT=0 STUB_VIEW_JSON='{"head_pipeline":{"id":7}}' STUB_MERGE_EXIT=1
   echo body > "$SCRATCH/body"
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_land "$PWD" R-9 ship/R-9-x main title "$SCRATCH/body"'
   [ "$status" -eq 0 ]
-  grep -qxF 'mr merge https://g/mr/1 --auto-merge --squash --yes' "$CALLS"
+  grep -qxF 'mr view 42 -F json' "$CALLS"
+  grep -qxF 'mr merge 42 --auto-merge --squash --yes' "$CALLS"
   sn_state_load "$PWD"
   [ "$SHIP_AUTO_MERGED" = 0 ]
 }
@@ -250,10 +256,10 @@ body_fixture() {
   sn_state_set "$PWD" AUTO 1
   sn_state_set "$PWD" SHIP_DOOR one-way
   sn_state_set "$PWD" SHIP_MERGE_MODE mr
-  sn_state_set "$PWD" SHIP_REVIEW_URL https://g/mr/1
+  sn_state_set "$PWD" SHIP_REVIEW_URL https://g/grp/repo/-/merge_requests/42
   sn_state_set "$PWD" SHIP_AUTO_MERGED 0
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_summary "$PWD" R-9'
-  [[ "$output" == *'• door: one-way → awaiting human review: https://g/mr/1'* ]] || return 1
+  [[ "$output" == *'• door: one-way → awaiting human review: https://g/grp/repo/-/merge_requests/42'* ]] || return 1
   sn_state_set "$PWD" SHIP_DOOR two-way
   sn_state_set "$PWD" SHIP_MERGE_MODE squash
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_summary "$PWD" R-9'
@@ -272,4 +278,13 @@ body_fixture() {
   run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_log "$PWD" R-9 ""'
   [ "$status" -eq 0 ]
   grep -qF 'door=one-way' docs/learnings/_log.md
+}
+
+@test "bad MR URL: warns without merging" {
+  forge_stubs
+  export SN_PIPELINE_WAIT=0 STUB_VIEW_JSON='{"head_pipeline":{"id":7}}'
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_auto_merge https://g/x'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *WARN* ]]
+  ! grep -q '^mr merge ' "$CALLS"
 }

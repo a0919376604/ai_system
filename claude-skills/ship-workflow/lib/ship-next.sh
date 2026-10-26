@@ -495,15 +495,16 @@ EOF
 }
 
 sn_auto_merge() {
-  local url="$1" cli pipeline elapsed=0 wait="${SN_PIPELINE_WAIT:-90}" cmd
+  local url="$1" cli iid pipeline elapsed=0 wait="${SN_PIPELINE_WAIT:-90}" cmd
   source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/merge-mode.sh"
   cli=$(forge_cli) || { echo "WARN: unknown forge — auto-merge not set" >&2; return 1; }
   if [ "$cli" = glab ] && ! command -v jq >/dev/null 2>&1; then
     echo "WARN: jq not found — auto-merge not set" >&2; return 1
   fi
+  if [ "$cli" = glab ]; then iid=$(_sn_mr_iid "$url") || return 1; fi
   while :; do
     case "$cli" in
-      glab) pipeline=$(glab mr view "$url" -F json | jq -r '.head_pipeline.id // empty') || pipeline= ;;
+      glab) pipeline=$(glab mr view "$iid" -F json | jq -r '.head_pipeline.id // empty') || pipeline= ;;
       gh) pipeline=$(gh pr checks "$url" 2>/dev/null) ;;
     esac
     if [ -n "$pipeline" ]; then

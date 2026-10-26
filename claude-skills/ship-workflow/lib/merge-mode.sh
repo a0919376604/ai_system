@@ -68,12 +68,20 @@ forge_mr_cmd() {
   esac
 }
 
+_sn_mr_iid() {
+  local iid
+  iid=$(printf '%s\n' "$1" | sed -nE 's@.*/merge_requests/([0-9]+)([/?#].*)?$@\1@p')
+  [ -n "$iid" ] || { echo "WARN: no MR iid in $1 — auto-merge not set" >&2; return 1; }
+  printf '%s\n' "$iid"
+}
+
 # forge_automerge_cmd <url> — echo the forge command without running it.
 forge_automerge_cmd() {
-  local cli
+  local cli iid
   cli=$(forge_cli) || return 1
   case "$cli" in
-    glab) printf 'glab mr merge %s --auto-merge --squash --yes\n' "$1" ;;
+    glab) iid=$(_sn_mr_iid "$1") || return 1
+          printf 'glab mr merge %s --auto-merge --squash --yes\n' "$iid" ;;
     gh) printf 'gh pr merge %s --auto --squash\n' "$1" ;;
     *) return 1 ;;
   esac
