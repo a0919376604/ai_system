@@ -207,7 +207,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    - `git log --oneline ${ORIG_BRANCH}..HEAD | wc -l` > 2 → executor has committed; skip to Phase 6 (review).
 1. **Invoke `superpowers:brainstorming`** with context: spec target `docs/specs/${ID}-${SLUG}.md`, project `<project_name>`.
    Require `## Seams`: a table (Seam | Interface | Guaranteed behavior) for every boundary introduced or changed. Tests may assert only declared seam behavior. Pass this in invocation context; do not modify a `superpowers` file.
-   Require `## Decisions`: operator decisions and reasons, with your own calls marked as yours. Do not create a separate brainstorm file; `/ship-compound` copies these into the learning and mirrors the spec before removing it.
+   Require `## Decisions`: operator decisions and reasons, with your own calls marked as yours. The Decisions must hold one line `Door: one-way|two-way — <why>`, Pocock's merge danger. One-way means hard to walk back: schema or data changes, deletions, messages sent to users, auth, deploy. When unsure, write one-way. Do not create a separate brainstorm file; `/ship-compound` copies these into the learning and mirrors the spec before removing it.
    **Require grilling rounds:** Each round asks every question whose prerequisites are settled, numbered. Each question carries your recommended answer and is worded so "yes" accepts it. A question that depends on one still open in this round waits for the next round. Facts are yours to find: dispatch a sub-agent rather than asking the operator anything you could look up. Only decisions go to the operator. This invocation context overrides the skill's one-question-per-message habit; do not modify any superpowers file.
    **In auto mode (`AUTO=1`):** the brainstorming skill is still invoked, but **every clarifying question is auto-answered with its recommended answer**.
    After each auto-answered question, log:
@@ -595,8 +595,14 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 
 ## Phase 7 — Land the branch (squash merge, or open a review)
 
-Read `merge_mode` from `.claude/ship-config.yml`: default `squash`, or `mr` for review.
+The ship's mode comes from step 0: a two-way door keeps the repo's `merge_mode`; a one-way door always opens a review.
 **Record the phase:** `source ~/.claude/skills/ship-workflow/lib/ship-next.sh && sn_status "$WORKTREE" landing`.
+0. **Route by door.**
+   ```bash
+   source ~/.claude/skills/ship-workflow/lib/ship-next.sh
+   sn_door "$WORKTREE"
+   ```
+0.5. **Write `$WORKTREE/.ship/pr-head.md`.** Include `## Summary` with the smallest visual that makes the point (Pocock's list: pseudocode, a call tree, a diff sketch, a file tree or mermaid), in CONTEXT.md vocabulary; `## Evidence` with before/after: the test that failed and now passes, with its command, or a `tdd_rules_prove` line; and `**Blast Radius:** <one word>`, plus optional consequences.
 1. **Build the body.** Both paths carry the same content: a squash commit message, or an MR/PR description. Build it once. Set `SHIP_COAUTHOR` to the co-author line your session prescribes for commits; unset, the body ends with `Co-Authored-By: Claude <noreply@anthropic.com>`.
    ```bash
    source ~/.claude/skills/ship-workflow/lib/ship-next.sh
@@ -613,6 +619,12 @@ Read `merge_mode` from `.claude/ship-config.yml`: default `squash`, or `mr` for 
    **`mr` does not move `$ORIG_BRANCH`.** The review carries only the work. Phase 8 marks the row in-review and drafts the learning, Phase 9 keeps the branch and worktree, and `/ship-land` runs `/ship-compound` on the base branch once the review merges.
 
 ## Phase 8 — /ship-compound (squash) · in-review + learning draft (mr)
+
+Here `squash` and `mr` mean the ship's mode. Resolve it from state:
+```bash
+source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+source ~/.claude/skills/ship-workflow/lib/ship-next.sh && sn_state_load "$WORKTREE" && merge_mode
+```
 
 **`squash`:** invoke `/ship-compound` with `ID` set to this R-NNN from the original repo cwd on `$ORIG_BRANCH` (Phase 7 already cd'd back). It writes the learning, updates `CONTEXT.md` (exports `CONTEXT_MD_STATUS`), moves the row to Done and removes the spec and plan. Then run `source ~/.claude/skills/ship-workflow/lib/ship-next.sh && sn_status "$WORKTREE" done`.
 **`mr`:** do not run `/ship-compound` — every file it writes is shared or belongs on the base branch, and parallel reviews must not touch them. `/ship-land` runs it after the merge. `/ship-idea --during-build` rows wait in `$WORKTREE/.ship/ship-log-rows` too; `/ship-land` replays them. Here:
@@ -646,6 +658,8 @@ sn_state_set "$WORKTREE" CONTEXT_MD_STATUS "$CONTEXT_MD_STATUS"
 0a. **Resolve the merge mode.** Each helper also resolves it independently.
    ```bash
    source ~/.claude/skills/ship-workflow/lib/merge-mode.sh
+   source ~/.claude/skills/ship-workflow/lib/ship-next.sh
+   sn_state_load "$WORKTREE"
    MERGE_MODE=$(merge_mode)
    ```
 0. **Capture anything inside the worktree the summary needs.** Capture state and round history before cleanup; the helper copies it out so later shells can read it.

@@ -220,6 +220,85 @@ CHECKS
   sn_state_set "$WORKTREE" SRC_LINES_ADDED "$SRC_LINES_ADDED"
 }
 
+# Shell case globs behave consistently even when the caller is zsh.
+_sn_glob_match() {
+  bash -c 'case "$2" in $1) exit 0;; esac; exit 1' _ "$1" "$2"
+}
+
+_sn_one_way_paths() {
+  if ! command -v _sr_base_file >/dev/null 2>&1; then
+    source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/security-review.sh"
+  fi
+  { _sr_base_file "$1" .claude/ship-config.yml || true; } | awk '
+    /^one_way_paths:/ { collect=1; next }
+    collect && /^[^[:space:]]/ { exit }
+    collect && /^[[:space:]]+- / {
+      sub(/^[[:space:]]+-[[:space:]]*/, "")
+      sub(/[[:space:]]+#.*$/, "")
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+      gsub(/^[\047"]|[\047"]$/, "")
+      if (length) print
+    }'
+}
+
+sn_door() {
+  sn_state_set "$1" SHIP_DOOR one-way
+  sn_state_set "$1" SHIP_DOOR_REASONS 'door check failed — treated as one-way'
+  sn_state_set "$1" SHIP_MERGE_MODE mr
+  sn_state_set "$1" SHIP_AUTO_MERGE 0
+  sn_state_load "$1"
+  cd "$1" || return
+  local wt="$PWD" spec_line door reasons paths f glob dep repo_mode mode auto_merge
+  source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/merge-mode.sh"
+  spec_line=$(awk '/^## Decisions/{d=1;next} /^## /{d=0} d && /^[-*[:space:]]*Door:[[:space:]]*(one-way|two-way)/ {
+      if (!first) first=$0
+      if ($0 ~ /^[-*[:space:]]*Door:[[:space:]]*one-way/) {first=$0; exit}
+    } END {if (first) print first}' \
+    "docs/specs/${ID}-${SLUG}.md" 2>/dev/null | sed 's/^[-*[:space:]]*Door:[[:space:]]*/Door: /')
+  door=one-way
+  reasons="spec: ${spec_line:-no Door line}"
+  case "$spec_line" in 'Door: two-way'*) door=two-way ;; esac
+  paths=$(git -c core.quotePath=false diff --name-only "$(git merge-base "$ORIG_BRANCH" HEAD)" HEAD) || return
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    for glob in '*migrations/*' '*/alembic/versions/*' 'db/migrate/*'; do
+      if _sn_glob_match "$glob" "$f"; then
+        reasons="$reasons; signal: migration $f"; door=one-way; break
+      fi
+    done
+    for glob in 'Dockerfile*' '*/Dockerfile*' 'docker-compose*' '*/docker-compose*' '.gitlab-ci.yml' '.github/workflows/*' 'env_template*' '*/env_template*'; do
+      if _sn_glob_match "$glob" "$f"; then
+        reasons="$reasons; signal: deploy $f"; door=one-way; break
+      fi
+    done
+  done <<< "$paths"
+  while IFS="$(printf '\t')" read -r f dep; do
+    [ -n "$dep" ] || continue
+    reasons="$reasons; signal: new dependency $dep ($f)"; door=one-way
+  done < <(sn_new_deps "$ORIG_BRANCH" HEAD)
+  while IFS= read -r glob; do
+    [ -n "$glob" ] || continue
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      if _sn_glob_match "$glob" "$f"; then
+        reasons="$reasons; signal: one_way_paths $f"; door=one-way
+      fi
+    done <<< "$paths"
+  done < <(_sn_one_way_paths "$ORIG_BRANCH")
+  repo_mode=$(SHIP_MERGE_MODE= merge_mode)
+  mode=mr; auto_merge=0
+  if [ "$door" = two-way ]; then
+    if [ "$repo_mode" = squash ]; then mode=squash; else auto_merge=1; fi
+  fi
+  sn_state_set "$wt" SHIP_DOOR "$door"
+  sn_state_set "$wt" SHIP_DOOR_REASONS "$reasons"
+  sn_state_set "$wt" SHIP_MERGE_MODE "$mode"
+  sn_state_set "$wt" SHIP_AUTO_MERGE "$auto_merge"
+  printf 'door: %s\n' "$door"
+  printf '%s\n' "$reasons" | sed 's/; /\
+/g'
+}
+
 # Render invocation context for the read-only Spec reviewer.
 sn_spec_review_render() {
   sn_state_load "$1"
@@ -380,7 +459,22 @@ sn_ship_body() {
 
    SHIP_TITLE="feat: ${ID} ${DESCRIPTION}"
    SHIP_BODY="$4"
-   cat > "$SHIP_BODY" <<EOF
+   {
+     if [ -f "$WORKTREE/.ship/pr-head.md" ]; then
+       awk '/^## / {blast=0} /^\*\*Blast Radius:\*\*/ {blast=1} !blast' "$WORKTREE/.ship/pr-head.md"
+     else
+       echo "WARN: missing $WORKTREE/.ship/pr-head.md — Summary and Evidence unavailable" >&2
+     fi
+     printf '\n## Merge Danger\n**Door:** %s\n' "${SHIP_DOOR:-one-way}"
+     printf '%s\n' "${SHIP_DOOR_REASONS:-}" | awk 'BEGIN {RS="; "} NF {sub(/\n$/, ""); print "- " $0}'
+     if [ -f "$WORKTREE/.ship/pr-head.md" ] && command grep -q '^\*\*Blast Radius:\*\*' "$WORKTREE/.ship/pr-head.md"; then
+       awk '/^## / {blast=0} /^\*\*Blast Radius:\*\*/ {blast=1} blast' "$WORKTREE/.ship/pr-head.md"
+     else
+       echo '**Blast Radius:** unstated'
+     fi
+     printf '\n## Ship details\n'
+   } > "$SHIP_BODY"
+   cat >> "$SHIP_BODY" <<EOF
 ↳ done when: ${DONE_WHEN}
 
 Tasks (from docs/plans/${ID}-${SLUG}.md):
@@ -407,6 +501,40 @@ EOF
   sn_state_set "$WORKTREE" SHIP_BODY "$SHIP_BODY"
 }
 
+sn_auto_merge() {
+  local url="$1" cli iid pipeline elapsed=0 wait="${SN_PIPELINE_WAIT:-90}" cmd
+  source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/merge-mode.sh"
+  cli=$(forge_cli) || { echo "WARN: unknown forge — auto-merge not set" >&2; return 1; }
+  if [ "$cli" = glab ] && ! command -v jq >/dev/null 2>&1; then
+    echo "WARN: jq not found — auto-merge not set" >&2; return 1
+  fi
+  if [ "$cli" = glab ]; then iid=$(_sn_mr_iid "$url") || return 1; fi
+  while :; do
+    case "$cli" in
+      glab)
+        pipeline=$(glab mr view "$iid" -F json | jq -r '.head_pipeline.status // empty') || pipeline=
+        case "$pipeline" in
+          running|pending|created|waiting_for_resource|preparing|scheduled|success) ;;
+          '') ;;
+          *) echo "WARN: pipeline $pipeline — auto-merge not set" >&2; return 1 ;;
+        esac
+        ;;
+      gh) pipeline=$(gh pr checks "$url" 2>/dev/null) ;;
+    esac
+    if [ -n "$pipeline" ]; then
+      cmd=$(forge_automerge_cmd "$url") || return 1
+      if eval "$cmd"; then return 0; fi
+      echo "WARN: auto-merge command failed on $url — a human merges it" >&2
+      return 1
+    fi
+    [ "$elapsed" -lt "$wait" ] || break
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+  echo "WARN: no pipeline on $url after ${wait}s — auto-merge not set; a human merges it" >&2
+  return 1
+}
+
 sn_land() {
   sn_state_load "$1"
   local WORKTREE="$1" ID="$2" BRANCH="$3" ORIG_BRANCH="$4" SHIP_TITLE="$5" SHIP_BODY="$6"
@@ -429,13 +557,17 @@ sn_land() {
        ;;
 
      mr)
+       local door_message=""
+       if [ "${SHIP_DOOR:-}" = one-way ]; then
+         door_message=' — a one-way door needs a review; merge it by hand after one'
+       fi
        # The branch must exist on the remote before a review can point at it.
        git push -u origin "$BRANCH" || {
-         echo "push failed — not opening a review for a branch the remote cannot see" >&2
+         echo "push failed — not opening a review for a branch the remote cannot see$door_message" >&2
          exit 1
        }
        MR_CMD=$(forge_mr_cmd "$BRANCH" "$ORIG_BRANCH" "$SHIP_TITLE" "$SHIP_BODY") || {
-         echo "unknown forge for origin — push succeeded, open the review by hand" >&2
+         echo "unknown forge for origin — push succeeded, open the review by hand$door_message" >&2
          exit 1
        }
        echo "opening review: $MR_CMD"
@@ -445,6 +577,9 @@ sn_land() {
          exit 1
        }
        echo "review open: $SHIP_REVIEW_URL"
+       SHIP_AUTO_MERGED=0
+       if [ "${SHIP_AUTO_MERGE:-0}" = 1 ] && sn_auto_merge "$SHIP_REVIEW_URL"; then SHIP_AUTO_MERGED=1; fi
+       sn_state_set "$WORKTREE" SHIP_AUTO_MERGED "$SHIP_AUTO_MERGED"
        ;;
    esac
   MERGE_SHA=$(git rev-parse HEAD)
@@ -495,6 +630,7 @@ sn_capture() {
 }
 
 sn_cleanup() {
+  if [ -f "$1/.ship/state.env" ]; then sn_state_load "$1"; fi
   local WORKTREE="$1" BRANCH="$2"
    # Each block runs in its own shell: resolve the mode here, never rely on a
    # MERGE_MODE set by an earlier block.
@@ -534,7 +670,7 @@ sn_log() {
      CODEX_LOG_FRAGMENT=", codex: ${CODEX_ROUNDS} round(s) ${CODEX_FINAL_VERDICT}"
    fi
    if [ -z "${SHIP_LOG_ROW:-}" ]; then
-     SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ponytail=${PONYTAIL_COUNT:-0}, spec_gaps=${SPEC_GAPS_FOUND:-0}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp${CODEX_LOG_FRAGMENT}) | n |"
+     SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ponytail=${PONYTAIL_COUNT:-0}, spec_gaps=${SPEC_GAPS_FOUND:-0}, door=${SHIP_DOOR:-unset}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp${CODEX_LOG_FRAGMENT}) | n |"
    fi
    # shellcheck disable=SC1091
    source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/ship-log.sh"
@@ -579,6 +715,12 @@ sn_summary() {
 ${CODEX_LAST_FINDINGS}
 • full round history: ${CODEX_ROUNDS_ARCHIVE:-(not archived)}"
      fi
+     local landing="awaiting human review: ${SHIP_REVIEW_URL:-}"
+     if [ "$MERGE_MODE" = squash ]; then
+       landing=squash-merged
+     elif [ "${SHIP_AUTO_MERGED:-0}" = 1 ]; then
+       landing='auto-merge set (merges after CI)'
+     fi
      SUMMARY="✅ ${ID} ${DESCRIPTION} shipped (squash ${MERGE_SHA})
 • blocking: 0 ✓
 • major: ${MAJOR_COUNT} → IDEA-NNN auto-logged
@@ -586,6 +728,7 @@ ${CODEX_LAST_FINDINGS}
 • praise: ${PRAISE_COUNT}
 • security review: $(if [ "$(cat "/tmp/ship-${ID}-security-review-state" 2>/dev/null)" = off ]; then echo "off (ship-config on ${ORIG_BRANCH})"; else echo "${SECURITY_COUNT:-0} finding(s), pre-existing ${PRE_EXISTING_COUNT:-0} → IDEA-NNN"; fi)
 • spec review: ${SPEC_GAPS_FOUND:-0} gap(s) found on attempt 1, all closed
+• door: ${SHIP_DOOR:-unset} → ${landing}
 • CONTEXT.md: ${CONTEXT_MD_STATUS}
 • Test budget: ship ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp (${TEST_BUDGET_VERDICT})
 • ponytail: ${PONYTAIL_STATUS} · ${PONYTAIL_COUNT:-0} over-engineering finding(s)${CODEX_SUMMARY_BLOCK}
