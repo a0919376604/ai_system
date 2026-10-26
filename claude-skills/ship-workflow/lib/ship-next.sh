@@ -299,6 +299,75 @@ sn_door() {
 /g'
 }
 
+# sn_cross_review <worktree> <review_out> — append the second model's findings.
+sn_cross_review() {
+  local wt="$1" report="$2" executor='' ORIG_BRANCH='' result=unavailable reason='' tmp='' rc=0
+  local count=0 both=0 physical
+  [ ! -f "$wt/.claude/.ship-executor" ] || read -r executor < "$wt/.claude/.ship-executor"
+  if [ "$executor" = 3 ]; then
+    result=skipped
+    echo 'cross-review: skipped — codex wrote this code'
+  elif ! command -v codex >/dev/null 2>&1; then
+    reason='codex not found'
+  elif ! tmp=$(mktemp -d); then
+    reason='could not create temporary directory'
+  else
+    sn_state_load "$wt"
+    (
+      cd "$wt" || exit 1
+      if command -v timeout >/dev/null 2>&1; then
+        timeout 600 codex review --base "$ORIG_BRANCH" -c 'model_reasoning_effort="high"'
+      else
+        codex review --base "$ORIG_BRANCH" -c 'model_reasoning_effort="high"'
+      fi
+    ) </dev/null > "$tmp/out" 2> "$tmp/err" || rc=$?
+    if [ "$rc" -ne 0 ] || [ ! -s "$tmp/out" ]; then
+      reason="codex exited $rc or produced empty output"
+    else
+      physical=$(cd "$wt" && pwd -P)
+      awk -v wt="${wt%/}/" -v physical="$physical/" -v report="$report" -v counts="$tmp/counts" '
+        BEGIN { while ((getline line < report) > 0) prior[++lines]=line; close(report) }
+        /^Full review comments:$/ { comments=1; next }
+        !comments { next }
+        /^- \[P[0-3]\] .+ — .+:[0-9]+-[0-9]+$/ {
+          priority=substr($0,5,1); title=substr($0,8)
+          location=title; sub(/^.* — /,"",location); sub(/ — [^\n]*$/,"",title)
+          match(location, /:[0-9]+-[0-9]+$/)
+          file=substr(location,1,RSTART-1); split(substr(location,RSTART+1),range,"-")
+          if (index(file,wt)==1) file=substr(file,length(wt)+1)
+          else if (index(file,physical)==1) file=substr(file,length(physical)+1)
+          overlap=0
+          for (i=1;i<=lines;i++) {
+            rest=prior[i]
+            while ((at=index(rest,file ":")) > 0) {
+              before=substr(rest,1,at-1); rest=substr(rest,at+length(file)+1)
+              if ((before=="" || before ~ /[[:space:]`(]$/) && match(rest,/^[0-9]+/)) {
+                n=substr(rest,1,RLENGTH)+0
+                if (n>=range[1]-3 && n<=range[2]+3) overlap=1
+              }
+            }
+          }
+          severity=(priority<=1 ? "🔴 [blocking]" : priority==2 ? "🟡 [important]" : "🟢 [nit]")
+          print severity " [codex]" (overlap ? " [both]" : "") " " title " — " file ":" range[1]
+          count++; both+=overlap; detail=1; next
+        }
+        detail && /^[[:space:]]+[^[:space:]]/ { sub(/^[[:space:]]+/,"   "); print; next }
+        { detail=0 }
+        END { print count+0, both+0 > counts }
+      ' "$tmp/out" > "$tmp/findings"
+      cat "$tmp/findings" >> "$report"
+      read -r count both < "$tmp/counts"
+      result=ran
+    fi
+    rm -rf "$tmp"
+  fi
+  [ "$result" != unavailable ] || echo "WARN: cross-review unavailable — $reason" >&2
+  sn_state_set "$wt" CROSS_REVIEW "$result"
+  sn_state_set "$wt" CROSS_REVIEW_COUNT "$count"
+  sn_state_set "$wt" CROSS_REVIEW_BOTH "$both"
+  return 0
+}
+
 # Render invocation context for the read-only Spec reviewer.
 sn_spec_review_render() {
   sn_state_load "$1"
@@ -685,8 +754,10 @@ sn_log() {
    if [ "${CODEX_ROUNDS:-0}" -gt 0 ] 2>/dev/null; then
      CODEX_LOG_FRAGMENT=", codex: ${CODEX_ROUNDS} round(s) ${CODEX_FINAL_VERDICT}"
    fi
+   local xreview="${CROSS_REVIEW:-unavailable}"
+   if [ "$xreview" = ran ]; then xreview="${CROSS_REVIEW_COUNT:-0}/${CROSS_REVIEW_BOTH:-0}"; fi
    if [ -z "${SHIP_LOG_ROW:-}" ]; then
-     SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ponytail=${PONYTAIL_COUNT:-0}, spec_gaps=${SPEC_GAPS_FOUND:-0}, door=${SHIP_DOOR:-unset}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp${CODEX_LOG_FRAGMENT}) | n |"
+     SHIP_LOG_ROW="| $(date +%Y-%m-%d\ %H:%M) | ship-next | ${ID} | shipped (review: blocking=0, major=${MAJOR_COUNT}, ponytail=${PONYTAIL_COUNT:-0}, spec_gaps=${SPEC_GAPS_FOUND:-0}, door=${SHIP_DOOR:-unset}, xreview=${xreview}, ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp${CODEX_LOG_FRAGMENT}) | n |"
    fi
    # shellcheck disable=SC1091
    source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/ship-log.sh"
@@ -737,6 +808,11 @@ ${CODEX_LAST_FINDINGS}
      elif [ "${SHIP_AUTO_MERGED:-0}" = 1 ]; then
        landing='auto-merge set (merges after CI)'
      fi
+     local cross_review="${CROSS_REVIEW:-unavailable}"
+     case "$cross_review" in
+       ran) cross_review="${CROSS_REVIEW_COUNT:-0} finding(s), ${CROSS_REVIEW_BOTH:-0} also found by code review" ;;
+       skipped) cross_review='skipped — codex wrote this code' ;;
+     esac
      SUMMARY="✅ ${ID} ${DESCRIPTION} shipped (squash ${MERGE_SHA})
 • blocking: 0 ✓
 • major: ${MAJOR_COUNT} → IDEA-NNN auto-logged
@@ -745,6 +821,7 @@ ${CODEX_LAST_FINDINGS}
 • security review: $(if [ "$(cat "/tmp/ship-${ID}-security-review-state" 2>/dev/null)" = off ]; then echo "off (ship-config on ${ORIG_BRANCH})"; else echo "${SECURITY_COUNT:-0} finding(s), pre-existing ${PRE_EXISTING_COUNT:-0} → IDEA-NNN"; fi)
 • spec review: ${SPEC_GAPS_FOUND:-0} gap(s) found on attempt 1, all closed
 • door: ${SHIP_DOOR:-unset} → ${landing}
+• cross-review (codex): ${cross_review}
 • CONTEXT.md: ${CONTEXT_MD_STATUS}
 • Test budget: ship ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp (${TEST_BUDGET_VERDICT})
 • ponytail: ${PONYTAIL_STATUS} · ${PONYTAIL_COUNT:-0} over-engineering finding(s)${CODEX_SUMMARY_BLOCK}

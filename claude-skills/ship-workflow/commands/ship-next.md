@@ -408,6 +408,13 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
      exit 1
    fi
    ```
+1.3. **Cross-model review (Claude-written ships)** — runs after code review writes `$REVIEW_OUT`, before the parse; every attempt.
+   ```bash
+   : "${ID:?}" "${attempt:?}" "${WORKTREE:?}"
+   source ~/.claude/skills/ship-workflow/lib/ship-next.sh
+   REVIEW_OUT=/tmp/ship-next-review-${ID}-${attempt}.md
+   sn_cross_review "$WORKTREE" "$REVIEW_OUT"
+   ```
 1.4. **Spec review (every attempt, in parallel with code review)**
    ```bash
    : "${ID:?ID is not set}" "${attempt:?attempt is not set}" "${WORKTREE:?WORKTREE is not set}"
@@ -470,6 +477,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
      SPEC_OUT=/tmp/ship-next-spec-${ID}-${attempt}.md
      rm -f "$REVIEW_OUT" "$SPEC_OUT" "$SEC_OUT"   # never parse a report left by an earlier run
      # Invoke awesome-skills/code-review-skill on REVIEW_TARGET; capture output to $REVIEW_OUT
+     # Step 1.3 appends codex's cross-review to $REVIEW_OUT (Claude-written ships only).
      # Step 1.4 runs the Spec review in parallel; it writes and checks $SPEC_OUT.
      # Read .ship/review-extra-checks.md when present.
      PARSED=$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh "$REVIEW_OUT" "$SPEC_OUT") || { echo "review parse failed — not passing the gate" >&2; exit 1; }
