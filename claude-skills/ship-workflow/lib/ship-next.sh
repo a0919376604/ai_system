@@ -356,6 +356,16 @@ sn_codex_after_exit() {
   printf 'CODEX_ROUTE=%s\nCODEX_REASON=%s\n' "$CODEX_ROUTE" "$CODEX_REASON"
 }
 
+# sn_done_when <roadmap> <ID> — the row's done-when, read from the whole `↳` block under
+# it (R-020). A fixed `grep -A1` broke once rows gained a `↳ explain:` line first.
+sn_done_when() {
+  ID_MARK="**$2**" awk '
+    found && /^[[:space:]]*↳/ { if (sub(/^[[:space:]]*↳ done when: /, "")) { print; exit } next }
+    found { exit }
+    index($0, ENVIRON["ID_MARK"]) { found = 1 }
+  ' "$1" 2>/dev/null
+}
+
 sn_ship_body() {
   sn_state_load "$1"
   local WORKTREE="$1" ID="$2" SLUG="$3" SHIP_BODY="$4"
@@ -366,7 +376,7 @@ sn_ship_body() {
 
    ROADMAP_PATH="$("${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/airos-binding.sh" project_path)/ROADMAP.md"
    ROW=$(grep "\*\*${ID}\*\*" "$ROADMAP_PATH" | head -1)
-   DONE_WHEN=$(grep -A1 "\*\*${ID}\*\*" "$ROADMAP_PATH" | grep "↳ done when:" | sed 's/.*↳ done when: //' | head -1)
+   DONE_WHEN=$(sn_done_when "$ROADMAP_PATH" "$ID")
 
    SHIP_TITLE="feat: ${ID} ${DESCRIPTION}"
    SHIP_BODY="$4"
@@ -383,6 +393,7 @@ Code review (awesome-skills/code-review-skill):
 - praise:   ${PRAISE_COUNT}
 
 Security review: $(if [ "$(cat "$WORKTREE/.ship/security-review-state" 2>/dev/null)" = off ]; then echo "off (ship-config on ${ORIG_BRANCH})"; else echo "blocking 0 ✓ (security findings: ${SECURITY_COUNT:-0}, pre-existing: ${PRE_EXISTING_COUNT:-0})"; fi)
+Spec review: ${SPEC_GAPS_FOUND:-0} gap(s) found on attempt 1, all closed
 
 Tests: +${TEST_LINES_ADDED} / Src: +${SRC_LINES_ADDED}  (ratio ${SHIP_RATIO_BP}bp vs baseline ${BASELINE_RATIO_BP}bp)
 Spec:  docs/specs/${ID}-${SLUG}.md (removed by /ship-compound; kept in the "spec: ${ID}" commit and the vault Specs/)
@@ -390,7 +401,7 @@ Plan:  docs/plans/${ID}-${SLUG}.md (removed by /ship-compound; kept in the "plan
 Notes: docs/roadmap-notes/${ID}-${SLUG}.md (if exists)
 
 🤖 ${BRANCH}
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+${SHIP_COAUTHOR:-Co-Authored-By: Claude <noreply@anthropic.com>}
 EOF
   sn_state_set "$WORKTREE" SHIP_TITLE "$SHIP_TITLE"
   sn_state_set "$WORKTREE" SHIP_BODY "$SHIP_BODY"

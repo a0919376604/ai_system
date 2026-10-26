@@ -84,11 +84,12 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 3. **Handle `--adhoc`** (uses pre-parsed `TARGET` as description):
    ```bash
    SUMMARY_ZH="…"   # one zh-TW sentence for a person: what changes and for whom, no file names
+   DONE_WHEN_ZH="…" # one checkable success criterion; --auto:yes refuses a row without one
    if [ "$MODE" = "adhoc" ]; then
      ~/.claude/skills/ship-workflow/lib/sync.sh --force
      ID=$(~/.claude/skills/ship-workflow/lib/id-gen.sh roadmap --reserve)
      ROADMAP_PATH="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/ROADMAP.md"
-     ~/.claude/skills/ship-workflow/lib/roadmap-insert.sh "$ROADMAP_PATH" "$ID" "$TARGET" --adhoc --summary "$SUMMARY_ZH"
+     ~/.claude/skills/ship-workflow/lib/roadmap-insert.sh "$ROADMAP_PATH" "$ID" "$TARGET" --adhoc --summary "$SUMMARY_ZH" --done-when "$DONE_WHEN_ZH"
      ~/.claude/skills/ship-workflow/lib/sync.sh --force
    fi
    ```
@@ -102,8 +103,8 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
     ```bash
     if [ "$AUTO" = "1" ]; then
       ROADMAP_PATH="$(~/.claude/skills/ship-workflow/lib/airos-binding.sh project_path)/ROADMAP.md"
-      ROW=$(grep -A2 "\*\*${ID}\*\*" "$ROADMAP_PATH" || true)
-      DONE_WHEN=$(echo "$ROW" | grep "↳ done when:" || true)
+      source ~/.claude/skills/ship-workflow/lib/ship-next.sh
+      DONE_WHEN=$(sn_done_when "$ROADMAP_PATH" "$ID")
       if [ -z "$DONE_WHEN" ]; then
         echo "ERROR: --auto:yes refused — R-NNN $ID has no ↳ done when: annotation." >&2
         echo "       fire-and-forget mode requires an explicit success criterion." >&2
@@ -596,7 +597,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
 
 Read `merge_mode` from `.claude/ship-config.yml`: default `squash`, or `mr` for review.
 **Record the phase:** `source ~/.claude/skills/ship-workflow/lib/ship-next.sh && sn_status "$WORKTREE" landing`.
-1. **Build the body.** Both paths carry the same content: a squash commit message, or an MR/PR description. Build it once.
+1. **Build the body.** Both paths carry the same content: a squash commit message, or an MR/PR description. Build it once. Set `SHIP_COAUTHOR` to the co-author line your session prescribes for commits; unset, the body ends with `Co-Authored-By: Claude <noreply@anthropic.com>`.
    ```bash
    source ~/.claude/skills/ship-workflow/lib/ship-next.sh
    sn_state_load "$WORKTREE"

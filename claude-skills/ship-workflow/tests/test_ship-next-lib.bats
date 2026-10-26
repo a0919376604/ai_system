@@ -577,3 +577,42 @@ spec_report() {
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   done
 }
+
+@test "sn_done_when reads past an explain line and never a neighbour's" {
+  f="$SCRATCH/roadmap.md"
+  printf '%s\n' '- [ ] **R-9** Nine' '    ↳ explain: why' '    ↳ done when: X' '- [ ] **R-90** Ninety' '    ↳ done when: Y' > "$f"
+  for shell in bash zsh; do
+    run "$shell" -c 'source "$SHIP_LIB/ship-next.sh"; sn_done_when "$1" R-9' _ "$f"
+    [ "$output" = X ] || { echo "$shell: $output"; return 1; }
+  done
+  printf '%s\n' '- [ ] **R-90** Ninety' '    ↳ done when: Y' '- [ ] **R-9** Nine' '- [ ] **R-10** Ten' '    ↳ done when: Z' > "$f"
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_done_when "$1" R-9' _ "$f"
+  [ -z "$output" ] || { echo "got: $output"; return 1; }
+}
+
+@test "ship body carries done-when past explain, the spec review count and the session co-author" {
+  export HOME="$SCRATCH/home"
+  vault=$(make_fake_airos "$SCRATCH" wt)
+  write_global_config "$HOME" "$vault"
+  printf '%s\n' '- [ ] **R-1** Example' '    ↳ explain: why' '    ↳ done when: Ready' > "$vault/10 Projects/wt/ROADMAP.md"
+  run bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_state_set "$WT" SPEC_GAPS_FOUND 2'
+  run env -u SHIP_COAUTHOR bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_ship_body "$WT" R-1 x "$WT/body.md"'
+  [ "$status" -eq 0 ] || return 1
+  [ "$(head -1 "$WT/body.md")" = '↳ done when: Ready' ] || { cat "$WT/body.md"; return 1; }
+  grep -qxF 'Spec review: 2 gap(s) found on attempt 1, all closed' "$WT/body.md" || return 1
+  [ "$(tail -1 "$WT/body.md")" = 'Co-Authored-By: Claude <noreply@anthropic.com>' ] || { tail -1 "$WT/body.md"; return 1; }
+  run env SHIP_COAUTHOR='Co-Authored-By: T <t@x>' bash -c 'source "$SHIP_LIB/ship-next.sh"; sn_ship_body "$WT" R-1 x "$WT/body.md"'
+  [ "$(tail -1 "$WT/body.md")" = 'Co-Authored-By: T <t@x>' ]
+}
+
+@test "no model name is hard-coded in the ship-next lib" {
+  run grep -n 'Opus 5' "$SHIP_LIB/ship-next.sh"
+  [ "$status" -eq 1 ]
+}
+
+@test "Phase 1 reads done-when through sn_done_when, --adhoc writes one, Phase 7 names SHIP_COAUTHOR" {
+  cmd="$SHIP_SKILL_ROOT/commands/ship-next.md"
+  awk '/^4\.5\./,/^5\./' "$cmd" | grep -qF 'sn_done_when' || { echo "4.5 does not use sn_done_when"; return 1; }
+  awk '/^3\. \*\*Handle `--adhoc`/,/^4\./' "$cmd" | grep -qF -- '--done-when "$DONE_WHEN_ZH"' || { echo "--adhoc writes no done-when"; return 1; }
+  awk '/^## Phase 7/,/^## Phase 8/' "$cmd" | grep -qF 'SHIP_COAUTHOR'
+}
