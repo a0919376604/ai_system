@@ -726,7 +726,8 @@ rows_block() { block ship-refactor-scan.md '^3\. \*\*Write rows' '^4\. \*\*Repor
   rows_block > "$SCRATCH/s3.sh"; [ -s "$SCRATCH/s3.sh" ]
   run env STAMP=T bash "$SCRATCH/s3.sh"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  awk '/^## 🔜 Next/{f=1;next} /^## /{f=0} f' "$VP/ROADMAP.md" | grep -qF 'A 收進一個 module（報告：Reports/refactor-scan-T.html#c1）'
+  awk '/^## 🔜 Next/{f=1;next} /^## /{f=0} f' "$VP/ROADMAP.md" | grep -qF 'A 收進一個 module（報告：Reports/refactor-scan-T.ai.md#c1）'
+  grep -qF '↳ explain: sa（看報告：Reports/refactor-scan-T.html#c1）' "$VP/ROADMAP.md"
   grep -qF 'A 收進一個 module' docs/product/ROADMAP.md
 }
 @test "ship-refactor-scan: one bash block per step 0, 1, 3, 4; step 2 has none" {
@@ -745,6 +746,38 @@ rows_block() { block ship-refactor-scan.md '^3\. \*\*Write rows' '^4\. \*\*Repor
   rows_block > "$SCRATCH/s3.sh"; [ -s "$SCRATCH/s3.sh" ]
   run env STAMP=T zsh "$SCRATCH/s3.sh"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  awk '/^## 🔜 Next/{f=1;next} /^## /{f=0} f' "$VP/ROADMAP.md" | grep -qF 'A 收進一個 module（報告：Reports/refactor-scan-T.html#c1）'
+  awk '/^## 🔜 Next/{f=1;next} /^## /{f=0} f' "$VP/ROADMAP.md" | grep -qF 'A 收進一個 module（報告：Reports/refactor-scan-T.ai.md#c1）'
+  grep -qF '↳ explain: sa（看報告：Reports/refactor-scan-T.html#c1）' "$VP/ROADMAP.md"
   grep -qF 'A 收進一個 module' docs/product/ROADMAP.md
+}
+
+@test "ship-refactor-scan: C2 writes and checks both reports; step 3 passes the stem (AC-7)" {
+  F="$SHIP_SKILL_ROOT/commands/ship-refactor-scan.md"
+  for s in 'refactor-scan-$STAMP.ai.md' 'templates/refactor-report.html' 'rs_report_check' 'rs_report_shot' 'rs_merge_label HEAD'; do
+    grep -qF "$s" "$F" || { echo "missing: $s"; return 1; }
+  done
+  block ship-refactor-scan.md '^3\. \*\*Write rows' '^4\. \*\*Report back' | grep -qF 'rs_write_rows "$ROADMAP" "refactor-scan-$STAMP" <'
+  block ship-refactor-scan.md '^1\. \*\*Read the method' '^2\. \*\*Pick' | grep -qF 'rs_report_check "$REPORT_DIR/refactor-scan-$STAMP"'
+}
+
+@test "ship-refactor-scan step 1: checks report pairs in fresh bash and zsh shells" {
+  mkdir -p "$SCRATCH/10 Projects/Reports"
+  export REPORT_DIR="$SCRATCH/10 Projects/Reports" STAMP=T RS_CHROME=/nonexistent
+  sed 's/{{STEM}}/refactor-scan-T/g' "$SHIP_SKILL_ROOT/templates/refactor-report.html" > "$REPORT_DIR/refactor-scan-T.html"
+  printf 'Human report: [human](refactor-scan-T.html)\n## c1 · Candidate\n' > "$REPORT_DIR/refactor-scan-T.ai.md"
+  block ship-refactor-scan.md '^1\. \*\*Read the method' '^2\. \*\*Pick' > "$SCRATCH/s1.sh"
+  for shell in bash zsh; do
+    command -v "$shell" >/dev/null || continue
+    run "$shell" "$SCRATCH/s1.sh"
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *'rs_report_shot: Chrome not found — skipped'* ]] || return 1
+  done
+  echo '<script>x</script>' >> "$REPORT_DIR/refactor-scan-T.html"
+  for shell in bash zsh; do
+    command -v "$shell" >/dev/null || continue
+    run "$shell" "$SCRATCH/s1.sh"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *'rs_report_check: script:'* ]] || return 1
+    [[ "$output" != *'rs_report_shot:'* ]] || return 1
+  done
 }

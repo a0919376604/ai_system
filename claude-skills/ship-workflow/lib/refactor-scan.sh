@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# R-025: rs_hotspots, rs_done_when and rs_write_rows support /ship-refactor-scan.
+# R-025/R-026: hotspots, guardrails, rows, merge labels and report checks for /ship-refactor-scan.
 
 RS_GUARD_1='先補「固定現有行為」的測試（打在重構後模組的介面上），全綠才動結構'
 RS_GUARD_2='搬動結構期間既有測試一行都不改且保持全綠；介面測試涵蓋後，才在最後一個獨立 commit 刪掉被取代的淺層測試'
@@ -38,7 +38,7 @@ rs_done_when() {
 }
 
 rs_write_rows() (
-  local roadmap="$1" report="$2" rows tmp line rid previous=""
+  local roadmap="$1" stem="${2%.html}" rows tmp line rid previous=""
   local chain card description summary outcome reason done_when
   local lib="${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}"
   rows=$(awk -F '\t' '
@@ -65,8 +65,9 @@ rs_write_rows() (
     if [ "$chain" = after ]; then
       description="${description}；接在 ${previous} 之後做"
     fi
-    description="${description}（報告：Reports/${report}#c${card}）"
-    printf '%s\t%s\t%s\n' "$rid" "$description" "$(printf '%s\n' "$line" | cut -f4-6)" >> "$tmp" || return 1
+    description="${description}（報告：Reports/${stem}.ai.md#c${card}）"
+    summary="$(printf '%s\n' "$line" | cut -f4)（看報告：Reports/${stem}.html#c${card}）"
+    printf '%s\t%s\t%s\t%s\n' "$rid" "$description" "$summary" "$(printf '%s\n' "$line" | cut -f5-6)" >> "$tmp" || return 1
     previous="$rid"
   done <<< "$rows"
   while IFS= read -r line; do
@@ -80,4 +81,125 @@ rs_write_rows() (
       --summary "$summary" --done-when "$done_when" || return 1
   done < <(awk '{a[NR]=$0} END{for(i=NR;i>0;i--) print a[i]}' "$tmp")
   cut -f1,2 "$tmp"
+)
+
+rs_merge_label() (
+  local ref="$1" glob file
+  shift
+  source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/ship-next.sh"
+  while IFS= read -r glob; do
+    for file in "$@"; do
+      if _sn_glob_match "$glob" "$file"; then
+        printf '%s\n' '要人審'
+        return 0
+      fi
+    done
+  done < <(_sn_one_way_paths "$ref")
+  printf '%s\n' '自動合併'
+)
+
+rs_report_check() (
+  local stem="$1" base="${1##*/}" html="" ai="" ids links headings expected visible zooms n
+  local failed=0
+  export LC_ALL=C
+  if [ ! -f "$stem.html" ] || [ ! -f "$stem.ai.md" ]; then
+    printf '%s\n' 'rs_report_check: missing: both .html and .ai.md are required' >&2
+    failed=1
+  fi
+  if [ -f "$stem.html" ]; then html=$(cat "$stem.html"); fi
+  if [ -f "$stem.ai.md" ]; then ai=$(cat "$stem.ai.md"); fi
+  # Script by any name: a tag, an event-handler attribute, or a javascript: URL.
+  if printf '%s\n' "$html" | command grep -qiE '<script|[[:space:]]on[a-z]+[[:space:]]*=|javascript:'; then
+    printf '%s\n' 'rs_report_check: script: HTML contains a script tag, event handler or javascript: URL' >&2
+    failed=1
+  fi
+  if printf '%s\n' "$html" | command grep -qiE 'https?://'; then
+    printf '%s\n' 'rs_report_check: external-url: HTML contains an external URL' >&2
+    failed=1
+  fi
+  ids=$(printf '%s\n' "$html" | command grep -oE 'id="c[0-9]+"' | tr -cd '0-9\n' | sort -nu || true)
+  links=$(printf '%s\n' "$html" | command grep -oE 'href="#c[0-9]+"' | tr -cd '0-9\n' | sort -nu || true)
+  expected=$(printf '%s\n' "$ids" | awk 'NF { print ++n }')
+  if [ "$ids" != "$links" ] || [ "$ids" != "$expected" ]; then
+    printf '%s\n' 'rs_report_check: anchors: candidate IDs and links must be the same contiguous set from 1' >&2
+    failed=1
+  fi
+  headings=$(printf '%s\n' "$ai" | command grep -oE '^## c[0-9]+ · ' | tr -cd '0-9\n' | sort -nu || true)
+  if [ "$ids" != "$headings" ]; then
+    printf '%s\n' 'rs_report_check: ai-sections: AI headings must match HTML candidates' >&2
+    failed=1
+  fi
+  if ! printf '%s\n' "$html" | command grep -qF "$base.ai.md" ||
+     ! printf '%s\n' "$ai" | command grep -qF "$base.html"; then
+    printf '%s\n' 'rs_report_check: cross-link: reports must link each other by basename' >&2
+    failed=1
+  fi
+  visible=$(printf '%s\n' "$html" | awk '
+    { text = text $0 "\n" }
+    END {
+      while (match(text, /<!--/)) {
+        start = RSTART; rest = substr(text, start + 4)
+        end = index(rest, "-->")
+        if (!end) { text = substr(text, 1, start - 1); break }
+        text = substr(text, 1, start - 1) " " substr(rest, end + 3)
+      }
+      while (match(tolower(text), /<style[^>]*>/)) {
+        start = RSTART; rest = substr(text, start + RLENGTH)
+        if (!match(tolower(rest), /<\/style[[:space:]]*>/)) { text = substr(text, 1, start - 1); break }
+        text = substr(text, 1, start - 1) " " substr(rest, RSTART + RLENGTH)
+      }
+      gsub(/<[^>]*>/, " ", text)
+      print text
+    }')
+  if printf '%s\n' "$visible" | command grep -qiEw 'module|interface|implementation|depth|deep|shallow|seam|adapter|leverage|locality'; then
+    printf '%s\n' 'rs_report_check: jargon: visible text contains design jargon' >&2
+    failed=1
+  fi
+  zooms=$(printf '%s\n' "$html" | command grep -oE 'id="z[0-9]+"' | tr -cd '0-9\n' | sort -nu || true)
+  while IFS= read -r n; do
+    [ -n "$n" ] || continue
+    if ! printf '%s\n' "$ids" | command grep -qxF "$n"; then
+      printf '%s\n' 'rs_report_check: zoom: overlay has no matching candidate' >&2
+      failed=1
+      break
+    fi
+  done <<< "$zooms"
+  return "$failed"
+)
+
+rs_report_shot() (
+  local html="$1" png="$2" fragment="${3:-}" dir src height=6000 window=420,6000
+  local chrome="${RS_CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
+  if [ ! -x "$chrome" ]; then
+    printf '%s\n' 'rs_report_shot: Chrome not found — skipped' >&2
+    return 0
+  fi
+  html="$(cd "$(dirname "$html")" && pwd -P)/${html##*/}" || return 1
+  src=$(printf '%s' "$html" | sed 's/%/%25/g; s/ /%20/g; s/#/%23/g; s/?/%3F/g')
+  src="file://$src"
+  if [ -n "$fragment" ]; then
+    src="$src#$fragment"
+    height=844
+    window=420,900
+  fi
+  # Escape the URL for the harness HTML attribute after URL encoding.
+  src=$(printf '%s' "$src" | sed 's/&/\&amp;/g; s/"/\&quot;/g; s/</\&lt;/g; s/>/\&gt;/g')
+  dir=$(mktemp -d) || return 1
+  trap 'rm -rf "$dir"' EXIT
+  {
+    printf '<!doctype html><html><body style="margin:0"><iframe style="width:390px;height:%spx;border:0" src="%s"></iframe>\n' "$height" "$src"
+    if [ -z "$fragment" ]; then
+      printf '%s\n' '<div style="position:absolute;top:844px;left:0;width:390px;border-top:2px solid red"></div>'
+    fi
+    printf '%s\n' '</body></html>'
+  } > "$dir/harness.html"
+  # Chrome logs dozens of harmless lines per run; show them only when the shot fails.
+  # No --allow-file-access-from-files: the iframe renders without it, and without it
+  # a hostile report cannot read other local files while Chrome runs.
+  if ! "$chrome" --headless=new --hide-scrollbars \
+    --virtual-time-budget=3000 --window-size="$window" --screenshot="$png" \
+    "file://$dir/harness.html" > "$dir/chrome.log" 2>&1 || [ ! -f "$png" ]; then
+    cat "$dir/chrome.log" >&2
+    return 1
+  fi
 )

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>重構建議 · line-oa</title>
+<style>
+  * { box-sizing: border-box; overflow-wrap: anywhere; }
+  body { max-width: 480px; margin: 0 auto; background: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif; font-size: 16px; }
+  a { color: #2563eb; }
+  .hr { font-size: 16px; line-height: 1.6; color: #1f2937; padding: 14px; }
+  .hr h1 { font-size: 20px; margin: 0 0 2px; line-height: 1.3; }
+  .hr .meta { font-size: 13px; color: #6b7280; margin-bottom: 12px; }
+  .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  .card .ct { font-size: 19px; font-weight: 800; line-height: 1.35; margin-bottom: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .chip { font-size: 13px; font-weight: 600; padding: 2px 9px; border-radius: 999px; border: 1px solid #d1d5db; background: #f9fafb; color: #374151; }
+  .chip.star { background: #ecfdf5; border-color: #10b981; color: #047857; }
+  .chip.auto { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+  .chip.human { background: #fffbeb; border-color: #f59e0b; color: #b45309; }
+  .fig { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; background: #fafafa; margin: 6px 0 10px; }
+  .fig .lbl { font-size: 13px; font-weight: 800; color: #6b7280; margin: 2px 0 6px; }
+  .bx { border: 2px solid #94a3b8; border-radius: 8px; padding: 7px 6px; font-size: 15px; text-align: center; background: #fff; font-weight: 700; }
+  .bx.bad { border-color: #ef4444; background: #fef2f2; color: #991b1b; }
+  .bx.good { border-color: #0f172a; background: #0f172a; color: #fff; }
+  .bx.dim { border-style: dashed; color: #6b7280; font-weight: 600; }
+  .arr { text-align: center; color: #94a3b8; font-size: 18px; line-height: 1.1; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .zoom-hint { font-size: 13px; color: #2563eb; font-weight: 600; text-align: right; margin-top: 4px; }
+  .p { margin: 6px 0; } .p b { color: #111827; }
+  .ailink { display: block; font-size: 14px; color: #2563eb; border-top: 1px solid #e5e7eb; padding-top: 10px; margin-top: 4px; }
+
+  /* 放大狀態 */
+  .zoomed { background: rgba(15,23,42,0.96); color: #fff; padding: 14px; min-height: 560px; }
+  .zoomed .x { text-align: right; font-size: 15px; font-weight: 700; color: #cbd5e1; }
+  .zoomed .zt { font-size: 18px; font-weight: 800; margin: 6px 0 14px; }
+  .zoomed .fig { background: #fff; color: #1f2937; }
+  .zoomed .bx { font-size: 18px; padding: 12px 8px; }
+  .zoomed .fig .lbl { font-size: 15px; }
+
+  /* 方案 B：結論清單 */
+  .hero { background: #0f172a; color: #fff; border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  .hero .k { font-size: 12px; font-weight: 800; letter-spacing: 0.06em; color: #a7f3d0; }
+  .hero .ht { font-size: 19px; font-weight: 800; line-height: 1.35; margin: 4px 0 6px; }
+  .hero .why { font-size: 15px; color: #e2e8f0; }
+  .hero .go { display: inline-block; margin-top: 10px; font-size: 14px; font-weight: 700; color: #0f172a; background: #a7f3d0; border-radius: 8px; padding: 6px 12px; }
+  .li { display: flex; gap: 10px; align-items: flex-start; padding: 11px 2px; border-bottom: 1px solid #eef0f3; }
+  .li .n { flex: 0 0 26px; height: 26px; border-radius: 999px; background: #e5e7eb; font-weight: 800; font-size: 14px;
+           display: flex; align-items: center; justify-content: center; }
+  .li .n.top { background: #10b981; color: #fff; }
+  .li .lt { font-size: 16px; font-weight: 700; line-height: 1.4; }
+  .li .lc { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+  .li .lc .chip { font-size: 12px; padding: 1px 7px; }
+  .li .gt { margin-left: auto; color: #9ca3af; font-size: 18px; }
+  .hint { font-size: 14px; color: #6b7280; background: #f9fafb; border: 1px dashed #d1d5db; border-radius: 8px; padding: 8px 10px; margin-top: 12px; }
+  .backl { font-size: 14px; color: #2563eb; font-weight: 600; margin-bottom: 8px; }
+
+
+  .li, .picture { color: inherit; text-decoration: none; }
+  .li > div { min-width: 0; }
+  .picture { display: block; }
+  .hero .why { font-size: 16px; }
+  .card h2 { font-size: 20px; line-height: 1.35; margin: 8px 0; }
+  .card { margin-top: 24px; }
+  .fig .lbl:not(:first-child) { margin-top: 14px; }
+  .zoom { display:none; position:fixed; inset:0; overflow:auto; background:rgba(15,23,42,.96); padding:16px; z-index:10 }
+  .zoom:target { display:block }
+  .zoomed .x { display: block; }
+</style>
+</head>
+<body class="hr">
+<!-- Replace project, date and scan counts; choose the top recommendation. -->
+<header id="top">
+  <h1>重構建議 · line-oa</h1>
+  <div class="meta">2026-10-27 · 掃描 10 個檔案 · 1 個候選</div>
+</header>
+<div class="hero">
+  <div class="k">建議先做</div>
+  <div class="ht">1 · 儀表板的數字，算法寫了兩份</div>
+  <div class="why">測試驗的是副本，不是正式在跑的那份；可以一頁一頁改，不影響前端。</div>
+  <a class="go" href="#c1">看細節 →</a>
+</div>
+<nav aria-label="候選清單">
+<!-- repeat per candidate: sequential cN links, strength, estimated size and computed merge label. -->
+<a class="li" href="#c1"><span class="n top">1</span><div><div class="lt">儀表板的數字，算法寫了兩份</div><div class="lc"><span class="chip star">值得做</span><span class="chip">中</span><span class="chip auto">自動合併</span></div></div><span class="gt">›</span></a>
+</nav>
+<p class="hint">要做哪幾個？在對話裡回數字就好，例如「1、2」。</p>
+<!-- repeat per candidate: keep cN, zN and both copies of the picture in sync. -->
+<section id="c1" class="card">
+  <a class="backl" href="#top">← 回清單</a>
+  <h2>1 · 儀表板的數字，算法寫了兩份</h2>
+  <div class="chips"><span class="chip star">值得做</span><span class="chip">中</span><span class="chip auto">自動合併</span></div>
+  <a class="picture" href="#z1" aria-label="放大前後對照圖">
+<div class="fig">
+  <div class="lbl">現在</div>
+  <div class="bx">5 個儀表板頁面</div>
+  <div class="row2"><div class="arr">↓</div><div class="arr">↓</div></div>
+  <div class="row2"><div class="bx">算法 A<br>正式環境</div><div class="bx bad">算法 B<br>只有測試用</div></div>
+  <div class="lbl">改完</div>
+  <div class="bx">5 個儀表板頁面</div>
+  <div class="arr">↓</div>
+  <div class="bx good">一份算法</div>
+  <div class="arr">↑</div>
+  <div class="bx">測試</div>
+</div>
+    <div class="zoom-hint">點圖放大 ⤢</div>
+  </a>
+  <div id="z1" class="zoom zoomed" role="dialog" aria-label="前後對照圖放大">
+    <a class="x" href="#c1">✕ 關閉</a>
+    <div class="zt">1 · 儀表板的數字，算法寫了兩份</div>
+<div class="fig">
+  <div class="lbl">現在</div>
+  <div class="bx">5 個儀表板頁面</div>
+  <div class="row2"><div class="arr">↓</div><div class="arr">↓</div></div>
+  <div class="row2"><div class="bx">算法 A<br>正式環境</div><div class="bx bad">算法 B<br>只有測試用</div></div>
+  <div class="lbl">改完</div>
+  <div class="bx">5 個儀表板頁面</div>
+  <div class="arr">↓</div>
+  <div class="bx good">一份算法</div>
+  <div class="arr">↑</div>
+  <div class="bx">測試</div>
+</div>
+  </div>
+  <p class="p"><b>問題：</b>正式環境和測試各用一份算法，只改一份就會「測試全綠、正式環境壞掉」。</p>
+  <p class="p"><b>怎麼改：</b>只留一份，5 個頁面都用它。</p>
+  <p class="p"><b>改完：</b>改規則只改一處；測試抓得到真的錯。</p>
+  <a class="ailink" href="{{STEM}}.ai.md">給 AI 的細節（檔案、行號）→</a>
+</section>
+<footer><a class="ailink" href="{{STEM}}.ai.md">給 AI 的完整報告 →</a></footer>
+</body>
+</html>

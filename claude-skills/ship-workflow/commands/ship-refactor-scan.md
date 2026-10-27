@@ -1,6 +1,6 @@
 ---
 name: ship-refactor-scan
-description: Pocock architecture scan → vault HTML report → picked candidates become 🔜 Next rows for /ship-next
+description: Pocock architecture scan → linked human HTML and AI Markdown reports → picked candidates become 🔜 Next rows for /ship-next
 argument-hint: "[<direction: a module, subsystem or pain point>]"
 ---
 
@@ -8,7 +8,8 @@ argument-hint: "[<direction: a module, subsystem or pain point>]"
 
 Run from the root of the repo to scan. Follow Matt Pocock's vendored method in
 `templates/pocock/`, with exactly four changes: C1 scope by hotspots and prior
-rejections, C2 save the report in the vault, C3 use CONTEXT.md and vendored design
+rejections, C2 split the report: human HTML from the template, AI Markdown,
+C3 use CONTEXT.md and vendored design
 vocabulary, C4 replace grilling with picking candidates and writing Next rows.
 
 Steps 0–2 are read-only for the scanned repo: no repo files written, no commits,
@@ -54,11 +55,31 @@ Do not run the refactor; `/ship-next` executes the picked rows later.
      `$REPORT_DIR/refactor-scan-rejected.md` if it exists. A listed candidate is
      surfaced again only if its friction is clearly worse, marked as
      “rejected on <date>: <reason>”, the same way upstream treats an ADR conflict.
-   - **C2 Report location.** Write `$REPORT_DIR/refactor-scan-$STAMP.html`.
-     Each candidate card is `<article id="c<N>">`, numbered from 1. The header
-     also holds the hotspot table used for C1: score, churn, lines and path
-     (when a direction skips hotspots, state that scope instead).
-     Open the report with `open` (or `xdg-open`) and print its absolute path.
+   - **C2 Split the report.** Write two linked files with the same stem:
+     `$REPORT_DIR/refactor-scan-$STAMP.html` for a person and
+     `$REPORT_DIR/refactor-scan-$STAMP.ai.md` for AI.
+     Copy `${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/../templates/refactor-report.html`
+     for the human file, replace `{{STEM}}` with `refactor-scan-$STAMP`, and follow
+     its comments. Use plain zh-TW: conclusion first, one row per candidate,
+     details with stacked big-box pictures and a CSS zoom overlay. Number the
+     candidates from 1; keep the `c<N>` sections, links and `z<N>` overlays aligned.
+     Keep it self-contained, with no scripts, external URLs or visible design jargon.
+     The AI Markdown file starts with
+     `Human report: [refactor-scan-$STAMP.html](refactor-scan-$STAMP.html)`.
+     Include the C1 hotspot table (score, churn, lines, path; when a direction
+     skips hotspots, state that scope instead), then one `## c<N> · <name>` section
+     per candidate, using Pocock vocabulary. Preserve every upstream card field:
+     Files with line ranges; Problem; Solution; Benefits (locality / leverage /
+     tests); Before and After as fenced `mermaid` source; Strength; Dependency
+     category (in-process / local-substitutable / ports & adapters / mock);
+     Wide refactor? (yes/no); External callers? (yes/no, what); Merge label;
+     and an ADR / rejected-before callout when applicable. End with
+     `## Top recommendation`, naming the candidate and why.
+     Map Strong → 值得做, Worth exploring → 可考慮, Speculative → 待觀察 in
+     the human file. Size (小 / 中 / 大) is Claude's estimate: write it in both
+     files and label it as an estimate in the AI file. Compute each merge label
+     with `rs_merge_label HEAD <candidate files>` in the scanned repo, and write
+     that exact 自動合併 / 要人審 output into both files.
    - **C3 Vocabulary.** The repo's `CONTEXT.md` stands in for `GLOSSARY.md` and is
      read-only here. Read ADRs from `docs/adr/` when present. “Call the Skill tool
      with codebase-design” means: read the vendored `codebase-design/SKILL.md`
@@ -70,6 +91,22 @@ Do not run the refactor; `/ship-next` executes the picked rows later.
    source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/refactor-scan.sh"
    rs_hotspots 6 10
    ```
+
+   After writing both files, run this second block:
+
+   ```bash
+   STAMP="${STAMP:?set STAMP to the value step 0 printed}"
+   REPORT_DIR="${REPORT_DIR:?set REPORT_DIR to the value step 0 printed}"
+   source "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/refactor-scan.sh"
+   rs_report_check "$REPORT_DIR/refactor-scan-$STAMP" || exit 1
+   rs_report_shot "$REPORT_DIR/refactor-scan-$STAMP.html" "${TMPDIR:-/tmp}/refactor-scan-$STAMP.png"
+   rs_report_shot "$REPORT_DIR/refactor-scan-$STAMP.html" "${TMPDIR:-/tmp}/refactor-scan-$STAMP-z1.png" z1
+   ```
+
+   Fix every `rs_report_check` line before going on. Read both PNGs and fix
+   anything unreadable: the list must end above the red 844 px line, and picture
+   labels must be legible. If Chrome is unavailable, report its skip notice.
+   Then open the human file with `open` (or `xdg-open`).
 
 2. **Pick.**
 
@@ -125,13 +162,15 @@ Do not run the refactor; `/ship-next` executes the picked rows later.
      exit 1
    fi
    "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/sync.sh" --force || exit 1
-   rs_write_rows "$ROADMAP" "refactor-scan-$STAMP.html" < "$ROWS" || exit 1
+   rs_write_rows "$ROADMAP" "refactor-scan-$STAMP" < "$ROWS" || exit 1
    "${SHIP_LIB:-$HOME/.claude/skills/ship-workflow/lib}/sync.sh" --force || exit 1
    ```
 
 4. **Report back.**
 
-   Print the report path, each row written (ID and description, from step 3), and
+   Print both report paths (`$REPORT_DIR/refactor-scan-$STAMP.html` and
+   `$REPORT_DIR/refactor-scan-$STAMP.ai.md`), each row written (ID and description,
+   from step 3), and
    the rejected lines appended. Show the scanned repo's `git status --porcelain`;
    compare it with step 0, excluding `docs/product/`.
 
