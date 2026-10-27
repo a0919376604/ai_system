@@ -36,6 +36,12 @@ block() {
     | awk '/^[[:space:]]*```bash[[:space:]]*$/{f=1;next} /^[[:space:]]*```[[:space:]]*$/{f=0} f'
 }
 
+skill_block() {
+  S="$1" E="$2" awk '$0 ~ ENVIRON["S"] {f=1} $0 ~ ENVIRON["E"] {f=0} f' \
+      "$SHIP_SKILL_ROOT/../pr-review/SKILL.md" \
+    | awk '/^[[:space:]]*```bash[[:space:]]*$/{f=1;next} /^[[:space:]]*```[[:space:]]*$/{f=0} f'
+}
+
 p9_log_block() {
   printf 'source %q\n' "$SHIP_LIB/ship-next.sh"
   echo 'sn_log "${WORKTREE:-}" "$ID" "${SHIP_LOG_ROW:-}"'
@@ -310,8 +316,8 @@ land_step5() { block ship-land.md '^5\. \*\*Clean up' '^6\. \*\*Report'; }
 
 # --- R-003: the Phase 6 security pass -----------------------------------------
 
-sec_pass_block()  { block ship-next.md '^1\.5\. \*\*Security pass' '^1\.6\. \*\*Check the security report'; }
-sec_check_block() { block ship-next.md '^1\.6\. \*\*Check the security report' '^2\. \*\*Loop'; }
+sec_pass_block()  { skill_block '^1\.5\. \*\*Security pass' '^1\.6\. \*\*Check the security report'; }
+sec_check_block() { skill_block '^1\.6\. \*\*Check the security report' '^2\. \*\*Loop'; }
 pre_block()       { block ship-next.md '^4\.5\. \*\*Pre-existing findings' '^## Phase 7'; }
 
 @test "ship-next P6 security pass: refuses to run with ORIG_BRANCH unset" {

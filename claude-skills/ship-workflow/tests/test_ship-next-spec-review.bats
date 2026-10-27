@@ -1,11 +1,13 @@
 #!/usr/bin/env bats
 load helpers
 
+ship_mode() { awk '/^## Ship mode/,/^## PR mode/' "$SHIP_SKILL_ROOT/../pr-review/SKILL.md"; }
+
 p6() { awk '/^## Phase 6/,/^## Phase 7/' "$SHIP_SKILL_ROOT/commands/ship-next.md"; }
 
 @test "a numbered step renders the prompt and checks the report" {
-  p6 | command grep -qE '^1\.4\. \*\*Spec review' || return 1
-  step=$(p6 | awk '/^1\.4\./,/^1\.5\./')
+  ship_mode | command grep -qE '^1\.4\. \*\*Spec review' || return 1
+  step=$(ship_mode | awk '/^1\.4\./,/^1\.5\./')
   for text in 'SPEC_OUT="/tmp/ship-next-spec-${ID}-${attempt}.md"' 'sn_spec_review_render' 'sn_spec_review_check "$SPEC_OUT"'; do
     [[ "$step" == *"$text"* ]] || return 1
   done
@@ -60,7 +62,7 @@ p6() { awk '/^## Phase 6/,/^## Phase 7/' "$SHIP_SKILL_ROOT/commands/ship-next.md
 @test "spec report check runs in a fresh command-block shell" {
   export SHIP_LIB ID="R-T16-spec-$$" attempt=1
   report="/tmp/ship-next-spec-${ID}-${attempt}.md"
-  p6 | awk '/^1\.4\./{f=1} /^1\.5\./{f=0} f' \
+  ship_mode | awk '/^1\.4\./{f=1} /^1\.5\./{f=0} f' \
     | awk '/^[[:space:]]*```bash/{n++; f=1; next} /^[[:space:]]*```/{f=0} f && n==2' \
     | sed 's#~/.claude/skills/ship-workflow/lib/#"$SHIP_LIB"/#g' > "$BATS_TEST_TMPDIR/check.sh"
   printf '%s\n' 'No spec gaps.' > "$report"
@@ -69,4 +71,22 @@ p6() { awk '/^## Phase 6/,/^## Phase 7/' "$SHIP_SKILL_ROOT/commands/ship-next.md
     [ "$status" -eq 0 ] || { rm -f "$report"; echo "$output"; return 1; }
   done
   rm -f "$report"
+}
+
+@test "sn_spec_review_render: optional spec path and base override the state (R-027 AC-6)" {
+  source "$SHIP_LIB/ship-next.sh"
+  SCRATCH="$BATS_TEST_TMPDIR"
+  WT="$SCRATCH/wt"
+  mkdir -p "$WT/.ship" "$WT/docs/specs"
+  printf 'ID=R-9\nSLUG=x\nORIG_BRANCH=main\n' > "$WT/.ship/state.env"
+  printf 'spec\n' > "$WT/docs/specs/R-9-x.md"
+  sn_spec_review_render "$WT"
+  head -1 "$WT/.ship/spec-review-prompt.md" | grep -qF 'Read docs/specs/R-9-x.md in full. Read the diff with git diff main...HEAD.'
+  cp "$WT/.ship/spec-review-prompt.md" "$SCRATCH/default.md"
+  printf 'desc\n' > "$SCRATCH/spec one.md"
+  sn_spec_review_render "$WT" "$SCRATCH/spec one.md" origin/dev
+  head -1 "$WT/.ship/spec-review-prompt.md" | grep -qF "Read $SCRATCH/spec one.md in full. Read the diff with git diff origin/dev...HEAD."
+  diff <(tail -n +2 "$SCRATCH/default.md") <(tail -n +2 "$WT/.ship/spec-review-prompt.md")
+  run sn_spec_review_render "$WT" "$SCRATCH/missing.md" origin/dev
+  [ "$status" -ne 0 ]
 }

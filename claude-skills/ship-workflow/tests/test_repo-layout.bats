@@ -1,13 +1,13 @@
 #!/usr/bin/env bats
-# R-004: ai_system is ship-workflow's home. It holds ship-workflow and the two skills
-# ship-next needs — run-plan and code-review-skill — and nothing else.
+# R-004: ai_system is ship-workflow's home. It holds ship-workflow and the three skills
+# ship-next needs — run-plan, code-review-skill and pr-review — and nothing else.
 load helpers
 
 setup() { export REPO_ROOT="$(cd "$SHIP_SKILL_ROOT/../.." && pwd)"; }
 
-@test "claude-skills holds exactly ship-workflow, run-plan and code-review-skill" {
+@test "claude-skills holds exactly ship-workflow, run-plan, code-review-skill and pr-review" {
   run bash -c "ls -1 '$REPO_ROOT/claude-skills' | sort | tr '\n' ' '"
-  [ "$output" = "code-review-skill run-plan ship-workflow " ]
+  [ "$output" = "code-review-skill pr-review run-plan ship-workflow " ]
 }
 
 @test "run-plan carries the REPAIR RULE" {
@@ -39,7 +39,7 @@ setup() { export REPO_ROOT="$(cd "$SHIP_SKILL_ROOT/../.." && pwd)"; }
 }
 
 @test "ship-next's missing-code-review-skill hint installs it from this repo" {
-  step=$(awk '/^1\. \*\*Verify code-review-skill installed/,/^1\.5\. /' "$SHIP_SKILL_ROOT/commands/ship-next.md")
+  step=$(awk '/^1\. \*\*Verify code-review-skill installed/,/^1\.5\. /' "$SHIP_SKILL_ROOT/../pr-review/SKILL.md")
   [ -n "$step" ] || return 1
   echo "$step" | grep -qF './sync.sh restore' || { echo "hint does not point at sync.sh restore"; return 1; }
   if echo "$step" | grep -qF 'git clone'; then echo "hint still clones by hand"; return 1; fi

@@ -371,10 +371,10 @@ sn_cross_review() {
 # Render invocation context for the read-only Spec reviewer.
 sn_spec_review_render() {
   sn_state_load "$1"
-  local spec="$1/docs/specs/${ID}-${SLUG}.md"
+  local spec="${2:-$1/docs/specs/${ID}-${SLUG}.md}" base="${3:-$ORIG_BRANCH}"
   [ -f "$spec" ] || { echo "spec review: no spec at $spec" >&2; return 1; }
   {
-    printf 'Read docs/specs/%s-%s.md in full. Read the diff with git diff %s...HEAD.\n' "$ID" "$SLUG" "$ORIG_BRANCH"
+    printf 'Read %s in full. Read the diff with git diff %s...HEAD.\n' "${2:-docs/specs/${ID}-${SLUG}.md}" "$base"
     cat <<'PROMPT'
 Check the spec's acceptance criteria: Given-When-Then rows, AC-N rows, or a
 "done when" line. With no such rows, check its stated requirements.

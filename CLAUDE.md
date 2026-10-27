@@ -1,13 +1,14 @@
 # ai_system — repo rules
 
-This repo is ship-workflow's home: `claude-skills/` holds `ship-workflow`, plus the two
-skills `/ship-next` needs, `run-plan` and `code-review-skill`, and nothing else (R-004).
+This repo is ship-workflow's home: `claude-skills/` holds `ship-workflow`, plus `run-plan`,
+`code-review-skill` and `pr-review`, and nothing else (R-004).
+ship-next Phase 6's review steps live in `pr-review` (R-027).
 `devsync/` is the separate remote-dev tool; leave it as it is. `obsidian-roadmap-view/` is
 the Roadmap 檢視 Obsidian plugin (R-013): plain JS, no build, no npm dependencies.
 
 ## The main checkout stays on `main`
 
-`./sync.sh restore` links `~/.claude/skills/{ship-workflow,run-plan,code-review-skill}`
+`./sync.sh restore` links `~/.claude/skills/{ship-workflow,run-plan,code-review-skill,pr-review}`
 and the six ship-* commands into this checkout's working tree. Every session on the
 machine therefore runs whatever this checkout holds, uncommitted edits included.
 
@@ -17,7 +18,7 @@ machine therefore runs whatever this checkout holds, uncommitted edits included.
 
 ## Commands
 
-- Tests: `cd claude-skills/ship-workflow && bats tests/`. In a linked worktree, the
+- Tests: `cd claude-skills/ship-workflow && bats tests/` (includes pr-review). In a linked worktree, the
   `cwd-guard: exits 0 when not in a git repo at all` test fails. That failure is
   pre-existing and known. The bats run includes the plugin's tests; alone they are
   `node --test obsidian-roadmap-view/test/`.

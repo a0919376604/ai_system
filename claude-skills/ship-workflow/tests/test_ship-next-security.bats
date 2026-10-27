@@ -49,7 +49,7 @@ p6() { awk '/^## Phase 6/,/^## Phase 7/' "$CMD"; }
 @test "new Phase 6 blocks use no positional parameters (Claude Code substitutes them)" {
   # Claude Code replaces $0, $1, … in a command file with the invocation's
   # arguments, so `$1` inside a block becomes the user's first argument.
-  blocks=$(awk '/^1\.5\. \*\*Security pass/,/^2\. \*\*Loop/' "$CMD"; awk '/^4\.5\. \*\*Pre-existing findings/,/^## Phase 7/' "$CMD")
+  blocks=$(awk '/^1\.5\. \*\*Security pass/,/^2\. \*\*Loop/' "$SHIP_SKILL_ROOT/../pr-review/SKILL.md"; awk '/^4\.5\. \*\*Pre-existing findings/,/^## Phase 7/' "$CMD")
   [ -n "$blocks" ]
   if echo "$blocks" | grep -qE '\$[0-9@#*]|(^|[[:space:]])shift([[:space:]]|$)|set --'; then
     echo "a new block uses a positional parameter"; return 1
@@ -79,7 +79,7 @@ p6() { awk '/^## Phase 6/,/^## Phase 7/' "$CMD"; }
 }
 
 @test "security runs once code review reports zero blockers on the attempt" {
-  p6 | grep -qF 'Security pass (once code review clears the attempt)'
+  cat "$SHIP_SKILL_ROOT/../pr-review/SKILL.md" | grep -qF 'Security pass (once code review clears the attempt)'
   p6 | grep -qF 'code review reports 0 blockers'
 }
 

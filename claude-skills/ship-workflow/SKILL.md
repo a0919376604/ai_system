@@ -17,6 +17,8 @@ them into `~/.claude/commands/` — and every repo uses those. A repo carries no
 - **`/ship-init`** — Bootstrap a repo (folders, AIR-OS Product Brain stub); `--upgrade` removes old per-repo command copies
 
 
+Phase 6's review steps live in `pr-review` (§ Ship mode); `/pr-review` also reviews any GitHub PR or GitLab MR.
+
 ## Dual-Brain Architecture
 
 - **Obsidian Product Brain** at AIR-OS `10 Projects/<repo-name>/`:
@@ -31,7 +33,7 @@ them into `~/.claude/commands/` — and every repo uses those. A repo carries no
 
 ```bash
 # Install (once per machine, in the ai_system checkout, on main)
-$ ./sync.sh restore     # links ship-workflow, run-plan, code-review-skill + the 6 commands
+$ ./sync.sh restore     # links ship-workflow, run-plan, code-review-skill, pr-review + the 6 commands
 
 # Per-repo init
 $ cd /path/to/your/repo

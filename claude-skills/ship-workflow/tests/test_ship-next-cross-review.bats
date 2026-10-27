@@ -172,7 +172,7 @@ summary_line() {
   summary_line unavailable
 }
 @test "AC-8 step 1.3 executes in fresh bash and zsh" {
-  block=$(awk '/^1\.3\./{step=1} step && /```bash/{code=1;next} code && /```/{exit} code{print}' "$SHIP_SKILL_ROOT/commands/ship-next.md")
+  block=$(awk '/^1\.3\./{step=1} step && /```bash/{code=1;next} code && /```/{exit} code{print}' "$SHIP_SKILL_ROOT/../pr-review/SKILL.md")
   [[ "$block" == *'sn_cross_review "$WORKTREE" "$REVIEW_OUT"'* ]] || return 1
   block="${block//\~\/.claude\/skills\/ship-workflow\/lib/$SHIP_LIB}"
   export ID="R-019-test-$$" attempt=1 WORKTREE="$WT"
@@ -185,7 +185,7 @@ summary_line() {
 }
 @test "AC-8 loop names cross-review before parse" {
   awk '
-    /# Step 1.3 appends codex\047s cross-review to \$REVIEW_OUT \(Claude-written ships only\)\./ {found=1}
+    /# pr-review step 1.3 appends codex\047s cross-review to \$REVIEW_OUT \(Claude-written ships only\)\./ {found=1}
     /PARSED=.*code-review-parse.sh/ {exit !found}
     END {if (!found) exit 1}
   ' "$SHIP_SKILL_ROOT/commands/ship-next.md"

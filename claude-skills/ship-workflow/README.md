@@ -18,7 +18,7 @@ This skill lives in `ai_system/claude-skills/ship-workflow/`. In the ai_system c
 on `main`, run once per machine:
 
 ```bash
-./sync.sh restore   # links ship-workflow, run-plan, code-review-skill and the 6 commands
+./sync.sh restore   # links ship-workflow, run-plan, code-review-skill, pr-review and the 6 commands
 ./sync.sh status    # every line should say ok
 ```
 
@@ -41,6 +41,8 @@ cd /path/to/your/repo
 
 
 ## Security review (ship-next Phase 6)
+
+Phase 6's review steps (code review, codex cross-review, Spec review, security pass) live in the `pr-review` skill (§ Ship mode, R-027): ship-next runs them each attempt, and `/pr-review` runs the same four axes on any GitHub PR, GitLab MR or branch.
 
 **Spec review:** Every attempt also compares the diff with the spec, following Matt Pocock's two-axis `code-review`. Missing or wrong criteria block; extras carry `[ponytail:yagni]`. The report is format-checked before counting.
 

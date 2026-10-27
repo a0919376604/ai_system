@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # sync.sh — install ai_system on this machine, and back up the two config files it keeps.
 #
-# ai_system is ship-workflow's home (R-004). `restore` links its three skills and
+# ai_system is ship-workflow's home (R-004). `restore` links its four skills and
 # ship-workflow's six commands into ~/.claude, so every session runs this checkout;
 # `backup` copies the global CLAUDE.md and the devsync config into the repo. `restore`
 # also copies the Roadmap 檢視 Obsidian plugin (R-013) into the vault.
@@ -22,7 +22,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_HOME="$HOME/.claude"
 DISPLACED="$CLAUDE_HOME/.ai_system-displaced"
-SKILLS=(ship-workflow run-plan code-review-skill)
+SKILLS=(ship-workflow run-plan code-review-skill pr-review)
 COMMANDS=(ship-next ship-compound ship-idea ship-land ship-init ship-refactor-scan)
 # live::repo
 CONFIG_FILES=(
@@ -294,7 +294,7 @@ cmd_status() {
 
 usage() {
   cat <<EOF
-${C_BOLD}sync.sh${C_RESET} — install ai_system (ship-workflow + run-plan + code-review-skill)
+${C_BOLD}sync.sh${C_RESET} — install ai_system (ship-workflow + run-plan + code-review-skill + pr-review)
 
   $(basename "$0") restore [--yes] [--dry-run]  link the skills and commands into ~/.claude,
                                               restore the config files, copy the Obsidian

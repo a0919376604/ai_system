@@ -399,68 +399,7 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
    sn_mech_gates "$WORKTREE" "$ORIG_BRANCH" "docs/plans/${ID}-${SLUG}.md"
    ```
    `MECH_BLOCKERS > 0` feeds the same fix-plan loop as LLM blockers in step 2.
-1. **Verify code-review-skill installed:**
-   ```bash
-   if [ ! -f ~/.claude/skills/code-review-skill/SKILL.md ]; then
-     echo "ERROR: code-review-skill is not installed."
-     echo "It ships with ai_system: run ./sync.sh restore in the ai_system checkout (on main),"
-     echo "then re-invoke /ship-next ${ID} to resume from this phase."
-     exit 1
-   fi
-   ```
-1.3. **Cross-model review (Claude-written ships)** — runs after code review writes `$REVIEW_OUT`, before the parse; every attempt.
-   ```bash
-   : "${ID:?}" "${attempt:?}" "${WORKTREE:?}"
-   source ~/.claude/skills/ship-workflow/lib/ship-next.sh
-   REVIEW_OUT=/tmp/ship-next-review-${ID}-${attempt}.md
-   sn_cross_review "$WORKTREE" "$REVIEW_OUT"
-   ```
-1.4. **Spec review (every attempt, in parallel with code review)**
-   ```bash
-   : "${ID:?ID is not set}" "${attempt:?attempt is not set}" "${WORKTREE:?WORKTREE is not set}"
-   source ~/.claude/skills/ship-workflow/lib/ship-next.sh
-   SPEC_OUT="/tmp/ship-next-spec-${ID}-${attempt}.md"
-   sn_spec_review_render "$WORKTREE" || exit 1
-   ```
-   Give `.ship/spec-review-prompt.md` to a read-only sub-agent in the same message as the code review, with `$SPEC_OUT` as its output path.
-   ```bash
-   : "${ID:?ID is not set}" "${attempt:?attempt is not set}"
-   source ~/.claude/skills/ship-workflow/lib/ship-next.sh
-   SPEC_OUT="/tmp/ship-next-spec-${ID}-${attempt}.md"
-   sn_spec_review_check "$SPEC_OUT" || { echo "spec report malformed: re-run step 1.4 once; a second failure stops Phase 6" >&2; exit 3; }
-   ```
-1.5. **Security pass (once code review clears the attempt)** — run this separate review inside the loop after code review reports 0 blockers, including mechanical blockers. HIGH security findings block like code-review blockers.
-   ```bash
-   : "${ORIG_BRANCH:?ORIG_BRANCH is not set}" "${ID:?ID is not set}" "${attempt:?attempt is not set}"
-   SEC_OUT="/tmp/ship-next-security-${ID}-${attempt}.md"
-   rm -f "$SEC_OUT"
-   source ~/.claude/skills/ship-workflow/lib/security-review.sh || { echo "ERROR: the security-review lib is missing (stale ship-workflow checkout?) — not skipping the review." >&2; exit 1; }
-   mkdir -p .ship
-   if security_review_enabled "$ORIG_BRANCH"; then
-     echo on > .ship/security-review-state
-     security_review_render "$ORIG_BRANCH" .ship/security-review-prompt.md >/dev/null || { echo "ERROR: the security review could not be rendered — not skipping it." >&2; echo "       A missing lib or template usually means the local ship-workflow checkout is stale." >&2; exit 1; }
-     echo "security review: follow .ship/security-review-prompt.md and write its report to $SEC_OUT"
-   else
-     echo off > .ship/security-review-state
-     echo "No security findings." > "$SEC_OUT"
-     echo "security review: off (ship-config on $ORIG_BRANCH)"
-   fi
-   ```
-   Then **follow `.ship/security-review-prompt.md`**: one finder sub-task, one parallel filter sub-task per candidate, drop anything below confidence 8. Write the final report, and nothing else, to `$SEC_OUT`. Before accepting a `[pre-existing]` finding from either review, confirm with `git show ${ORIG_BRANCH}:<file>` that the cited code exists there; if it does not, delete the tag so the finding counts.
-1.6. **Check the security report** — the pass must never fail open:
-   ```bash
-   : "${ORIG_BRANCH:?ORIG_BRANCH is not set}" "${REVIEW_OUT:?REVIEW_OUT is not set}" "${ID:?ID is not set}" "${attempt:?attempt is not set}"
-   source ~/.claude/skills/ship-workflow/lib/security-review.sh || { echo "ERROR: security-review lib missing" >&2; exit 1; }
-   source ~/.claude/skills/ship-workflow/lib/pre-existing.sh || { echo "ERROR: pre-existing lib missing" >&2; exit 1; }
-   SEC_OUT="/tmp/ship-next-security-${ID}-${attempt}.md"
-   if ! security_review_output_check "$SEC_OUT"; then
-     echo "security report is not in the required format: $SEC_OUT" >&2
-     echo "Re-run step 1.5 once. If this check fails again, stop Phase 6 here." >&2
-     exit 3
-   fi
-   pre_existing_strip_unverified "$ORIG_BRANCH" "$REVIEW_OUT" "$SEC_OUT"
-   ```
-   Reject upstream-format or malformed reports: a finding must not silently parse as zero.
+1. **The review steps live in pr-review.** Each attempt of step 2 runs `~/.claude/skills/pr-review/SKILL.md` § Ship mode where step 2's comments name it: 1.1 code review, 1.3 cross-review and 1.4 Spec review every attempt; 1.5–1.6 security pass only once code review reports 0 blockers. They write `$REVIEW_OUT`, `$SPEC_OUT` and `$SEC_OUT`.
 2. **Loop:** Never write Phase 5's supervise state or pid mirror from the fix-plan loop; it has a different plan identity.
    ```
    source ~/.claude/skills/ship-workflow/lib/ship-next.sh
@@ -476,16 +415,16 @@ You are taking a ROADMAP row from "Now" all the way to a squashed commit on the 
      SEC_OUT=/tmp/ship-next-security-${ID}-${attempt}.md
      SPEC_OUT=/tmp/ship-next-spec-${ID}-${attempt}.md
      rm -f "$REVIEW_OUT" "$SPEC_OUT" "$SEC_OUT"   # never parse a report left by an earlier run
-     # Invoke awesome-skills/code-review-skill on REVIEW_TARGET; capture output to $REVIEW_OUT
-     # Step 1.3 appends codex's cross-review to $REVIEW_OUT (Claude-written ships only).
-     # Step 1.4 runs the Spec review in parallel; it writes and checks $SPEC_OUT.
-     # Read .ship/review-extra-checks.md when present.
+     # pr-review ship mode step 1.1: code review → $REVIEW_OUT
+     # pr-review step 1.3 appends codex's cross-review to $REVIEW_OUT (Claude-written ships only).
+     # pr-review step 1.4 runs the Spec review in parallel; it writes and checks $SPEC_OUT.
+     # (pr-review step 1.1 reads .ship/review-extra-checks.md when present.)
      PARSED=$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh "$REVIEW_OUT" "$SPEC_OUT") || { echo "review parse failed — not passing the gate" >&2; exit 1; }
      eval "$PARSED"
      [ -n "${SPEC_GAPS_FOUND:-}" ] || { SPEC_GAPS_FOUND="$SPEC_GAP_COUNT"; sn_state_set "$WORKTREE" SPEC_GAPS_FOUND "$SPEC_GAPS_FOUND"; }
      BLOCKING_COUNT=$((BLOCKING_COUNT + MECH_BLOCKERS))
      if [ "$BLOCKING_COUNT" -eq 0 ]; then
-       # Only once code review reports 0 blockers, run steps 1.5 and 1.6.
+       # Only once code review reports 0 blockers, run pr-review steps 1.5 and 1.6.
        # They write and validate SEC_OUT; any failure stops here, never passes.
        PARSED=$(~/.claude/skills/ship-workflow/lib/code-review-parse.sh "$REVIEW_OUT" "$SPEC_OUT" "$SEC_OUT") || { echo "review parse failed — not passing the gate" >&2; exit 1; }
        eval "$PARSED"
