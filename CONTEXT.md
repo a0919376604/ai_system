@@ -1,5 +1,7 @@
 # CONTEXT — ai_system vocabulary
 
+- **run-plan model override** — 跨專案共用、僅供 run-plan 新執行使用的模型設定；與外層對話、Codex config.toml 和 Discord 頻道模型分開。
+
 - **tdd-rules fragment** — `docs/tdd-rules.d/<R-NNN>.md`, one ship's learned TDD rules. Readers see the legacy `docs/tdd-rules.md` first, then every fragment by name.
 - **security pass** — ship-next Phase 6 steps 1.5–1.6 (R-003): a vendored copy of Anthropic's `/security-review` prompt, run every review attempt next to code-review-skill. Its HIGH findings block like code-review blockers; it never fails open.
 - **pre-existing finding** — a review finding tagged `[pre-existing]` right after its severity tag (`PRE_EXISTING_RE`): the defect is already on the base branch. It never blocks; step 4.5 files it once.

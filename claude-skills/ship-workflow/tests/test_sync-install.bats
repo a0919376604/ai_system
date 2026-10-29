@@ -15,6 +15,8 @@ setup() {
   mkdir -p "$R/claude-skills/ship-workflow/commands" "$R/claude-skills/run-plan" \
            "$R/claude-skills/code-review-skill" "$R/claude-skills/pr-review" "$R/config/claude" "$R/devsync"
   cp "$SHIP_SKILL_ROOT/../../sync.sh" "$R/sync.sh"
+  mkdir -p "$R/claude-skills/run-plan/skills/run-plan-model"
+  echo 'run-plan-model skill' > "$R/claude-skills/run-plan/skills/run-plan-model/SKILL.md"
   for c in ship-next ship-compound ship-idea ship-land ship-init ship-refactor-scan ship-refactor-brand; do
     echo "$c" > "$R/claude-skills/ship-workflow/commands/$c.md"
   done
@@ -37,6 +39,15 @@ snapshot() {  # every path under HOME, with link targets
   (cd "$HOME" && find . -print | sort | while IFS= read -r p; do
      if [ -L "$p" ]; then echo "$p -> $(readlink "$p")"; else echo "$p"; fi
    done)
+}
+
+@test "restore makes run-plan-model discoverable to Claude and cross-runtime skill readers" {
+  run bash "$R/sync.sh" restore --yes
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(cat "$HOME/.claude/skills/run-plan-model/SKILL.md")" = 'run-plan-model skill' ]
+  [ "$(cat "$HOME/.agents/skills/run-plan-model/SKILL.md")" = 'run-plan-model skill' ]
+  run bash "$R/sync.sh" status
+  [ "$status" -eq 0 ]
 }
 
 @test "restore links the 4 skills, 7 commands and the Codex brand skill, moves a real dir aside, clears only our dangling links" {

@@ -65,6 +65,8 @@ links() {
     echo "$CLAUDE_HOME/commands/$c.md::$CLAUDE_HOME/skills/ship-workflow/commands/$c.md"
   done
   echo "$HOME/.codex/skills/ship-refactor-brand::$SCRIPT_DIR/claude-skills/ship-workflow/skills/ship-refactor-brand"
+  echo "$CLAUDE_HOME/skills/run-plan-model::$SCRIPT_DIR/claude-skills/run-plan/skills/run-plan-model"
+  echo "$HOME/.agents/skills/run-plan-model::$SCRIPT_DIR/claude-skills/run-plan/skills/run-plan-model"
 }
 
 # link_state <link> <target> — ok | target missing | missing | wrong target | blocked by a real file

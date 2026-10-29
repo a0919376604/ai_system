@@ -9,6 +9,7 @@ description: |
   the plan filename, typically launched from separate worktrees.
   Use when asked to "run plan", "execute plan", "run-plan", "let codex run
   this plan", or "implement this plan with codex".
+  Also supports "run-plan model" to configure its own cross-project model.
 triggers:
   - run plan
   - execute the plan
@@ -60,6 +61,11 @@ the second launch — rename one of the plans to disambiguate.
 ```
 /run-plan                       # auto-pick latest docs/superpowers/plans/*.md
 /run-plan <path>                # use the given plan file
+/run-plan model                 # show this skill's global model override
+/run-plan model sol             # use gpt-6.1-sol for future runs across projects
+/run-plan model <MODEL_ID>      # set an exact model ID (astra is also a shortcut)
+/run-plan model reset           # inherit Codex configuration again
+/run-plan-model [MODEL_ID|reset] # separate slash-command alias for model settings
 /run-plan list                  # list all known runs (alive + recent exits)
 /run-plan status                # if exactly one run is alive, target it; otherwise list
 /run-plan status <slot|path>    # report state of a specific slot
@@ -72,6 +78,10 @@ the second launch — rename one of the plans to disambiguate.
 
 Parse the user's input:
 
+- First token `model` → run `bash <this-skill-directory>/scripts/model.sh`
+  with the remaining argument, safely quoted (no argument means show). Use
+  the same behavior as [run-plan-model](skills/run-plan-model/SKILL.md),
+  report its result, then stop. Do not run pre-flight or launch a plan.
 - First token `list` → jump to **Step 5a: list**.
 - First token `status` → jump to **Step 5: status** (with optional second
   arg as slot or plan path).
@@ -226,7 +236,21 @@ echo "prompt: $PROMPT_FILE ($(wc -l < "$PROMPT_FILE") lines, $(wc -c < "$PROMPT_
 
 ## Step 3: Launch codex (detached)
 
+Resolve `RUN_PLAN_SKILL_DIR` to the directory of this loaded `SKILL.md` if
+it is not installed at `~/.claude/skills/run-plan`. Read the model setting
+at each launch, including retries; never infer it from the outer chat model.
+Unset/reset preserves Codex's model default. Reasoning effort still comes
+from Codex configuration. Model changes affect new runs only.
+
 ```bash
+# Snapshot the shared override before writing state or starting a process.
+RUN_PLAN_MODEL=$(bash "${RUN_PLAN_SKILL_DIR:-$HOME/.claude/skills/run-plan}/scripts/model.sh" get) || exit 1
+MODEL_ARGS=()
+if [ -n "$RUN_PLAN_MODEL" ]; then
+  MODEL_ARGS=(--model "$RUN_PLAN_MODEL")
+fi
+echo "model: ${RUN_PLAN_MODEL:-inherit (Codex configuration)}"
+
 LOG_FILE=/tmp/run-plan-codex-$SLOT.log
 PID_FILE=/tmp/run-plan-codex-$SLOT.pid
 START_REF_FILE=/tmp/run-plan-start-ref-$SLOT.txt
@@ -240,6 +264,7 @@ pwd > "$CWD_FILE"
   echo "plan=$PLAN_ABS"
   echo "branch=$BRANCH"
   echo "cwd=$CWD"
+  echo "model=${RUN_PLAN_MODEL:-inherit}"
   echo "started=$(date +%Y-%m-%dT%H:%M:%S)"
   # Record the Discord channel that launched this run so the wakeup
   # legacy adapter can route the done marker back. Injected by
@@ -261,14 +286,11 @@ fi
 # Pass the prompt via stdin (`-` reads prompt from stdin) instead of argv —
 # avoids macOS ARG_MAX (~256KB) limits if a plan ever gets very large.
 #
-# NO `-c model_reasoning_effort=...` here. This used to hardcode "high",
-# which silently overrode ~/.codex/config.toml — `-c` beats the config file,
-# so a user who deliberately set "low" globally still paid for high on every
-# run and had no way to see why except reading this skill. Model/effort is
-# the user's global setting; the skill does not get a vote. Override for one
-# run by appending `-c 'model_reasoning_effort="high"'` by hand.
+# Only the explicitly configured run-plan model is overridden.
+# Do not hardcode model_reasoning_effort; inherit the user's Codex setting.
 nohup codex exec - \
   --dangerously-bypass-approvals-and-sandbox \
+  "${MODEL_ARGS[@]}" \
   < "$PROMPT_FILE" > "$LOG_FILE" 2>&1 &
 CODEX_PID=$!
 echo "$CODEX_PID" > "$PID_FILE"
