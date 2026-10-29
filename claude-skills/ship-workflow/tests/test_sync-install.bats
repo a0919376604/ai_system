@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# R-004 §3.3: sync.sh installs ship-workflow's four skills and six commands as
+# R-004 §3.3: sync.sh installs ship-workflow's four skills and seven commands as
 # symlinks into this checkout, and backs up the two config files the repo keeps. The
 # old sync.sh mirrored all of ~/.claude/skills with rsync: its restore would have
 # reinstalled 40 removed skills and overwritten a newer global CLAUDE.md.
@@ -15,9 +15,12 @@ setup() {
   mkdir -p "$R/claude-skills/ship-workflow/commands" "$R/claude-skills/run-plan" \
            "$R/claude-skills/code-review-skill" "$R/claude-skills/pr-review" "$R/config/claude" "$R/devsync"
   cp "$SHIP_SKILL_ROOT/../../sync.sh" "$R/sync.sh"
-  for c in ship-next ship-compound ship-idea ship-land ship-init ship-refactor-scan; do
+  for c in ship-next ship-compound ship-idea ship-land ship-init ship-refactor-scan ship-refactor-brand; do
     echo "$c" > "$R/claude-skills/ship-workflow/commands/$c.md"
   done
+  mkdir -p "$R/claude-skills/ship-workflow/skills/ship-refactor-brand" "$HOME/.codex/skills/ship-refactor-brand"
+  echo "tracked brand skill" > "$R/claude-skills/ship-workflow/skills/ship-refactor-brand/SKILL.md"
+  echo "personal brand copy" > "$HOME/.codex/skills/ship-refactor-brand/SKILL.md"
   echo "global rules" > "$R/config/claude/CLAUDE.md"
   echo "[defaults]" > "$R/devsync/config.toml"
   # A machine as it stood on 2026-10-23: a real run-plan copy, no code-review-skill,
@@ -36,16 +39,20 @@ snapshot() {  # every path under HOME, with link targets
    done)
 }
 
-@test "restore links the 4 skills and 6 commands, moves a real dir aside, clears only our dangling links" {
+@test "restore links the 4 skills, 7 commands and the Codex brand skill, moves a real dir aside, clears only our dangling links" {
   run bash "$R/sync.sh" restore --yes
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   for s in ship-workflow run-plan code-review-skill pr-review; do
     [ "$(readlink "$HOME/.claude/skills/$s")" = "$R/claude-skills/$s" ] || { echo "skill $s"; return 1; }
   done
-  for c in ship-next ship-compound ship-idea ship-land ship-init ship-refactor-scan; do
+  for c in ship-next ship-compound ship-idea ship-land ship-init ship-refactor-scan ship-refactor-brand; do
     [ "$(readlink "$HOME/.claude/commands/$c.md")" = "$HOME/.claude/skills/ship-workflow/commands/$c.md" ] || { echo "cmd $c"; return 1; }
     [ -f "$HOME/.claude/commands/$c.md" ] || return 1
   done
+  [ "$(readlink "$HOME/.codex/skills/ship-refactor-brand")" = "$R/claude-skills/ship-workflow/skills/ship-refactor-brand" ] || return 1
+  [ "$(cat "$HOME/.codex/skills/ship-refactor-brand/SKILL.md")" = "tracked brand skill" ] || return 1
+  brand_kept=$(ls -d "$HOME/.claude/.ai_system-displaced/ship-refactor-brand-"* 2>/dev/null | head -1)
+  [ -n "$brand_kept" ] && [ "$(cat "$brand_kept/SKILL.md")" = "personal brand copy" ] || return 1
   moved=$(ls -d "$HOME/.claude/.ai_system-displaced/run-plan-"* 2>/dev/null | head -1)
   [ -n "$moved" ] && grep -qF "old copy" "$moved/SKILL.md" || { echo "run-plan copy not kept"; return 1; }
   [ ! -L "$HOME/.claude/commands/ship-arch.md" ] || { echo "our dangling link kept"; return 1; }

@@ -43,7 +43,8 @@ cd ~/Desktop/code/ai_system
 | repo 內 | 安裝到 | 內容 |
 |---|---|---|
 | `claude-skills/` | `~/.claude/skills/`（symlink） | ship-workflow、`run-plan`（codex 執行器）、`code-review-skill`（Phase 6 的 review） |
-| `claude-skills/ship-workflow/commands/` | `~/.claude/commands/`（symlink） | `/ship-next`、`/ship-compound`、`/ship-idea`、`/ship-land`、`/ship-init` |
+| `claude-skills/ship-workflow/commands/` | `~/.claude/commands/`（symlink） | `/ship-next`、`/ship-compound`、`/ship-idea`、`/ship-land`、`/ship-init`、`/ship-refactor-scan`、`/ship-refactor-brand` |
+| `claude-skills/ship-workflow/skills/ship-refactor-brand/` | `~/.codex/skills/ship-refactor-brand`（symlink） | 品牌一致性與共用元件盤點，提出候選供選入 Roadmap |
 | `config/claude/CLAUDE.md` | `~/.claude/CLAUDE.md` | 全域規則的備份；內容不同時會先問你 |
 | `devsync/` | `~/.local/bin/devsync` | 同步到 dl01–dl04 的 CLI，連同 mutagen、uv、SSH 設定 |
 
@@ -68,6 +69,10 @@ cp ~/.claude/skills/ship-workflow/examples/ship-workflow.example.yml ~/.claude/s
 ```
 
 主 checkout 要停在 `main`：本機每個 session 跑的都是這個 checkout，連未提交的修改也算。不在 `main` 或有未提交修改時，`/ship-next` 會警告。
+
+### 品牌與共用元件整頓
+
+在目標 repo 呼叫 `/ship-refactor-brand`（Codex 使用 `$ship-refactor-brand`），可帶頁面或子系統範圍。它會盤點品牌不一致與重複元件，提出整合方案、遷移順序與驗收條件，產生人看的 HTML 與 AI 用的 Markdown 報告。選定候選後才加入 Roadmap 的 Next；實作交給 `/ship-next R-NNN`。
 
 ### 用 Roadmap 開發功能
 

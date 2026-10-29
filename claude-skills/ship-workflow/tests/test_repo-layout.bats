@@ -24,9 +24,9 @@ setup() { export REPO_ROOT="$(cd "$SHIP_SKILL_ROOT/../.." && pwd)"; }
   [ ! -e "$d/.git" ]
 }
 
-@test "ship-workflow keeps exactly the six workflow commands" {
+@test "ship-workflow keeps exactly the seven workflow commands" {
   run bash -c "ls -1 '$SHIP_SKILL_ROOT/commands' | sort | tr '\n' ' '"
-  [ "$output" = "ship-compound.md ship-idea.md ship-init.md ship-land.md ship-next.md ship-refactor-scan.md " ]
+  [ "$output" = "ship-compound.md ship-idea.md ship-init.md ship-land.md ship-next.md ship-refactor-brand.md ship-refactor-scan.md " ]
 }
 
 @test "no kept file sends anyone to a removed command or the old devsync install" {

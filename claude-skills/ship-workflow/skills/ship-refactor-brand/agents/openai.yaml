@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ship Refactor Brand"
+  short_description: "盤點網站品牌與重複元件，提出整合方案和遷移順序，再選擇加入 Roadmap"
+  default_prompt: "使用 $ship-refactor-brand 盤點這個網站的品牌一致性與重複元件，提出整合方案、遷移順序及驗收條件，產生報告後讓我選擇加入 Roadmap。"

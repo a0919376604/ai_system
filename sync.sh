@@ -2,9 +2,10 @@
 # sync.sh — install ai_system on this machine, and back up the two config files it keeps.
 #
 # ai_system is ship-workflow's home (R-004). `restore` links its four skills and
-# ship-workflow's six commands into ~/.claude, so every session runs this checkout;
+# ship-workflow's seven commands into ~/.claude, so every session runs this checkout;
 # `backup` copies the global CLAUDE.md and the devsync config into the repo. `restore`
-# also copies the Roadmap 檢視 Obsidian plugin (R-013) into the vault.
+# also links the shared brand skill into ~/.codex/skills and copies the Roadmap
+# 檢視 Obsidian plugin (R-013) into the vault.
 #
 # It used to mirror all of ~/.claude/skills with rsync. That mirror drifted: its
 # restore would have reinstalled 40 removed skills, overwritten a newer global
@@ -23,7 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_HOME="$HOME/.claude"
 DISPLACED="$CLAUDE_HOME/.ai_system-displaced"
 SKILLS=(ship-workflow run-plan code-review-skill pr-review)
-COMMANDS=(ship-next ship-compound ship-idea ship-land ship-init ship-refactor-scan)
+COMMANDS=(ship-next ship-compound ship-idea ship-land ship-init ship-refactor-scan ship-refactor-brand)
 # live::repo
 CONFIG_FILES=(
   "$HOME/.claude/CLAUDE.md::$SCRIPT_DIR/config/claude/CLAUDE.md"
@@ -63,6 +64,7 @@ links() {
   for c in "${COMMANDS[@]}"; do
     echo "$CLAUDE_HOME/commands/$c.md::$CLAUDE_HOME/skills/ship-workflow/commands/$c.md"
   done
+  echo "$HOME/.codex/skills/ship-refactor-brand::$SCRIPT_DIR/claude-skills/ship-workflow/skills/ship-refactor-brand"
 }
 
 # link_state <link> <target> — ok | target missing | missing | wrong target | blocked by a real file
@@ -296,7 +298,7 @@ usage() {
   cat <<EOF
 ${C_BOLD}sync.sh${C_RESET} — install ai_system (ship-workflow + run-plan + code-review-skill + pr-review)
 
-  $(basename "$0") restore [--yes] [--dry-run]  link the skills and commands into ~/.claude,
+  $(basename "$0") restore [--yes] [--dry-run]  link Claude skills/commands and the Codex brand skill,
                                               restore the config files, copy the Obsidian
                                               plugin into the vault, run devsync bootstrap
   $(basename "$0") backup [--dry-run]           copy ~/.claude/CLAUDE.md and the devsync config here

@@ -1,6 +1,6 @@
 # Ship Workflow
 
-A Claude Code skill: a product development workflow built around `/ship-next`, with six commands installed once per machine.
+A Claude Code skill: a product development workflow built around `/ship-next`, with seven commands installed once per machine.
 
 ## What it gives you
 
@@ -18,7 +18,7 @@ This skill lives in `ai_system/claude-skills/ship-workflow/`. In the ai_system c
 on `main`, run once per machine:
 
 ```bash
-./sync.sh restore   # links ship-workflow, run-plan, code-review-skill, pr-review and the 6 commands
+./sync.sh restore   # links ship-workflow, run-plan, code-review-skill, pr-review and the 7 commands
 ./sync.sh status    # every line should say ok
 ```
 
@@ -36,6 +36,7 @@ cd /path/to/your/repo
 | `/ship-compound` | Learning + promote patterns + close (ship-next Phase 8) |
 | `/ship-idea` | Capture idea (IDEA-NNN); ship-next files review findings with it |
 | `/ship-refactor-scan [<direction>]` | Scan for deepening opportunities with Pocock's improve-codebase-architecture (churn × lines hotspots, HTML report in the vault); picked candidates become 🔜 Next rows for /ship-next (R-025) |
+| `/ship-refactor-brand [<direction>]` | Scan brand consistency and duplicate UI; propose integration and migration order in linked reports; selected candidates enter Next for `/ship-next` |
 | `/ship-land` | After an mr review merges, run `/ship-compound` at `origin/<base>` in a throwaway worktree, push with `[skip ci]`, then clean up (R-008) |
 | `/ship-init` | Scaffold a repo; `--upgrade` removes old per-repo command copies |
 
@@ -101,3 +102,5 @@ pipeline or check exists; otherwise they warn and wait for a human.
 | squash | one-way | push + PR/MR, in review, `/ship-land` after a human merges |
 | mr | two-way | push + MR, then auto-merge once the MR has a pipeline |
 | mr | one-way | push + MR, in review, waits for a human |
+
+The same brand workflow is installed in Codex as `$ship-refactor-brand`. Both entry points use `skills/ship-refactor-brand/` in this checkout. `sync.sh restore` preserves any existing personal copy before linking it.
