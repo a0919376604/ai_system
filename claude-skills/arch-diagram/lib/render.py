@@ -33,6 +33,14 @@ vertical-align:top;overflow-wrap:anywhere}th{color:#94a3b8}
 footer{border-top:1px solid #1e293b;padding-top:20px}a{color:#22d3ee}
 .pack a{display:block;border:1px solid #1e293b;padding:20px;margin:16px 0;text-decoration:none}
 .pack span{display:block;color:#94a3b8;margin-top:8px}
+.pan-hint{display:none}
+@media (max-width:700px){main{padding:16px}h1{font-size:20px}.sub{font-size:12px;overflow-wrap:anywhere}
+.pan{overflow-x:auto;border:1px solid #1e293b;border-radius:8px}
+.pan svg{width:calc(var(--w)*0.8);max-width:none}.pan-hint{display:block;color:#94a3b8;font-size:12px;margin:6px 0 8px}
+table.cond,.cond thead,.cond tbody,.cond tr,.cond td{display:block}.cond thead{display:none}
+.cond tr{border:1px solid #1e293b;border-radius:8px;margin:12px 0;padding:10px 12px}.cond td{border:0;padding:3px 0}
+.cond td:nth-child(1){font-size:15px;font-weight:700;overflow-wrap:anywhere}.cond td:nth-child(2)::before{content:"做什麼　";color:#64748b}
+.cond td:nth-child(3)::before{content:"條件　";color:#64748b}.cond td:nth-child(4){font-size:11px;overflow-wrap:anywhere}}
 """
 
 
@@ -107,9 +115,13 @@ def _num(v):
 
 def render_svg(spec: dict, uid: str, route: Optional[dict] = None) -> str:
     w, h = spec["canvas"]["w"], spec["canvas"]["h"]
+    for v in (w, h):
+        # canvas.w reaches a style attribute: only a positive number may get there.
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 < v < float("inf"):
+            raise SpecError("canvas.w and canvas.h must be positive numbers")
     ident = attr(uid)
-    parts = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" role="img" aria-label="{}">'
-             .format(attr(w), attr(h), attr(spec["title"])), '<defs>']
+    parts = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" role="img" aria-label="{}" style="--w:{}px">'
+             .format(attr(w), attr(h), attr(spec["title"]), attr(w)), '<defs>']
     parts.append('<pattern id="{}-grid" width="40" height="40" patternUnits="userSpaceOnUse">'
                  '<path d="M40 0 H0 V40" fill="none" stroke="#1e293b" stroke-width="0.5"/></pattern>'.format(ident))
     for name, color in (("arrow", "#64748b"), ("amber", "#fbbf24")):
@@ -186,6 +198,11 @@ def legend_items(spec: dict) -> list:
     return [(k, KIND_NAMES[k]) for k in KINDS if k in used]
 
 
+def pan(svg: str) -> str:
+    """A diagram in a horizontally scrollable box; the hint shows only on phones."""
+    return '<p class="pan-hint">← 左右滑動看整張圖 →</p><div class="pan">' + svg + '</div>'
+
+
 def render_page(spec: dict) -> str:
     topic = spec["topic"]
     if not re.fullmatch(r"[a-z0-9-]+", topic):
@@ -193,11 +210,11 @@ def render_page(spec: dict) -> str:
     repo = spec["repo"]
     parts = ['<h1>{}</h1>'.format(esc(spec["title"])),
              '<p class="sub">{}</p>'.format(esc(" · ".join(filter(None, [spec.get("subtitle", ""), repo["name"], repo["commit"][:7]])))),
-             '<section class="diagram">', render_svg(spec, "{}-0".format(topic)), '</section>']
+             '<section class="diagram">', pan(render_svg(spec, "{}-0".format(topic))), '</section>']
     parts.append('<div class="legend">' + "".join('<span style="color:{}">{}</span>'.format(KINDS[k][1], esc(label)) for k, label in legend_items(spec)) + '</div>')
     for i, route in enumerate(spec.get("routes", [])):
         parts.extend(['<section class="route">', '<h2>{}</h2>'.format(esc(route["name"])),
-                      render_svg(spec, "{}-r{}".format(topic, i), route), '<ol class="steps">'])
+                      pan(render_svg(spec, "{}-r{}".format(topic, i), route)), '<ol class="steps">'])
         for step in route.get("steps", []):
             parts.append('<li>{}<span style="color:{}">{}</span></li>'.format(
                 esc(step["title"]), TONES[step.get("tone", "body")], esc(step.get("note", ""))))

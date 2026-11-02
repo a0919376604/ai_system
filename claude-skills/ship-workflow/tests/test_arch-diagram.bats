@@ -339,3 +339,45 @@ PY
   python3 "$AD/render.py" index "$S/pack" "$S/pack/index.html"
   grep -qF '<h1>架構圖包 · demo</h1>' "$S/pack/index.html" || return 1
 }
+
+@test "every diagram sits in one pan box under the swipe hint" {
+  python3 "$AD/render.py" page "$FX/clean.json" "$S/a.html"
+  python3 "$AD/render.py" page "$FX/minimal.json" "$S/m.html"
+  python3 - "$S/a.html" "$S/m.html" <<'PY'
+import re, sys
+for path, n in ((sys.argv[1], 2), (sys.argv[2], 1)):
+    s = open(path, encoding='utf-8').read()
+    pairs = re.findall(r'<p class="pan-hint">← 左右滑動看整張圖 →</p><div class="pan"><svg [^>]*style="--w:(\d+)px"', s)
+    assert len(pairs) == n, (path, pairs)
+    assert set(pairs) == {'600'}, pairs
+    assert s.count('<div class="pan">') == s.count('<svg ') == n, path
+PY
+}
+
+@test "phone CSS hides the hint by default and turns the table into cards below 700px" {
+  python3 "$AD/render.py" page "$FX/clean.json" "$S/a.html"
+  python3 - "$S/a.html" <<'PY'
+import sys
+s = open(sys.argv[1], encoding='utf-8').read()
+css = s[s.index('<style>'):s.index('</style>')]
+hidden, media = css.find('.pan-hint{display:none}'), css.find('@media (max-width:700px)')
+assert -1 < hidden < media, (hidden, media)
+block = css[media:]
+assert css.count('@media (max-width:700px)') == 1
+for rule in ('.pan-hint{display:block', 'calc(var(--w)*0.8)', '.cond thead{display:none}', 'content:"做什麼　"', 'content:"條件　"', 'font-weight:700;overflow-wrap:anywhere'):
+    assert rule in block, rule
+PY
+}
+
+@test "a non-numeric canvas width is refused, not written into the style attribute" {
+  python3 - "$FX/minimal.json" "$S/m.json" <<'PY'
+import json, sys
+s = json.load(open(sys.argv[1], encoding='utf-8'))
+s['canvas']['w'] = '1;background-image:url(//127.0.0.1:8765/beacon);--z:0'
+with open(sys.argv[2], 'w', encoding='utf-8') as f:
+    json.dump(s, f)
+PY
+  run python3 "$AD/render.py" page "$S/m.json" "$S/m.html"
+  [ "$status" -eq 2 ] || { echo "$output"; return 1; }
+  [ ! -e "$S/m.html" ] || return 1
+}
