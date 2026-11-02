@@ -56,3 +56,4 @@
 | 2026-11-03 01:00 | ship-idea | IDEA-002 | P6 major from R-029: test 'node titles are bold white; centered without lines, left-aligned with lines' pins pixel x, font-weight and fill that the spec's Seams table does not declare [seam-violation] — add a node-text seam row or assert only the anchors (test_arch-diagram.bats:303) | n |
 | 2026-11-03 01:00 | ship-idea | IDEA-003 | P6 major from R-029: nodes[].graph_id (draw a StateGraph node twice, e.g. END2 → END) is implemented and used by the line-oa pack but not declared in the R-029 spec [spec:extra] — declare it in the arch-diagram spec-format contract (check.py:241, spec-format.md:20) | n |
 | 2026-11-03 01:01 | ship-compound | R-029 | shipped | n |
+| 2026-11-03 01:02 | ship-next | R-029 | shipped (review: blocking=0, major=3, ponytail=2, spec_gaps=0, door=two-way, xreview=skipped, ratio 709bp vs baseline 1590bp, codex: 1 round(s) done_with_concerns) | n |
