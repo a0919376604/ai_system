@@ -57,3 +57,4 @@
 | 2026-11-03 01:00 | ship-idea | IDEA-003 | P6 major from R-029: nodes[].graph_id (draw a StateGraph node twice, e.g. END2 → END) is implemented and used by the line-oa pack but not declared in the R-029 spec [spec:extra] — declare it in the arch-diagram spec-format contract (check.py:241, spec-format.md:20) | n |
 | 2026-11-03 01:01 | ship-compound | R-029 | shipped | n |
 | 2026-11-03 01:02 | ship-next | R-029 | shipped (review: blocking=0, major=3, ponytail=2, spec_gaps=0, door=two-way, xreview=skipped, ratio 709bp vs baseline 1590bp, codex: 1 round(s) done_with_concerns) | n |
+| 2026-11-03 01:52 | ship-compound | R-030 | shipped | n |
