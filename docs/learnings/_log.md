@@ -58,3 +58,4 @@
 | 2026-11-03 01:01 | ship-compound | R-029 | shipped | n |
 | 2026-11-03 01:02 | ship-next | R-029 | shipped (review: blocking=0, major=3, ponytail=2, spec_gaps=0, door=two-way, xreview=skipped, ratio 709bp vs baseline 1590bp, codex: 1 round(s) done_with_concerns) | n |
 | 2026-11-03 01:52 | ship-compound | R-030 | shipped | n |
+| 2026-11-03 01:52 | ship-next | R-030 | shipped (review: blocking=0, major=0, ponytail=1, spec_gaps=0, door=two-way, xreview=0/0, ratio 1555bp vs baseline 1590bp) | n |
