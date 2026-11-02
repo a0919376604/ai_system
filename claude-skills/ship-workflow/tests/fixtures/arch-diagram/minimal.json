@@ -1,0 +1,53 @@
+{
+  "topic": "demo",
+  "title": "Demo 架構",
+  "subtitle": "測試用",
+  "repo": {
+    "name": "demo",
+    "commit": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "canvas": {
+    "w": 600,
+    "h": 300
+  },
+  "nodes": [
+    {
+      "id": "a",
+      "kind": "be",
+      "x": 20,
+      "y": 40,
+      "w": 160,
+      "h": 60,
+      "title": "Webhook",
+      "sub": "api/x.py",
+      "lines": [
+        {
+          "text": "條件：簽章不對 → 拒絕",
+          "tone": "cond"
+        }
+      ],
+      "src": [
+        "api/x.py:1-9"
+      ]
+    },
+    {
+      "id": "b",
+      "kind": "db",
+      "x": 300,
+      "y": 40,
+      "w": 160,
+      "h": 60,
+      "title": "PostgreSQL"
+    }
+  ],
+  "edges": [
+    {
+      "from": "a",
+      "to": "b",
+      "path": "M180 70 H300",
+      "label": "寫入",
+      "lx": 240,
+      "ly": 60
+    }
+  ]
+}

@@ -1,14 +1,14 @@
 # ai_system — repo rules
 
 This repo is ship-workflow's home: `claude-skills/` holds `ship-workflow`, plus `run-plan`,
-`code-review-skill` and `pr-review`, and nothing else (R-004).
+`code-review-skill`, `pr-review`, `weekly-report` and `arch-diagram`, and nothing else (R-004, R-029).
 ship-next Phase 6's review steps live in `pr-review` (R-027).
 `devsync/` is the separate remote-dev tool; leave it as it is. `obsidian-roadmap-view/` is
 the Roadmap 檢視 Obsidian plugin (R-013): plain JS, no build, no npm dependencies.
 
 ## The main checkout stays on `main`
 
-`./sync.sh restore` links `~/.claude/skills/{ship-workflow,run-plan,code-review-skill,pr-review}`
+`./sync.sh restore` links `~/.claude/skills/{ship-workflow,run-plan,code-review-skill,pr-review,weekly-report,arch-diagram}`
 and the seven ship-* commands into this checkout's working tree. Every session on the
 machine therefore runs whatever this checkout holds, uncommitted edits included.
 

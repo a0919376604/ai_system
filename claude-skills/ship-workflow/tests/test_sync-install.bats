@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# R-004 §3.3: sync.sh installs ship-workflow's four skills and seven commands as
+# R-004 §3.3: sync.sh installs ship-workflow's six skills and seven commands as
 # symlinks into this checkout, and backs up the two config files the repo keeps. The
 # old sync.sh mirrored all of ~/.claude/skills with rsync: its restore would have
 # reinstalled 40 removed skills and overwritten a newer global CLAUDE.md.
@@ -13,7 +13,8 @@ setup() {
   export AI_SYSTEM_SKIP_DEVSYNC=1
   R="$SCRATCH/ai_system"; export R
   mkdir -p "$R/claude-skills/ship-workflow/commands" "$R/claude-skills/run-plan" \
-           "$R/claude-skills/code-review-skill" "$R/claude-skills/pr-review" "$R/config/claude" "$R/devsync"
+           "$R/claude-skills/code-review-skill" "$R/claude-skills/pr-review" \
+           "$R/claude-skills/weekly-report" "$R/claude-skills/arch-diagram" "$R/config/claude" "$R/devsync"
   cp "$SHIP_SKILL_ROOT/../../sync.sh" "$R/sync.sh"
   mkdir -p "$R/claude-skills/run-plan/skills/run-plan-model"
   echo 'run-plan-model skill' > "$R/claude-skills/run-plan/skills/run-plan-model/SKILL.md"
@@ -50,10 +51,10 @@ snapshot() {  # every path under HOME, with link targets
   [ "$status" -eq 0 ]
 }
 
-@test "restore links the 4 skills, 7 commands and the Codex brand skill, moves a real dir aside, clears only our dangling links" {
+@test "restore links the 6 skills, 7 commands and the Codex brand skill, moves a real dir aside, clears only our dangling links" {
   run bash "$R/sync.sh" restore --yes
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  for s in ship-workflow run-plan code-review-skill pr-review; do
+  for s in ship-workflow run-plan code-review-skill pr-review weekly-report arch-diagram; do
     [ "$(readlink "$HOME/.claude/skills/$s")" = "$R/claude-skills/$s" ] || { echo "skill $s"; return 1; }
   done
   for c in ship-next ship-compound ship-idea ship-land ship-init ship-refactor-scan ship-refactor-brand; do
@@ -104,7 +105,7 @@ snapshot() {  # every path under HOME, with link targets
   [ "$status" -eq 0 ] || return 1
   [ "$(cat "$R/config/claude/CLAUDE.md")" = "live global rules" ] || return 1
   [ "$(cat "$R/devsync/config.toml")" = "[live]" ] || return 1
-  [ "$(ls "$R/claude-skills" | sort | tr '\n' ' ')" = "code-review-skill pr-review run-plan ship-workflow " ]
+  [ "$(ls "$R/claude-skills" | sort | tr '\n' ' ')" = "arch-diagram code-review-skill pr-review run-plan ship-workflow weekly-report " ]
 }
 
 @test "status exits 0 when every link is right and 1 naming a missing one" {

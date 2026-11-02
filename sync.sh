@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # sync.sh — install ai_system on this machine, and back up the two config files it keeps.
 #
-# ai_system is ship-workflow's home (R-004). `restore` links its four skills and
+# ai_system is ship-workflow's home (R-004). `restore` links its six skills and
 # ship-workflow's seven commands into ~/.claude, so every session runs this checkout;
 # `backup` copies the global CLAUDE.md and the devsync config into the repo. `restore`
 # also links the shared brand skill into ~/.codex/skills and copies the Roadmap
@@ -23,7 +23,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_HOME="$HOME/.claude"
 DISPLACED="$CLAUDE_HOME/.ai_system-displaced"
-SKILLS=(ship-workflow run-plan code-review-skill pr-review)
+SKILLS=(ship-workflow run-plan code-review-skill pr-review weekly-report arch-diagram)
 COMMANDS=(ship-next ship-compound ship-idea ship-land ship-init ship-refactor-scan ship-refactor-brand)
 # live::repo
 CONFIG_FILES=(
@@ -298,7 +298,7 @@ cmd_status() {
 
 usage() {
   cat <<EOF
-${C_BOLD}sync.sh${C_RESET} — install ai_system (ship-workflow + run-plan + code-review-skill + pr-review)
+${C_BOLD}sync.sh${C_RESET} — install ai_system (ship-workflow + run-plan + code-review-skill + pr-review + weekly-report + arch-diagram)
 
   $(basename "$0") restore [--yes] [--dry-run]  link Claude skills/commands and the Codex brand skill,
                                               restore the config files, copy the Obsidian

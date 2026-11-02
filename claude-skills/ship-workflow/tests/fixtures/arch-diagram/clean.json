@@ -1,0 +1,16 @@
+{
+  "topic": "demo", "title": "Demo 架構", "subtitle": "測試用",
+  "repo": {"name": "demo", "commit": "0123456789abcdef0123456789abcdef01234567"},
+  "canvas": {"w": 600, "h": 300},
+  "regions": [{"x": 10, "y": 10, "w": 580, "h": 120, "color": "#fbbf24", "label": "EKS"}],
+  "nodes": [
+    {"id": "a", "kind": "be", "x": 20, "y": 40, "w": 160, "h": 60, "title": "Webhook", "sub": "api/x.py", "lines": [{"text": "條件：簽章不對 → 拒絕", "tone": "cond"}], "src": ["api/x.py:1-9"]},
+    {"id": "b", "kind": "db", "x": 300, "y": 40, "w": 160, "h": 60, "title": "PostgreSQL"}
+  ],
+  "edges": [{"from": "a", "to": "b", "path": "M180 70 H300", "label": "寫入", "lx": 240, "ly": 60}],
+  "routes": [{"name": "一則訊息", "nodes": ["a", "b"], "edges": ["a->b"], "badges": [{"n": 1, "x": 190, "y": 40}], "steps": [{"title": "打 webhook", "note": "簽章不對就拒絕", "tone": "cond"}]}],
+  "conditions": [
+    {"node": "a", "does": "收事件", "when": "簽章對 → 排隊", "src": "api/x.py:1-9", "warn": false},
+    {"node": ["a", "b"], "does": "寫入", "when": "重複 → 略過", "src": "x.py:2-3", "warn": true}
+  ]
+}

@@ -1,13 +1,13 @@
 #!/usr/bin/env bats
-# R-004: ai_system is ship-workflow's home. It holds ship-workflow and the three skills
-# ship-next needs — run-plan, code-review-skill and pr-review — and nothing else.
+# R-004, R-029: ai_system holds exactly six skills: ship-workflow, run-plan,
+# code-review-skill, pr-review, weekly-report and arch-diagram.
 load helpers
 
 setup() { export REPO_ROOT="$(cd "$SHIP_SKILL_ROOT/../.." && pwd)"; }
 
-@test "claude-skills holds exactly ship-workflow, run-plan, code-review-skill and pr-review" {
+@test "claude-skills holds exactly six skills" {
   run bash -c "ls -1 '$REPO_ROOT/claude-skills' | sort | tr '\n' ' '"
-  [ "$output" = "code-review-skill pr-review run-plan ship-workflow " ]
+  [ "$output" = "arch-diagram code-review-skill pr-review run-plan ship-workflow weekly-report " ]
 }
 
 @test "run-plan carries the REPAIR RULE" {
@@ -72,4 +72,10 @@ setup() { export REPO_ROOT="$(cd "$SHIP_SKILL_ROOT/../.." && pwd)"; }
 @test "the repo rules name the plugin's test command and its install" {
   grep -qF 'node --test obsidian-roadmap-view/test/' "$REPO_ROOT/CLAUDE.md"
   grep -qF 'Roadmap 檢視' "$REPO_ROOT/README.md"
+}
+
+@test "CLAUDE.md names the six skills" {
+  rule=$(grep -F 'R-004' "$REPO_ROOT/CLAUDE.md")
+  echo "$rule" | grep -qF 'weekly-report' || return 1
+  echo "$rule" | grep -qF 'arch-diagram' || return 1
 }
