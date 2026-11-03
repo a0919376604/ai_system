@@ -11,7 +11,7 @@ impact: low
 confidence: high
 target-user: "repo owner invoking the skill"
 dependencies: []
-related-roadmap-item: null
+related-roadmap-item: R-031
 ---
 
 ## For future Claude
