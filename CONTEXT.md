@@ -28,3 +28,6 @@
 - **diagram spec** — one JSON per topic: nodes, edges and coordinates chosen by Claude, rendered by `render.py`, gated by `check.py`.
 - **condition table** — the three-column table under a diagram: 做什麼 / 什麼條件走到這、離開時往哪 / 程式碼, ⚠ only for a cited risk.
 - **route overlay** — a copy of a diagram with one route's nodes and edges in amber, the rest at 0.2, plus numbered badges and steps.
+- **brand direction (品牌方向)** — `/ship-refactor-brand` step 1 (R-032): one of three tasteskill-v2 directions dealt for the scope's main screen, built with real content and compared in `<vault project>/Proposals/mockups/refactor-brand-<stamp>-directions-mockup.html` (`.panel.optA|B|C`, a mix `.panel.optD`). The operator's pick is the proposed authority the inventory measures against.
+- **direction record** — `<vault project>/Reports/refactor-brand-direction.md`, one `## app` / `## page` section per surface; later brand scans reuse the pick until the operator says 「重選」 (R-032).
+- **taste v2** — tasteskill v2 (`design-taste-frontend`), the design engine `/ship-refactor-brand` calls for directions, builds and lint; an external `npx skills` install, never vendored into `claude-skills/` (R-032).
