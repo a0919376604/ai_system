@@ -18,6 +18,29 @@ KINDS = {
 TONES = {"body": "#cbd5e1", "cond": "#fcd34d", "warn": "#fb7185", "muted": "#94a3b8"}
 SHAPES = ("box", "pill")
 PAGES = ("diagram", "table", "cards", "seams")
+INDEX_RANKS = {topic: i for i, topic in enumerate(("overview", "features", "seams", "jobs"))}
+SEAMS_VERDICTS = {"easy": "容易換", "medium": "要改一些", "hard": "很難換"}
+README_TITLE = "# 架構圖包 · {}"
+README_COMMIT = "Commit {}"
+README_READ = """## 怎麼看這包
+
+在 GitLab 上，先讀這份 README 的重點。要看完整頁面，請 clone 或下載這個資料夾，
+再用瀏覽器開啟 `html/index.html`；頁面可離線閱讀，也支援手機。"""
+README_PAGES = "## 每一頁"
+README_SEAMS_HEADER = ("| 系統 | 能不能換 | 接觸檔 | 漏進核心 |", "| --- | --- | --- | --- |")
+README_OTHER = "其他"
+README_GROUP = "- {}：{} 個"
+README_CARDS = "共 {} 個：{}"
+README_HIGHLIGHTS = "節點契約重點"
+README_UPDATE = """## 怎麼更新
+
+從 repo 重新執行 `/draw-arch`。以下指令會回報過期的頁面：
+
+```bash
+python3 <skill>/lib/check.py specs/<topic>.json --repo <repo>
+```
+
+`specs/` 裡的檔案是來源；`html/` 與 `README.md` 都由來源產生。"""
 CSS = """
 *{box-sizing:border-box}body{margin:0;background:#020617;color:#cbd5e1;
 font-family:'JetBrains Mono',SFMono-Regular,Menlo,'PingFang TC',monospace;font-size:13px}
@@ -333,7 +356,7 @@ def render_cards(spec: dict) -> str:
 
 def render_seams(spec: dict) -> str:
     parts = page_header(spec)
-    verdicts = {"easy": "容易換", "medium": "要改一些", "hard": "很難換"}
+    verdicts = SEAMS_VERDICTS
     labels = ("系統", "能不能換", "接觸檔", "漏進核心", "一句話")
     parts.extend(['<table class="cat sum">', '<thead><tr>' + ''.join(
         '<th>{}</th>'.format(label) for label in labels) + '</tr></thead>', '<tbody>'])
@@ -445,7 +468,7 @@ def render_index(specs: list) -> str:
     repos = sorted({spec["repo"]["name"] for spec in specs})
     title = " · ".join(["架構圖包"] + repos)
     parts = ['<h1>{}</h1>'.format(esc(title)), '<nav class="pack">']
-    ranks = {topic: i for i, topic in enumerate(("overview", "features", "seams", "jobs"))}
+    ranks = INDEX_RANKS
     for spec in sorted(specs, key=lambda s: (ranks.get(s["topic"], len(ranks)), s["topic"])):
         if not re.fullmatch(r"[a-z0-9-]+", spec["topic"]):
             raise SpecError("invalid topic: " + spec["topic"])
@@ -455,11 +478,79 @@ def render_index(specs: list) -> str:
     return document(title, parts)
 
 
+def md_escape(text: str) -> str:
+    """Display-safe Markdown for one line of spec text.
+
+    Whitespace (newlines included) collapses to single spaces, so text cannot start a
+    heading, list or table row; Markdown punctuation is backslash-escaped so it shows as
+    written. Not a security boundary: whoever can edit a spec can edit the README.
+    """
+    text = re.sub(r"([\\`*_\[\]<>|()])", r"\\\1", " ".join(str(text).split()))
+    # A leading block marker would turn the line into a heading, list, rule, quote or fence.
+    text = re.sub(r"^(\d+)\.", r"\1\\.", text)
+    text = re.sub(r"^-+", lambda m: "\\-" * len(m.group()), text)
+    return re.sub(r"^([#+=~])", r"\\\1", text)
+
+
+def render_readme(specs: list) -> str:
+    for spec in specs:
+        if not isinstance(spec, dict):
+            raise SpecError("spec must be an object")
+        topic = spec["topic"]
+        if not isinstance(topic, str) or not re.fullmatch(r"[a-z0-9-]+", topic):
+            raise SpecError("invalid topic: " + str(topic))
+    repos = sorted({spec["repo"]["name"] for spec in specs})
+    commits = sorted({spec["repo"]["commit"][:7] for spec in specs})
+    parts = [README_TITLE.format(" · ".join(md_escape(name) for name in repos)),
+             README_COMMIT.format(", ".join(md_escape(commit) for commit in commits)),
+             README_READ, README_PAGES]
+    for spec in sorted(specs, key=lambda s: (INDEX_RANKS.get(s["topic"], len(INDEX_RANKS)), s["topic"])):
+        parts.append("### [{}](html/{}.html)".format(md_escape(spec["title"]), spec["topic"]))
+        if spec.get("subtitle"):
+            parts.append(md_escape(spec["subtitle"]))
+        page = spec.get("page", "diagram")
+        if page not in PAGES:
+            raise SpecError("unknown page: " + str(page))
+        if page == "seams":
+            rows = list(README_SEAMS_HEADER)
+            for system in spec["systems"]:
+                points = system["touchpoints"]
+                rows.append("| {} | {} | {} | {} |".format(
+                    md_escape(system["title"]), SEAMS_VERDICTS[system["verdict"]],
+                    len(points), sum(not point["adapter"] for point in points)))
+            parts.append("\n".join(rows))
+        elif page == "table":
+            groups = {}
+            for row in spec["rows"]:
+                group = row.get("group") or README_OTHER
+                groups[group] = groups.get(group, 0) + 1
+            if groups:
+                parts.append("\n".join(README_GROUP.format(md_escape(group), count)
+                                       for group, count in groups.items()))
+        elif page == "cards":
+            parts.append(README_CARDS.format(len(spec["cards"]),
+                "、".join(md_escape(card["title"]) for card in spec["cards"])))
+        elif spec.get("contract", {}).get("highlights"):
+            parts.extend([README_HIGHLIGHTS, "\n".join(
+                "- " + md_escape(text) for text in spec["contract"]["highlights"])])
+    parts.append(README_UPDATE)
+    return "\n\n".join(parts).rstrip("\n") + "\n"
+
+
 def main(argv: list) -> int:
-    if len(argv) != 3 or argv[0] not in ("page", "index"):
-        print("usage: render.py page <spec.json> <out.html> | index <dir> <out.html>", file=sys.stderr)
+    if not (len(argv) == 2 and argv[0] == "readme" or
+            len(argv) == 3 and argv[0] in ("page", "index")):
+        print("usage: render.py page <spec.json> <out.html> | index <dir> <out.html> | readme <pack dir>", file=sys.stderr)
         return 2
     try:
+        if argv[0] == "readme":
+            pack = Path(argv[1])
+            directory = pack / "specs"
+            if not directory.is_dir():
+                raise SpecError("{}: not a directory".format(directory))
+            readme = render_readme([load_spec(str(p)) for p in sorted(directory.glob("*.json"))])
+            (pack / "README.md").write_text(readme, encoding="utf-8")
+            return 0
         if argv[0] == "page":
             page = render_page(load_spec(argv[1]))
         else:

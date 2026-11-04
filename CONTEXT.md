@@ -24,7 +24,7 @@
 - **refactor guardrails** — the three sentences `rs_done_when` appends to every refactor row's done-when: pin behaviour at the new interface first; leave existing tests untouched while structure moves, and delete the replaced shallow tests last in their own commit; change structure only, with behaviour changes as separate rows.
 - **pr-review** — the fourth skill (R-027), home of the review: § Ship mode holds ship-next Phase 6 steps 1, 1.1, 1.3–1.6 (ship-next keeps the loop); § PR mode, `/pr-review [<PR/MR # or URL>]`, reviews a GitHub PR, GitLab MR or branch in a throwaway detached worktree against the PR's recorded base SHA, with the PR's own `.ship/`, `.claude/` and `.codex/` removed, and posts only with `--comment`.
 
-- **architecture pack** — the HTML pages plus `index.html` that `/draw-arch` writes into `<vault project>/Architecture/diagrams/` (R-029).
+- **architecture pack** — the `README.md` + `html/` + `specs/` bundle that `/draw-arch` writes into `<vault project>/Architecture/diagrams/` (R-029, R-037). `specs/<topic>.json` is the source; `html/` holds every page and `index.html`. `render.py readme <pack>` generates the README with reading instructions, page summaries and update instructions.
 - **diagram spec** — one JSON per topic: nodes, edges and coordinates chosen by Claude, rendered by `render.py`, gated by `check.py`.
 - **condition table** — the three-column table under a diagram: 做什麼 / 什麼條件走到這、離開時往哪 / 程式碼, ⚠ only for a cited risk.
 - **route overlay** — a copy of a diagram with one route's nodes and edges in amber, the rest at 0.2, plus numbered badges and steps.

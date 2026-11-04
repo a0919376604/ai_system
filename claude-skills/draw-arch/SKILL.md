@@ -5,8 +5,11 @@ description: Use when asked to draw or update a Cocoon-style architecture pack f
 
 # Architecture pack
 
-Use `/draw-arch [<topic>…] [--out <dir>]` to produce one saved JSON spec and one
-static HTML page per topic, plus `index.html`. Trace current code; choose the
+Use `/draw-arch [<topic>…] [--out <dir>]` to produce a pack whose top level holds
+`README.md`, `html/` and `specs/`. Save one JSON spec per topic in `specs/`,
+and generate its static HTML page plus `index.html` in `html/`.
+Generate `README.md` from the specs as the pack's starting point on GitLab.
+Trace current code; choose the
 content and coordinates; let the Python 3.9 stdlib CLIs check and render them.
 Never write into the target repo. Never read `env.json`, `.env*` or key files
 (including private keys, `*.key` and `*.pem`). Template key names are allowed;
@@ -25,9 +28,18 @@ secret values are not. Do not use stale UA material or call archify.
    Default to `<project_path>/Architecture/diagrams/`; `--out <dir>` overrides
    this. If neither binding nor override works, stop and ask for a destination.
    If a destination is inside the target repo, ask for an external directory.
+   Set `OUT` to the resolved destination and create the pack directories:
+   ```bash
+   mkdir -p "${OUT:?}/specs" "$OUT/html"
+   # A pack in the old flat layout (pre-R-037): keep its specs, drop generated files.
+   # find, not a glob: zsh aborts on a glob that matches nothing.
+   find "$OUT" -maxdepth 1 -name '*.json' -exec mv -n {} "$OUT/specs/" \;
+   find "$OUT" -maxdepth 1 -name '*.html' -delete
+   ```
+   Afterwards the top level holds only `README.md`, `html/` and `specs/`.
 
 2. **Choose topics.** Use named topics. With none, re-run the saved specs in the
-   output directory if present. Otherwise start with overview, features, seams,
+   `"$OUT/specs"` directory if present. Otherwise start with overview, features, seams,
    jobs, the message route, and a flow per `StateGraph(` outside test directories. When multiple graphs
    exist, confirm which first graph to draw and ask before adding a second
    StateGraph. Ask before adding other pipelines or extra topics. For line-oa the
@@ -45,13 +57,13 @@ secret values are not. Do not use stale UA material or call archify.
      1. List the external systems from manifests, config keys and SDK imports.
      2. Write each system's `probes` (SDK import prefixes and API hosts / REST
         paths as regex) and `adapters` (the files meant to own that system).
-     3. Run `python3 "$SKILL_DIR/lib/seams.py" "$REPO" "$OUT/seams.json"`.
+     3. Run `python3 "$SKILL_DIR/lib/seams.py" "$REPO" "$OUT/specs/seams.json"`.
      4. From the generated touchpoints, write `verdict`, `summary`, `change`
         and notes on leaks outside the adapters.
-     5. Re-run `python3 "$SKILL_DIR/lib/check.py" "$OUT/seams.json" --repo "$REPO"`.
+     5. Re-run `python3 "$SKILL_DIR/lib/check.py" "$OUT/specs/seams.json" --repo "$REPO"`.
    - **node contract** — show what replacing a LangGraph node requires from shared state:
      1. Set `GRAPH_SPEC` to the first StateGraph's saved diagram spec, e.g.
-        `"$OUT/langgraph.json"`. Add a `contract` object there, with the graph's
+        `"$OUT/specs/langgraph.json"`. Add a `contract` object there, with the graph's
         source file, state class and import roots as `graph: {file, state, roots}`.
         Start its `nodes`, `declared`, `highlights` and `scenarios` as empty lists.
      2. Run `python3 "$SKILL_DIR/lib/contract.py" "$REPO" "$GRAPH_SPEC"`.
@@ -67,7 +79,8 @@ secret values are not. Do not use stale UA material or call archify.
    - **jobs** — find the registry with
      `git grep -nE 'SweeperSpecMeta|add_job|@app.task|create_task|while True'`
      from the target repo, excluding tests and secrets. Set `registry` with its
-     `file`, `call` and optional `key`. Write one table row per job, with 類型
+     `file`, `call` and optional `key` in `"$OUT/specs/jobs.json"`.
+     Write one table row per job, with 類型
      (consumer / sweeper / cron / LLM 抽取 / 其他), 頻率, 做什麼 and 開關,
      plus the code citation. The AST registry check names every missing row.
    - **features** — write one card per user-visible feature traced from API routers
@@ -76,7 +89,7 @@ secret values are not. Do not use stale UA material or call archify.
 
 4. **Write or update the saved spec.** Read [spec-format.md](references/spec-format.md)
    for fields and [cocoon-style.md](references/cocoon-style.md) for the visual rules.
-   Save `<topic>.json` in the output directory. On a re-run, edit that saved spec
+   Save `"$OUT/specs/<topic>.json"`. On a re-run, edit that saved spec
    in place: preserve ids and coordinates unless a code or layout change requires
    moving a node, and keep a per-topic list of changes, naming affected nodes.
    Message topics use numbered step cards in a snake layout: numbered title,
@@ -91,26 +104,28 @@ secret values are not. Do not use stale UA material or call archify.
    Run these commands with quoted paths for every topic, including features,
    seams, jobs and the diagram carrying the node contract:
    ```bash
-   python3 "$SKILL_DIR/lib/check.py" "$OUT/$topic.json" --repo "$REPO"
-   python3 "$SKILL_DIR/lib/render.py" page "$OUT/$topic.json" "$OUT/$topic.html"
+   python3 "$SKILL_DIR/lib/check.py" "$OUT/specs/$topic.json" --repo "$REPO"
+   python3 "$SKILL_DIR/lib/render.py" page "$OUT/specs/$topic.json" "$OUT/html/$topic.html"
    ```
    Fix every checker finding before rendering. Then take a full-page headless
    Chrome screenshot. Choose `h` tall enough to include the footer (the diagram,
-   all route copies, steps and condition rows). Set `png` to a file in the output
-   directory and `url` to a URL-encoded absolute file URL, e.g. using
+   all route copies, steps and condition rows). Set `png` to a temporary file
+   outside the pack and `url` to the page's URL-encoded absolute file URL, e.g. using
    `pathlib.Path(page).resolve().as_uri()`; spaces must be percent-encoded.
    ```bash
    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars --window-size=1280,"$h" --screenshot="$png" "$url"
    ```
-   Read the screenshot. Check labels, text fit, node gaps, route badges and table
+   Read the screenshot, then remove the temporary file. Check labels, text fit, node gaps, route badges and table
    readability, then fix the saved spec and repeat check → render → screenshot
    → Read. After the third round deliver and list any remaining visual issues.
 
-6. **Build the pack index.** After all topics:
+6. **Build the pack index and README.** After all topics:
    ```bash
-   python3 "$SKILL_DIR/lib/render.py" index "$OUT" "$OUT/index.html"
+   python3 "$SKILL_DIR/lib/render.py" index "$OUT/specs" "$OUT/html/index.html"
+   python3 "$SKILL_DIR/lib/render.py" readme "$OUT"
    ```
 
-7. **Report.** Link the index and pages; give the full commit, dirty-path note,
+7. **Report.** Link `README.md` first, then `html/index.html` and the pages in `html/`;
+   give the full commit, dirty-path note,
    simplifications, uncertainties and remaining layout issues. On a re-run list
    what changed per topic and node. Confirm the target repo's status is unchanged.

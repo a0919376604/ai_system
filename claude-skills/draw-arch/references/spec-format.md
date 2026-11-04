@@ -1,6 +1,6 @@
 # Architecture page spec
 
-Save one UTF-8 JSON object per topic as `<topic>.json`. Text is escaped by the
+Save one UTF-8 JSON object per topic as `specs/<topic>.json`. Text is escaped by the
 renderer; write literal code-like strings such as `List[str]` or `a<b` in JSON.
 Every page shares these fields:
 
@@ -11,6 +11,15 @@ Every page shares these fields:
 | `title` | Required page and diagram title. |
 | `subtitle` | Optional short page subtitle. |
 | `repo.name`, `repo.commit` | Required repo name and 7–40 lowercase hex commit; use the full 40-hex commit for delivered packs. |
+
+## Pack layout
+
+The pack's top level holds only `README.md`, `html/` and `specs/`.
+Keep the source specs in `specs/<topic>.json`; render each page to
+`html/<topic>.html` and the index to `html/index.html` from `specs/`.
+Run `python3 <skill>/lib/render.py readme <pack>` to generate `README.md`
+from the specs, with reading instructions, page summaries and update instructions.
+All HTML pages share `html/`, so topic and job links keep working offline.
 
 ## diagram
 

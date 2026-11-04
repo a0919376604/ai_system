@@ -341,6 +341,260 @@ PY
   grep -qF '<h1>架構圖包 · demo</h1>' "$S/pack/index.html" || return 1
 }
 
+@test "AC-2 readme summarises every page and links html/" {
+  mkdir -p "$S/pack/specs"
+  python3 - "$FX" "$S/pack/specs" <<'PY'
+import json, sys
+from pathlib import Path
+fixtures, out = map(Path, sys.argv[1:])
+for fixture, topic in [('clean', 'overview'), ('features', 'features'),
+                       ('seams', 'seams'), ('jobs', 'jobs'), ('lg', 'lg')]:
+    spec = json.loads((fixtures / (fixture + '.json')).read_text(encoding='utf-8'))
+    spec['topic'] = topic
+    if topic == 'seams':
+        spec['systems'][0]['touchpoints'] = [
+            {'file': 'adapters/line.py', 'lines': [1], 'adapter': True},
+            {'file': 'core.py', 'lines': [2], 'adapter': False}]
+    if topic == 'lg':
+        spec['contract'] = {'highlights': ['h1']}
+    (out / (topic + '.json')).write_text(json.dumps(spec), encoding='utf-8')
+PY
+  python3 "$AD/render.py" readme "$S/pack"
+  cp "$S/pack/README.md" "$S/first.md"
+  python3 "$AD/render.py" readme "$S/pack"
+  cmp "$S/first.md" "$S/pack/README.md" || return 1
+  python3 - "$S/pack/README.md" <<'PY'
+import re, sys
+from pathlib import Path
+s = Path(sys.argv[1]).read_text(encoding='utf-8')
+assert s.startswith('# 架構圖包 · demo\n')
+assert 'Commit 0123456\n' in s
+assert re.findall(r'^## (.+)$', s, re.M) == ['怎麼看這包', '每一頁', '怎麼更新']
+assert re.findall(r'^### \[.+\]\((.+)\)$', s, re.M) == [
+    'html/overview.html', 'html/features.html', 'html/seams.html', 'html/jobs.html', 'html/lg.html']
+for text in ('### [Demo 架構](html/overview.html)\n\n測試用',
+             '| 系統 | 能不能換 | 接觸檔 | 漏進核心 |',
+             '| LINE | 很難換 | 2 | 1 |', '| 資料倉儲 | 容易換 | 0 | 0 |',
+             '- 事件：2 個\n- 排程：1 個', '共 1 個：滿意度問卷', '節點契約重點\n\n- h1',
+             'GitLab', 'clone', '下載', 'html/index.html', '離線', '手機',
+             '/draw-arch', 'python3 <skill>/lib/check.py specs/<topic>.json --repo <repo>',
+             '`specs/`', '`html/`', '`README.md`'):
+    assert text in s, text
+assert s.endswith('\n') and not s.endswith('\n\n')
+PY
+}
+
+@test "AC-3 readme without specs or with a bad spec exits 2 and writes nothing" {
+  mkdir -p "$S/pack"
+  run python3 "$AD/render.py" readme "$S/pack"
+  [ "$status" -eq 2 ] || return 1
+  [ ! -e "$S/pack/README.md" ] || return 1
+  mkdir -p "$S/pack/specs"
+  cp "$FX/clean.json" "$S/pack/specs/clean.json"
+  echo '{nope' > "$S/pack/specs/broken.json"
+  run python3 "$AD/render.py" readme "$S/pack"
+  [ "$status" -eq 2 ] || return 1
+  [ ! -e "$S/pack/README.md" ] || return 1
+  echo 'keep existing README' > "$S/pack/README.md"
+  run python3 "$AD/render.py" readme "$S/pack"
+  [ "$status" -eq 2 ] || return 1
+  [ "$(cat "$S/pack/README.md")" = 'keep existing README' ]
+}
+
+@test "a leading block marker in spec text is escaped" {
+  python3 - "$AD" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from render import md_escape
+cases = {'- 只是一句': '\\- 只是一句', '# 標題式': '\\# 標題式', '+ x': '\\+ x', '1. 先讀這頁': '1\\. 先讀這頁',
+         '--- a': '\\-\\-\\- a', '~~~ 波浪': '\\~~~ 波浪', '> 引言': '\\> 引言', '= x': '\\= x', '普通 - 文字': '普通 - 文字'}
+for raw, want in cases.items():
+    assert md_escape(raw) == want, (raw, md_escape(raw), want)
+PY
+}
+
+@test "SKILL's pack migration runs under zsh with or without an old flat pack" {
+  block=$(awk '/^   ```bash$/{n++} n==1 && !/```/{print} /^   ```$/ && n==1{exit}' "$AD/../SKILL.md" | sed 's/^   //')
+  echo "$block" | grep -q 'mkdir -p' || { echo "$block"; return 1; }
+  mkdir -p "$S/fresh" "$S/old"
+  printf '{}' > "$S/old/a.json"; printf 'x' > "$S/old/a.html"
+  for dir in "$S/fresh" "$S/old"; do
+    run zsh -c "OUT='$dir'; $block
+echo DONE"
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    echo "$output" | grep -q DONE || return 1
+  done
+  [ -f "$S/old/specs/a.json" ] && [ ! -e "$S/old/a.html" ] && [ ! -e "$S/old/a.json" ]
+}
+
+@test "multi-line spec text stays inside its line and table cell" {
+  mkdir -p "$S/pack/specs"
+  python3 - "$FX" "$S/pack/specs" <<'PY'
+import json, sys
+from pathlib import Path
+fixtures, out = map(Path, sys.argv[1:])
+text = 'first\n# Injected heading\n- injected bullet\n| a | b |'
+for fixture in ('clean', 'seams'):
+    spec = json.loads((fixtures / (fixture + '.json')).read_text(encoding='utf-8'))
+    spec['subtitle'] = text
+    if fixture == 'seams':
+        spec['systems'][0]['title'] = text
+    (out / (fixture + '.json')).write_text(json.dumps(spec), encoding='utf-8')
+PY
+  python3 "$AD/render.py" readme "$S/pack"
+  python3 - "$S/pack/README.md" <<'PY'
+import re, sys
+s = open(sys.argv[1], encoding='utf-8').read()
+lines = s.splitlines()
+assert not any(l.startswith('# Injected') or l.startswith('- injected') for l in lines), s
+assert 'first # Injected heading - injected bullet \\| a \\| b \\|' in s, s
+rows = [l for l in lines if l.startswith('|')]
+for row in rows:
+    assert len(re.findall(r'(?<!\\)(?:\\\\)*\|', row)) == 5, row
+PY
+}
+
+@test "AC-4 readme escapes spec text" {
+  mkdir -p "$S/pack/specs"
+  python3 - "$FX" "$S/pack/specs" <<'PY'
+import json, sys
+from pathlib import Path
+fixtures, out = map(Path, sys.argv[1:])
+text = r'<script>alert(1)</script> [x](https://evil.example) | *a* 中文A_B*C `code` \\'
+for fixture in ('clean', 'features', 'seams', 'jobs'):
+    spec = json.loads((fixtures / (fixture + '.json')).read_text(encoding='utf-8'))
+    spec['repo']['name'] = text
+    spec['title'] = text
+    spec['subtitle'] = text
+    if fixture == 'clean':
+        spec['contract'] = {'highlights': [text]}
+    elif fixture == 'features':
+        spec['cards'][0]['title'] = text
+    elif fixture == 'seams':
+        spec['systems'][0]['title'] = text
+    else:
+        spec['rows'][0]['group'] = text
+    (out / (fixture + '.json')).write_text(json.dumps(spec), encoding='utf-8')
+PY
+  python3 "$AD/render.py" readme "$S/pack"
+  python3 - "$S/pack/README.md" <<'PY'
+import re, sys
+from pathlib import Path
+s = Path(sys.argv[1]).read_text(encoding='utf-8')
+escaped = r'\<script\>alert\(1\)\</script\> \[x\]\(https://evil.example\) \| \*a\* 中文A\_B\*C \`code\` \\\\'
+assert '<script>' not in s and '](https://' not in s
+assert '# 架構圖包 · ' + escaped + '\n' in s
+assert '### [' + escaped + '](html/demo.html)\n\n' + escaped + '\n' in s
+assert '共 1 個：' + escaped in s
+assert '| ' + escaped + ' | 很難換 | 0 | 0 |' in s
+assert '- ' + escaped + '：1 個' in s
+assert '節點契約重點\n\n- ' + escaped in s
+rows = [line for line in s.splitlines() if line.startswith('|')]
+assert len(rows) == 4
+for row in rows:
+    assert len(re.findall(r'(?<!\\)(?:\\\\)*\|', row)) == 5, row
+PY
+}
+
+@test "readme handles a lone diagram and a missing subtitle" {
+  mkdir -p "$S/pack/specs"
+  python3 - "$FX/minimal.json" "$S/pack/specs/different-name.json" <<'PY'
+import json, sys
+from pathlib import Path
+spec = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+del spec['subtitle']
+Path(sys.argv[2]).write_text(json.dumps(spec), encoding='utf-8')
+PY
+  python3 "$AD/render.py" readme "$S/pack"
+  python3 - "$S/pack/README.md" <<'PY'
+import re, sys
+from pathlib import Path
+s = Path(sys.argv[1]).read_text(encoding='utf-8')
+assert re.findall(r'^## (.+)$', s, re.M) == ['怎麼看這包', '每一頁', '怎麼更新']
+assert '### [Demo 架構](html/demo.html)\n\n## 怎麼更新' in s
+assert 'different-name.html' not in s
+assert '節點契約重點' not in s
+PY
+}
+
+@test "readme keeps the seams header when there are no systems" {
+  mkdir -p "$S/pack/specs"
+  python3 - "$FX/seams.json" "$S/pack/specs/seams.json" <<'PY'
+import json, sys
+from pathlib import Path
+spec = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+spec['systems'] = []
+Path(sys.argv[2]).write_text(json.dumps(spec), encoding='utf-8')
+PY
+  python3 "$AD/render.py" readme "$S/pack"
+  python3 - "$S/pack/README.md" <<'PY'
+import sys
+from pathlib import Path
+s = Path(sys.argv[1]).read_text(encoding='utf-8')
+assert [line for line in s.splitlines() if line.startswith('|')] == [
+    '| 系統 | 能不能換 | 接觸檔 | 漏進核心 |', '| --- | --- | --- | --- |']
+PY
+}
+
+@test "readme counts groups in first-seen order and sorts distinct commits" {
+  mkdir -p "$S/pack/specs"
+  python3 - "$FX/jobs.json" "$S/pack/specs" <<'PY'
+import json, sys
+from pathlib import Path
+spec = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+spec['rows'].extend([dict(spec['rows'][0], id='other', group=''),
+                     {k: v for k, v in dict(spec['rows'][0], id='missing').items() if k != 'group'}])
+spec['repo']['name'] = 'zeta'
+spec['repo']['commit'] = 'f' * 40
+(Path(sys.argv[2]) / 'jobs.json').write_text(json.dumps(spec), encoding='utf-8')
+spec['topic'] = 'alpha'
+spec['repo'] = {'name': 'demo', 'commit': '0123456789abcdef'}
+(Path(sys.argv[2]) / 'alpha.json').write_text(json.dumps(spec), encoding='utf-8')
+spec['topic'] = 'zeta'
+spec['repo']['commit'] = '0123456abcdef0123'
+(Path(sys.argv[2]) / 'zeta.json').write_text(json.dumps(spec), encoding='utf-8')
+PY
+  python3 "$AD/render.py" readme "$S/pack"
+  python3 - "$S/pack/README.md" <<'PY'
+import sys
+from pathlib import Path
+s = Path(sys.argv[1]).read_text(encoding='utf-8')
+assert s.startswith('# 架構圖包 · demo · zeta\n\nCommit 0123456, fffffff\n')
+assert '- 事件：2 個\n- 排程：1 個\n- 其他：2 個' in s
+PY
+}
+
+@test "readme refuses a topic that could escape the html directory" {
+  mkdir -p "$S/pack/specs"
+  python3 - "$FX/clean.json" "$S/pack/specs/bad.json" <<'PY'
+import json, sys
+from pathlib import Path
+spec = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+spec['topic'] = '../outside'
+Path(sys.argv[2]).write_text(json.dumps(spec), encoding='utf-8')
+PY
+  run python3 "$AD/render.py" readme "$S/pack"
+  [ "$status" -eq 2 ] || return 1
+  [ ! -e "$S/pack/README.md" ]
+}
+
+@test "AC-5 SKILL describes the README + html/ + specs/ layout" {
+  python3 - "$AD/../SKILL.md" <<'PY'
+import sys
+from pathlib import Path
+s = Path(sys.argv[1]).read_text(encoding='utf-8')
+for text in ('README.md', 'html/', 'specs/', 'render.py" readme',
+             'mkdir -p "${OUT:?}/specs" "$OUT/html"',
+             'page "$OUT/specs/$topic.json" "$OUT/html/$topic.html"',
+             'index "$OUT/specs" "$OUT/html/index.html"',
+             'seams.py" "$REPO" "$OUT/specs/seams.json"',
+             '"$OUT/specs/langgraph.json"', '"$OUT/specs/jobs.json"'):
+    assert text in s, text
+for line in s.splitlines():
+    assert 'specs/$topic.html' not in line and '"$OUT/$topic.html"' not in line, line
+PY
+}
+
 @test "every diagram sits in one pan box under the swipe hint" {
   python3 "$AD/render.py" page "$FX/clean.json" "$S/a.html"
   python3 "$AD/render.py" page "$FX/minimal.json" "$S/m.html"
