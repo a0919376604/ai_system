@@ -65,3 +65,4 @@
 | 2026-11-04 12:14 | ship-idea | IDEA-005 | Node 26 的 node --test 不再接受目錄參數：test_repo-layout.bats 的 plugin 測試（node --test obsidian-roadmap-view/test/）與 CLAUDE.md 的指令都要改成 glob（obsidian-roadmap-view/test/*.test.js） | n |
 | 2026-11-04 14:45 | ship-idea | IDEA-006 | bats bare-negation guards never fail (pre-existing, from R-032) | n |
 | 2026-11-04 14:47 | ship-compound | R-032 | shipped | n |
+| 2026-11-04 14:47 | ship-next | R-032 | shipped (review: blocking=0, major=4, ponytail=6, spec_gaps=0, door=two-way, xreview=skipped, ratio 0bp vs baseline 1607bp, codex: 1 round(s) done_with_concerns) | n |
