@@ -1,0 +1,14 @@
+{
+  "topic": "jobs", "page": "table", "title": "背景程式", "subtitle": "工作目錄",
+  "repo": {"name": "demo", "commit": "0123456789abcdef0123456789abcdef01234567"},
+  "columns": [
+    {"key": "kind", "label": "類型"},
+    {"key": "schedule", "label": "頻率"},
+    {"key": "does", "label": "做什麼"}
+  ],
+  "rows": [
+    {"id": "csat_worker", "group": "事件", "cells": {"kind": "consumer", "schedule": "事件觸發", "does": "處理問卷"}, "src": "app/x.py:1-9"},
+    {"id": "dw_sync", "group": "排程", "warn": true, "cells": {"kind": "cron", "schedule": "每小時", "does": "同步資料"}, "src": "app/x.py:1-9"},
+    {"id": "media_consumer", "group": "事件", "cells": {"kind": "consumer", "schedule": "事件觸發", "does": "處理媒體"}, "src": "app/x.py:1-9"}
+  ]
+}

@@ -27,10 +27,10 @@ secret values are not. Do not use stale UA material or call archify.
    If a destination is inside the target repo, ask for an external directory.
 
 2. **Choose topics.** Use named topics. With none, re-run the saved specs in the
-   output directory if present. Otherwise start with overview, the message route,
-   and a flow per `StateGraph(` outside test directories. When multiple graphs
+   output directory if present. Otherwise start with overview, features, modules,
+   jobs, the message route, and a flow per `StateGraph(` outside test directories. When multiple graphs
    exist, confirm which first graph to draw and ask before adding a second
-   StateGraph. Ask before adding other pipelines or features. For line-oa the
+   StateGraph. Ask before adding other pipelines or extra topics. For line-oa the
    first graph is `lang_ai_customer`.
 
 3. **Trace each topic.** Start from entry points, manifests and deployment files.
@@ -39,6 +39,21 @@ secret values are not. Do not use stale UA material or call archify.
    search and read. Every node and condition row needs code evidence. For a
    LangGraph flow, read the StateGraph definition and set `langgraph.file`;
    `check.py` compares its AST without importing or executing the source.
+
+   - **modules** — run
+     `python3 "$SKILL_DIR/lib/modules.py" "$REPO" "$OUT/modules.json" --root <each top-level source package>`,
+     repeating `--root` for each source package. Then write `does` per module.
+     The script computes imports, files, lines and cycles; re-runs preserve `does`,
+     `title` and `subtitle`.
+   - **jobs** — find the registry with
+     `git grep -nE 'SweeperSpecMeta|add_job|@app.task|create_task|while True'`
+     from the target repo, excluding tests and secrets. Set `registry` with its
+     `file`, `call` and optional `key`. Write one table row per job, with 類型
+     (consumer / sweeper / cron / LLM 抽取 / 其他), 頻率, 做什麼 and 開關,
+     plus the code citation. The AST registry check names every missing row.
+   - **features** — write one card per user-visible feature traced from API routers
+     and jobs. Link its topic pages through `topics` and background job rows through
+     `jobs`; include its 入口, 資料 and code citations.
 
 4. **Write or update the saved spec.** Read [spec-format.md](references/spec-format.md)
    for fields and [cocoon-style.md](references/cocoon-style.md) for the visual rules.
@@ -54,7 +69,8 @@ secret values are not. Do not use stale UA material or call archify.
    only when the cited code shows a real risk; uncertainty alone gets no ⚠.
 
 5. **Check, render, look: at most three rounds per topic.**
-   Run these commands with quoted paths:
+   Run these commands with quoted paths for every topic, including features,
+   modules and jobs:
    ```bash
    python3 "$SKILL_DIR/lib/check.py" "$OUT/$topic.json" --repo "$REPO"
    python3 "$SKILL_DIR/lib/render.py" page "$OUT/$topic.json" "$OUT/$topic.html"

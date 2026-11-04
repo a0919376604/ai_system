@@ -1,16 +1,26 @@
-# Diagram spec
+# Architecture page spec
 
-Save one UTF-8 JSON object per topic as `<topic>.json`. All coordinates are canvas
-units chosen by Claude. Keep ids and coordinates on a re-run. Use numbers for
-coordinates, positive sizes, and booleans for switches. Text is escaped by the
+Save one UTF-8 JSON object per topic as `<topic>.json`. Text is escaped by the
 renderer; write literal code-like strings such as `List[str]` or `a<b` in JSON.
+Every page shares these fields:
 
 | Field | Meaning |
 |---|---|
 | `topic` | Required slug matching `^[a-z0-9-]+$`; the page name and deterministic SVG id prefix. |
+| `page` | Optional `diagram` (default), `table`, `cards` or `matrix`. An unknown type is a schema finding and render exit 2 without output. |
 | `title` | Required page and diagram title. |
 | `subtitle` | Optional short page subtitle. |
 | `repo.name`, `repo.commit` | Required repo name and 7–40 lowercase hex commit; use the full 40-hex commit for delivered packs. |
+
+## diagram
+
+An absent `page` or `page: "diagram"` keeps the existing diagram output unchanged.
+Only this type requires `canvas`, `nodes` and `edges`. All coordinates are canvas
+units chosen by Claude. Keep ids and coordinates on a re-run. Use numbers for
+coordinates, positive sizes, and booleans for switches.
+
+| Field | Meaning |
+|---|---|
 | `canvas.w`, `canvas.h` | Required positive canvas width and height. |
 | `regions` | Optional list of dashed grouping rectangles. |
 | `regions[].x`, `y`, `w`, `h` | Rectangle position and positive size. |
@@ -69,3 +79,93 @@ A complete small example, suitable for `check.py` and `render.py page`:
   "conditions": [{"node": ["a", "b"], "does": "收事件並寫入", "when": "簽章對 → 寫入", "src": "api/x.py:1-9", "warn": false}]
 }
 ```
+
+## table
+
+Set `page: "table"` for a catalog such as background jobs. It needs no diagram
+fields. Empty `rows` renders the title and footer without a table.
+
+| Field | Meaning |
+|---|---|
+| `columns` | Required list of `{key, label}` text fields, in display order. A 程式碼 column is appended. |
+| `rows` | Required list of rows. Ungrouped rows come first, then groups in first-seen order; rows retain their order inside each group. |
+| `rows[].id` | Required unique id matching `^[A-Za-z0-9_.:-]+$`; its anchor is `row-<id>`. |
+| `rows[].cells` | Required object mapping column keys to text; missing cells are empty. |
+| `rows[].src` | Required code citation text or list of text, joined by ` / `. |
+| `rows[].warn` | Optional boolean; true adds a rose ⚠ to the first cell. |
+| `rows[].group` | Optional text, used as the group's heading. Below 700 px table rows become cards. |
+| `registry` | Optional `{file, call, key?}`; `file` is relative to `--repo` and `key` defaults to `name`. |
+
+With `--repo`, the registry check parses matching `Name` or `Attribute` calls
+through AST only. Each literal keyword value needs a matching row id; extra rows
+are allowed. Missing rows, absent/non-literal names, missing files and parse
+errors are findings. The source is never imported or executed.
+
+```json
+{
+  "topic": "jobs", "page": "table", "title": "背景程式",
+  "repo": {"name": "demo", "commit": "0123456789abcdef0123456789abcdef01234567"},
+  "columns": [{"key": "kind", "label": "類型"}, {"key": "schedule", "label": "頻率"}, {"key": "does", "label": "做什麼"}, {"key": "switch", "label": "開關"}],
+  "rows": [{"id": "csat_worker", "group": "事件", "cells": {"kind": "consumer", "schedule": "事件觸發", "does": "處理問卷", "switch": "啟用"}, "src": "app/csat.py:1-20"}],
+  "registry": {"file": "app/jobs.py", "call": "Meta"}
+}
+```
+
+## cards
+
+Set `page: "cards"` for a feature catalog. Empty `cards` renders the title and
+footer without a grid. Cards use two columns on desktop and one below 700 px.
+
+| Field | Meaning |
+|---|---|
+| `cards` | Required list, rendered in spec order as one `<article class="card" id="card-<id>">` per entry. |
+| `cards[].id` | Required unique id matching `^[A-Za-z0-9_.:-]+$`. |
+| `cards[].title`, `does` | Required title and plain-language description. |
+| `cards[].entry`, `data` | Optional text displayed with 入口 and 資料 labels. |
+| `cards[].src` | Required list of code citation text, joined by ` / `. |
+| `cards[].topics` | Optional list of slugs matching `^[a-z0-9-]+$`, linked to `<slug>.html` under 相關頁面. |
+| `cards[].jobs` | Optional list of job ids, linked to `jobs.html#row-<id>` under 背景程式. |
+
+The CLI checks links beside the spec: each topic needs `<slug>.json`, and each
+job needs a row id in `jobs.json`. An absent or unreadable `jobs.json` has no ids.
+Findings are `check: link: missing topic <slug>` and `check: link: missing job <id>`.
+
+## matrix
+
+Generate `page: "matrix"` with `modules.py` rather than estimating the numbers:
+
+```bash
+python3 "$SKILL_DIR/lib/modules.py" "$REPO" "$OUT/modules.json" --root backend/app --name demo
+```
+
+Repeat `--root` for multiple source packages. Each immediate child package or
+`.py` file (except `__init__.py`) becomes a module, sorted by id. Test files and
+directories, hidden paths and `__pycache__` are skipped. If a child name occurs
+under multiple roots, all those ids become `<root basename>/<child>`.
+
+| Field | Meaning |
+|---|---|
+| `roots` | Required list of source-root paths relative to the repository. |
+| `modules` | Required list of module records, sorted by id by the scanner. Empty modules renders the title and footer without tables. |
+| `modules[].id`, `root` | Required text identifying the module and its source root. |
+| `modules[].files`, `lines` | Required non-negative integers counting non-test Python files and lines. |
+| `modules[].does` | Optional description written after generation. |
+| `matrix` | Required square list of non-negative integers sized to `modules`; cell `[i][j]` counts import statements from i to j. |
+| `cycles` | Required list of lists of known module ids, containing sorted strongly connected sets of at least two modules. |
+
+The scanner resolves absolute and in-repo relative imports through AST only,
+counts each distinct target once per statement, and ignores self, stdlib and
+unresolved imports. It records the repository's HEAD commit, produces deterministic
+JSON, and exits 2 without output when a root is missing. Re-runs preserve `title`,
+`subtitle` and each surviving id's `does`.
+
+The page shows a heat table under the caption 列 → 欄 (row imports column; zero cells
+empty, shade computed only from counts),
+then 模組 / 做什麼 / 檔案 / 行數 / 被依賴 / 依賴. 被依賴 and 依賴 count distinct
+other modules, not import statements. 循環依賴 lists each cycle — a pair as `a ⇄ b`,
+a larger one as `N 個模組互相循環：a、b、c` — or 沒有循環依賴. A root also acts as a
+`sys.path` entry, so `--root src` resolves `import foo` to `src/foo`. `check.py --repo` recomputes `modules`, `matrix` and `cycles`, ignoring
+`does`, and reports `check: matrix: stale` when they differ.
+
+The pack index places overview, features, modules and jobs first when present,
+then every other topic alphabetically. All page types remain static and offline.

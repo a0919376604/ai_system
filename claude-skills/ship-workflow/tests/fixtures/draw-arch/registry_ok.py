@@ -1,0 +1,5 @@
+raise SystemExit(9)
+Meta(name="csat_worker", enabled=True)
+mod.Meta(name="dw_sync")
+Meta(name="media_consumer")
+Other(name="ignored")

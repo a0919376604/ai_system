@@ -381,3 +381,489 @@ PY
   [ "$status" -eq 2 ] || { echo "$output"; return 1; }
   [ ! -e "$S/m.html" ] || return 1
 }
+
+mutate_catalog() {
+  python3 - "$FX/$1.json" "$S/$1.json" "$2" <<'PY'
+import json, sys
+s = json.load(open(sys.argv[1], encoding='utf-8'))
+exec(sys.argv[3])
+with open(sys.argv[2], 'w', encoding='utf-8') as f:
+    json.dump(s, f, ensure_ascii=False)
+PY
+}
+
+@test "AC-1 diagram output is byte-identical to the frozen golden" {
+  for name in clean minimal lg; do
+    python3 "$AD/render.py" page "$FX/$name.json" "$S/$name.html"
+    cmp "$S/$name.html" "$FX/golden/$name.html" || return 1
+  done
+  mutate 's["page"] = "diagram"'
+  python3 "$AD/render.py" page "$S/m.json" "$S/explicit.html"
+  cmp "$S/explicit.html" "$FX/golden/clean.html"
+}
+
+@test "AC-2 table page groups rows, marks warn and draws no svg" {
+  python3 "$AD/render.py" page "$FX/jobs.json" "$S/jobs.html"
+  python3 - "$S/jobs.html" <<'PY'
+import sys
+s = open(sys.argv[1], encoding='utf-8').read()
+assert s.count('<h2>事件</h2>') == s.count('<h2>排程</h2>') == 1
+assert s.index('<h2>事件</h2>') < s.index('<h2>排程</h2>')
+assert s.index('id="row-csat_worker"') < s.index('id="row-media_consumer"') < s.index('id="row-dw_sync"')
+assert s.count('<tr class="warn"') == s.count('⚠') == 1
+assert '<th>類型</th><th>頻率</th><th>做什麼</th><th>程式碼</th>' in s
+assert '<td data-label="類型">consumer</td>' in s
+assert '<svg' not in s
+PY
+  run python3 "$AD/check.py" "$FX/jobs.json"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ -z "$output" ]
+}
+
+@test "AC-3 registry check names the missing row and never runs the file" {
+  mutate_catalog jobs 's["registry"] = {"file": "registry_ok.py", "call": "Meta"}'
+  run python3 "$AD/check.py" "$S/jobs.json" --repo "$FX"
+  [ "$status" -ne 9 ] || return 1
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ -z "$output" ] || return 1
+  mutate_catalog jobs 's["registry"] = {"file": "registry_ok.py", "call": "Meta"}; s["rows"] = s["rows"][:2]'
+  run python3 "$AD/check.py" "$S/jobs.json" --repo "$FX"
+  [ "$status" -ne 9 ] || return 1
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [ "$output" = 'check: registry: missing row media_consumer' ]
+}
+
+@test "registry call with a non-literal name is reported" {
+  cp "$FX/registry_ok.py" "$S/registry_ok.py"
+  cat >> "$S/registry_ok.py" <<'PY'
+Meta(name=n)
+Meta(name=f"job_{n}")
+Meta()
+PY
+  mutate_catalog jobs 's["registry"] = {"file": "registry_ok.py", "call": "Meta"}'
+  run python3 "$AD/check.py" "$S/jobs.json" --repo "$S"
+  [ "$status" -ne 9 ] || return 1
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [ "$output" = $'check: registry: unresolved name at line 6\ncheck: registry: unresolved name at line 7\ncheck: registry: unresolved name at line 8' ]
+}
+
+@test "registry reports missing files and parse errors" {
+  mutate_catalog jobs 's["registry"] = {"file": "missing.py", "call": "Meta"}'
+  run python3 "$AD/check.py" "$S/jobs.json" --repo "$S"
+  [ "$status" -eq 1 ] || return 1
+  [ "$output" = "check: registry: file not found $S/missing.py" ] || return 1
+  printf 'raise SystemExit(9)\nMeta(\n' > "$S/missing.py"
+  run python3 "$AD/check.py" "$S/jobs.json" --repo "$S"
+  [ "$status" -eq 1 ] || return 1
+  [[ "$output" == "check: registry: cannot parse $S/missing.py:"* ]]
+}
+
+@test "AC-8 unknown page is a schema finding and writes nothing" {
+  mutate 's["page"] = "bogus"'
+  check_rule schema
+  run python3 "$AD/render.py" page "$S/m.json" "$S/out.html"
+  [ "$status" -eq 2 ] || { echo "$output"; return 1; }
+  [ ! -e "$S/out.html" ]
+}
+
+@test "empty table renders title and footer only" {
+  mutate_catalog jobs 's["rows"] = []'
+  python3 "$AD/render.py" page "$S/jobs.json" "$S/jobs.html"
+  grep -qF '<h1>背景程式</h1>' "$S/jobs.html" || return 1
+  grep -qF '<footer>' "$S/jobs.html" || return 1
+  ! grep -qF '<table' "$S/jobs.html" || return 1
+  run python3 "$AD/check.py" "$S/jobs.json"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ -z "$output" ]
+}
+
+@test "table schema and duplicate row ids are checked" {
+  mutate_catalog jobs 's["rows"].append(s["rows"][0])'
+  run python3 "$AD/check.py" "$S/jobs.json"
+  [ "$status" -eq 1 ] || return 1
+  [ "$output" = 'check: id: duplicate row csat_worker' ] || return 1
+  for change in 's["columns"] = None' 's["rows"][0]["id"] = "bad id"' 's["rows"][0]["warn"] = "yes"' 's["rows"][0]["cells"]["kind"] = 1'; do
+    mutate_catalog jobs "$change"
+    run python3 "$AD/check.py" "$S/jobs.json"
+    [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+    [[ "$output" == 'check: schema:'* ]] || return 1
+  done
+}
+
+@test "table puts ungrouped rows first and leaves missing cells empty" {
+  mutate_catalog jobs 's["rows"][1].pop("group"); s["rows"][1]["cells"] = {}; s["rows"][1]["src"] = ["a.py:1", "b.py:2"]'
+  python3 "$AD/render.py" page "$S/jobs.json" "$S/jobs.html"
+  python3 - "$S/jobs.html" <<'PY'
+import sys
+s = open(sys.argv[1], encoding='utf-8').read()
+assert s.index('id="row-dw_sync"') < s.index('<h2>事件</h2>')
+assert '<td data-label="頻率"></td>' in s
+assert 'a.py:1 / b.py:2' in s
+PY
+}
+
+@test "AC-4 cards link topics and jobs and the check finds dangling links" {
+  cp "$FX/features.json" "$FX/jobs.json" "$S/"
+  python3 - "$FX/minimal.json" "$S/csat.json" <<'PY'
+import json, sys
+s = json.load(open(sys.argv[1], encoding='utf-8'))
+s['topic'] = 'csat'
+with open(sys.argv[2], 'w', encoding='utf-8') as f:
+    json.dump(s, f)
+PY
+  run python3 "$AD/check.py" "$S/features.json"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ -z "$output" ] || return 1
+  python3 "$AD/render.py" page "$S/features.json" "$S/features.html"
+  for text in '<article class="card" id="card-csat">' 'href="csat.html"' 'href="jobs.html#row-csat_worker"' '入口' '資料'; do
+    grep -qF "$text" "$S/features.html" || return 1
+  done
+  mutate_catalog features 's["cards"][0].update(topics=["nope"], jobs=["ghost"])'
+  run python3 "$AD/check.py" "$S/features.json"
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [ "$output" = $'check: link: missing topic nope\ncheck: link: missing job ghost' ]
+}
+
+@test "cards job link without jobs.json is missing" {
+  cp "$FX/features.json" "$S/"
+  run python3 "$AD/check.py" "$S/features.json"
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  echo "$output" | grep -qF 'check: link: missing job csat_worker'
+}
+
+@test "empty cards renders title and footer only" {
+  mutate_catalog features 's["cards"] = []'
+  python3 "$AD/render.py" page "$S/features.json" "$S/features.html"
+  grep -qF '<h1>功能目錄</h1>' "$S/features.html" || return 1
+  grep -qF '<footer>' "$S/features.html" || return 1
+  ! grep -qF '<div class="cards">' "$S/features.html" || return 1
+  ! grep -qF '<article' "$S/features.html" || return 1
+  run python3 "$AD/check.py" "$S/features.json"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ -z "$output" ]
+}
+
+@test "cards schema and duplicate card ids are checked" {
+  mutate_catalog features 's["cards"].append(s["cards"][0])'
+  cp "$FX/jobs.json" "$S/"
+  cp "$FX/minimal.json" "$S/csat.json"
+  run python3 "$AD/check.py" "$S/features.json"
+  [ "$status" -eq 1 ] || return 1
+  [ "$output" = 'check: id: duplicate card csat' ] || return 1
+  for change in 's["cards"] = None' 's["cards"][0]["src"] = "a.py:1"' 's["cards"][0]["topics"] = ["../outside"]' 's["cards"][0]["jobs"] = ["bad id"]'; do
+    mutate_catalog features "$change"
+    run python3 "$AD/check.py" "$S/features.json"
+    [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+    [[ "$output" == 'check: schema:'* ]] || return 1
+  done
+}
+
+@test "cards treat unreadable jobs as having no ids" {
+  cp "$FX/features.json" "$S/"
+  cp "$FX/minimal.json" "$S/csat.json"
+  for content in '{nope' '[]' '{"rows": null}'; do
+    printf '%s\n' "$content" > "$S/jobs.json"
+    run python3 "$AD/check.py" "$S/features.json"
+    [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+    [ "$output" = 'check: link: missing job csat_worker' ] || return 1
+  done
+}
+
+init_modrepo() {
+  cp -R "$FX/modrepo" "$S/repo"
+  git -C "$S/repo" init -q
+  git -C "$S/repo" config user.name 'Draw Arch Test'
+  git -C "$S/repo" config user.email 'draw-arch@example.invalid'
+  git -C "$S/repo" add .
+  git -C "$S/repo" commit -qm fixture
+}
+
+make_modules() {
+  init_modrepo
+  run python3 "$AD/modules.py" "$S/repo" "$S/modules.json" --root pkg --name demo
+  [ "$status" -ne 9 ] || return 1
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+mutate_matrix() {
+  python3 - "$S/modules.json" "$1" <<'PY'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = json.loads(p.read_text(encoding='utf-8'))
+exec(sys.argv[2])
+p.write_text(json.dumps(s, ensure_ascii=False), encoding='utf-8')
+PY
+}
+
+@test "AC-5 modules.py counts cross-module imports, finds cycles and skips tests" {
+  make_modules
+  python3 - "$S/modules.json" <<'PY'
+import json, re, sys
+s = json.load(open(sys.argv[1], encoding='utf-8'))
+assert [m['id'] for m in s['modules']] == ['a', 'b', 'c']
+assert s['matrix'] == [[0, 1, 0], [1, 0, 0], [0, 2, 0]], s
+assert s['cycles'] == [['a', 'b']]
+assert [(m['root'], m['files'], m['lines']) for m in s['modules']] == [('pkg', 1, 2), ('pkg', 2, 4), ('pkg', 1, 3)]
+assert s['page'] == 'matrix' and s['roots'] == ['pkg']
+assert s['repo']['name'] == 'demo' and re.fullmatch('[0-9a-f]{40}', s['repo']['commit'])
+PY
+  cp "$S/modules.json" "$S/first.json"
+  python3 "$AD/modules.py" "$S/repo" "$S/modules.json" --root pkg --name demo
+  cmp "$S/first.json" "$S/modules.json" || return 1
+  mutate_matrix 's["modules"][0]["does"] = "入口"; s["subtitle"] = "x"; s["title"] = "模組目錄"'
+  python3 "$AD/modules.py" "$S/repo" "$S/modules.json" --root pkg --name demo
+  python3 - "$S/modules.json" <<'PY'
+import json, sys
+s = json.load(open(sys.argv[1], encoding='utf-8'))
+assert s['modules'][0]['does'] == '入口' and s['subtitle'] == 'x' and s['title'] == '模組目錄'
+PY
+}
+
+@test "modules.py with a missing root exits 2 and writes nothing" {
+  init_modrepo
+  run python3 "$AD/modules.py" "$S/repo" "$S/modules.json" --root missing
+  [ "$status" -eq 2 ] || { echo "$output"; return 1; }
+  [[ "$output" == *missing* ]] || return 1
+  [ ! -e "$S/modules.json" ]
+}
+
+@test "two roots with the same child name get prefixed ids" {
+  init_modrepo
+  mkdir -p "$S/repo/pkg/core" "$S/repo/other/core"
+  printf 'raise SystemExit(9)\nfrom other.core import x\n' > "$S/repo/pkg/core/__init__.py"
+  printf 'raise SystemExit(9)\nfrom pkg.core import x\n' > "$S/repo/other/core/__init__.py"
+  run python3 "$AD/modules.py" "$S/repo" "$S/modules.json" --root pkg --root other
+  [ "$status" -ne 9 ] || return 1
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  python3 - "$S/modules.json" <<'PY'
+import json, sys
+s = json.load(open(sys.argv[1], encoding='utf-8'))
+ids = [m['id'] for m in s['modules']]
+assert ids == ['a', 'b', 'c', 'other/core', 'pkg/core'], ids
+assert s['matrix'][ids.index('other/core')][ids.index('pkg/core')] == 1
+assert s['matrix'][ids.index('pkg/core')][ids.index('other/core')] == 1
+PY
+}
+
+@test "AC-6 matrix page shows fan-in, fan-out and the cycle; check finds a stale matrix" {
+  make_modules
+  python3 "$AD/render.py" page "$S/modules.json" "$S/modules.html"
+  python3 - "$S/modules.html" <<'PY'
+import re, sys
+s = open(sys.argv[1], encoding='utf-8').read()
+row = re.search(r'<tr id="mod-b">(.*?)</tr>', s).group(1)
+assert re.findall(r'<td[^>]*>(.*?)</td>', row) == ['b', '', '2', '4', '2', '1'], row
+assert 'a ⇄ b' in s
+heat = s[s.index('<table class="heat">'):s.index('</table>')]
+assert heat.count('<td></td>') == 6, heat
+assert '<td style="background:rgba(34,211,238,0.75)">2</td>' in heat
+assert '<div class="pan"><table class="heat">' in s
+PY
+  run python3 "$AD/check.py" "$S/modules.json" --repo "$S/repo"
+  [ "$status" -ne 9 ] || return 1
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ -z "$output" ] || return 1
+  printf 'from pkg.c import q\n' >> "$S/repo/pkg/a/__init__.py"
+  run python3 "$AD/check.py" "$S/modules.json" --repo "$S/repo"
+  [ "$status" -ne 9 ] || return 1
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [ "$output" = 'check: matrix: stale' ] || return 1
+  mutate_matrix 's["cycles"] = []'
+  python3 "$AD/render.py" page "$S/modules.json" "$S/no-cycle.html"
+  grep -qF '沒有循環依賴' "$S/no-cycle.html"
+}
+
+@test "modules.py resolves bare absolute imports against the root itself (src layout)" {
+  mkdir -p "$S/r/src/foo" "$S/r/src/bar"
+  printf 'raise SystemExit(9)\nfrom bar import x\n' > "$S/r/src/foo/__init__.py"
+  printf 'raise SystemExit(9)\n' > "$S/r/src/bar/__init__.py"
+  git -C "$S/r" init -q && git -C "$S/r" add . && git -C "$S/r" -c user.name=t -c user.email=t@example.invalid commit -qm i
+  run python3 "$AD/modules.py" "$S/r" "$S/m.json" --root src
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  python3 -c "import json,sys; s=json.load(open(sys.argv[1])); assert s['matrix'] == [[0,0],[1,0]], s['matrix']" "$S/m.json"
+}
+
+@test "module ids stay unique across roots with one basename and a file beside its package" {
+  mkdir -p "$S/r/x/pkg" "$S/r/y/pkg" "$S/r/z/foo"
+  printf 'raise SystemExit(9)\nfrom y.pkg.util import q\n' > "$S/r/x/pkg/util.py"
+  printf 'raise SystemExit(9)\n' > "$S/r/y/pkg/util.py"
+  printf 'raise SystemExit(9)\n' > "$S/r/z/foo/__init__.py"
+  printf 'raise SystemExit(9)\n' > "$S/r/z/foo.py"
+  printf 'raise SystemExit(9)\nimport z.foo\n' > "$S/r/z/bar.py"
+  git -C "$S/r" init -q && git -C "$S/r" add . && git -C "$S/r" -c user.name=t -c user.email=t@example.invalid commit -qm i
+  run python3 "$AD/modules.py" "$S/r" "$S/m.json" --root x/pkg --root y/pkg --root z
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  python3 - "$S/m.json" <<'PY'
+import json, sys
+s = json.load(open(sys.argv[1], encoding='utf-8'))
+ids = [m['id'] for m in s['modules']]
+assert ids == ['bar', 'foo', 'x/pkg/util', 'y/pkg/util'], ids
+assert s['matrix'][ids.index('x/pkg/util')][ids.index('y/pkg/util')] == 1
+assert s['matrix'][ids.index('bar')][ids.index('foo')] == 1
+PY
+  python3 - "$S/m.json" <<'PY'
+import json, sys
+s = json.load(open(sys.argv[1], encoding='utf-8'))
+s['modules'].append(dict(s['modules'][0]))
+s['matrix'] = [r + [0] for r in s['matrix']] + [[0] * (len(s['matrix']) + 1)]
+json.dump(s, open(sys.argv[1], 'w', encoding='utf-8'))
+PY
+  run python3 "$AD/check.py" "$S/m.json"
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [ "$output" = 'check: id: duplicate module bar' ] || { echo "$output"; return 1; }
+}
+
+@test "matrix page says which way it reads, styles fan-out as data, and names big cycles" {
+  make_modules
+  mutate_matrix 's["cycles"] = [["a", "b"], ["a", "b", "c"]]'
+  python3 "$AD/render.py" page "$S/modules.json" "$S/modules.html"
+  python3 - "$S/modules.html" <<'PY'
+import sys
+s = open(sys.argv[1], encoding='utf-8').read()
+assert s.index('列 → 欄') < s.index('<table class="heat">')
+assert '<table class="cat mods">' in s
+assert '.mods td:last-child{font-size:inherit;color:inherit}' in s
+assert '<li>a ⇄ b</li>' in s
+assert '<li>3 個模組互相循環：a、b、c</li>' in s
+PY
+}
+
+@test "non-integer matrix cell is refused" {
+  make_modules
+  mutate_matrix 's["matrix"][0][1] = "9);background:url(//x)"'
+  run python3 "$AD/check.py" "$S/modules.json"
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [[ "$output" == 'check: schema:'* ]] || return 1
+  run python3 "$AD/render.py" page "$S/modules.json" "$S/modules.html"
+  [ "$status" -eq 2 ] || { echo "$output"; return 1; }
+  [ ! -e "$S/modules.html" ]
+}
+
+@test "empty matrix renders title and footer only" {
+  make_modules
+  mutate_matrix 's.update(roots=[], modules=[], matrix=[], cycles=[])'
+  python3 "$AD/render.py" page "$S/modules.json" "$S/modules.html"
+  grep -qF '<h1>模組耦合</h1>' "$S/modules.html" || return 1
+  grep -qF '<footer>' "$S/modules.html" || return 1
+  ! grep -qF '<table' "$S/modules.html" || return 1
+  run python3 "$AD/check.py" "$S/modules.json" --repo "$S/repo"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ -z "$output" ]
+}
+
+@test "modules.py resolves nested root prefixes and distinct targets per statement" {
+  init_modrepo
+  mkdir -p "$S/repo/backend/app/a" "$S/repo/backend/app/tests" "$S/repo/backend/app/a/test" "$S/repo/backend/app/.hidden"
+  cat > "$S/repo/backend/app/a/__init__.py" <<'PY'
+raise SystemExit(9)
+from backend.app import b, c
+import app.b, app.b, os
+from .. import b, c
+from . import internal
+from .....pkg import c
+PY
+  printf 'raise SystemExit(9)\n' > "$S/repo/backend/app/b.py"
+  printf 'raise SystemExit(9)\n' > "$S/repo/backend/app/c.py"
+  for path in a/test_ignore.py a/ignore_test.py a/test/skip.py tests/test_c.py .hidden/skip.py; do
+    printf 'raise SystemExit(9)\nfrom app import b\n' > "$S/repo/backend/app/$path"
+  done
+  run python3 "$AD/modules.py" "$S/repo" "$S/modules.json" --root backend/app
+  [ "$status" -ne 9 ] || return 1
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  python3 - "$S/modules.json" <<'PY'
+import json, sys
+s = json.load(open(sys.argv[1], encoding='utf-8'))
+assert [m['id'] for m in s['modules']] == ['a', 'b', 'c'], s
+assert s['modules'][0]['files'] == 1 and s['modules'][0]['lines'] == 6
+assert s['matrix'] == [[0, 3, 2], [0, 0, 0], [0, 0, 0]], s
+assert s['cycles'] == []
+PY
+}
+
+@test "matrix schema requires square non-negative integer cells and known cycle ids" {
+  make_modules
+  cp "$S/modules.json" "$S/valid.json"
+  for change in 's["matrix"][0][1] = True' 's["matrix"][0][1] = -1' 's["matrix"][0][1] = 0.5' 's["matrix"][0].pop()' 's["cycles"] = [["ghost"]]' 's["modules"][0]["files"] = True'; do
+    cp "$S/valid.json" "$S/modules.json"
+    mutate_matrix "$change"
+    run python3 "$AD/check.py" "$S/modules.json"
+    [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+    [[ "$output" == 'check: schema:'* ]] || return 1
+  done
+}
+
+@test "AC-7 index puts overview, features, modules, jobs first" {
+  make_modules
+  mkdir -p "$S/pack"
+  cp "$FX/jobs.json" "$FX/features.json" "$S/modules.json" "$S/pack/"
+  python3 - "$FX/clean.json" "$S/pack" <<'PY'
+import json, sys
+from pathlib import Path
+s = json.load(open(sys.argv[1], encoding='utf-8'))
+for topic in ('overview', 'csat'):
+    s['topic'] = topic
+    (Path(sys.argv[2]) / (topic + '.json')).write_text(json.dumps(s), encoding='utf-8')
+PY
+  python3 "$AD/render.py" index "$S/pack" "$S/index.html"
+  python3 - "$S/index.html" <<'PY'
+import re, sys
+s = open(sys.argv[1], encoding='utf-8').read()
+assert re.findall(r'href="([^"]+)"', s) == ['overview.html', 'features.html', 'modules.html', 'jobs.html', 'csat.html']
+PY
+}
+
+@test "AC-9 catalog pages stay offline" {
+  make_modules
+  mutate_catalog jobs 's["rows"][0]["cells"]["does"] = "https://evil.example <script>bad</script> & quote\""'
+  mutate_catalog features 's["cards"][0]["does"] = "https://evil.example <script>bad</script> & quote\""'
+  mutate_matrix 's["modules"][0]["does"] = "https://evil.example <script>bad</script> & quote\""'
+  for topic in jobs features modules; do
+    python3 "$AD/render.py" page "$S/$topic.json" "$S/$topic.html"
+    python3 "$AD/render.py" page "$S/$topic.json" "$S/again.html"
+    cmp "$S/$topic.html" "$S/again.html" || return 1
+  done
+  python3 - "$S" <<'PY'
+import re, sys
+from pathlib import Path
+from html import unescape
+for topic in ('jobs', 'features', 'modules'):
+    s = (Path(sys.argv[1]) / (topic + '.html')).read_text(encoding='utf-8')
+    assert '<script' not in s and not re.search(r' on[a-z]+=', s), topic
+    assert not re.search(r'https?://', s), topic
+    assert '&lt;script&gt;' in s and '&amp;' in s and '&quot;' in s
+    assert 'https://evil.example' in unescape(s)
+PY
+}
+
+@test "spec-format documents the new page types" {
+  for field in page columns registry cards modules.py; do
+    grep -qF "$field" "$AD/../references/spec-format.md" || return 1
+  done
+  python3 - "$AD/../references/spec-format.md" "$S/table.json" <<'PY'
+import json, re, sys
+from pathlib import Path
+examples = [json.loads(s) for s in re.findall(r'```json\n(.*?)\n```', Path(sys.argv[1]).read_text(encoding='utf-8'), re.S)]
+table = next(s for s in examples if s.get('page') == 'table')
+Path(sys.argv[2]).write_text(json.dumps(table), encoding='utf-8')
+PY
+  run python3 "$AD/check.py" "$S/table.json"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  python3 "$AD/render.py" page "$S/table.json" "$S/table.html"
+}
+
+@test "modules.py resolves absolute imports when the root is the repository itself" {
+  init_modrepo
+  printf 'raise SystemExit(9)\nimport b\n' > "$S/repo/a.py"
+  printf 'raise SystemExit(9)\nfrom a import x\n' > "$S/repo/b.py"
+  run python3 "$AD/modules.py" "$S/repo" "$S/modules.json" --root .
+  [ "$status" -ne 9 ] || return 1
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  python3 - "$S/modules.json" <<'PY'
+import json, sys
+s = json.load(open(sys.argv[1], encoding='utf-8'))
+assert [m['id'] for m in s['modules']] == ['a', 'b', 'pkg']
+assert s['matrix'] == [[0, 1, 0], [1, 0, 0], [0, 0, 0]], s['matrix']
+assert s['cycles'] == [['a', 'b']]
+PY
+}

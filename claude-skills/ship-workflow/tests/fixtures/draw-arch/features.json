@@ -1,0 +1,11 @@
+{
+  "topic": "features", "page": "cards", "title": "功能目錄",
+  "repo": {"name": "demo", "commit": "0123456789abcdef0123456789abcdef01234567"},
+  "cards": [
+    {
+      "id": "csat", "title": "滿意度問卷", "does": "收集回饋並產出報表",
+      "entry": "問卷 API", "data": "問卷與回覆",
+      "topics": ["csat"], "jobs": ["csat_worker"], "src": ["app/csat.py:1-20"]
+    }
+  ]
+}

@@ -17,6 +17,7 @@ KINDS = {
 }
 TONES = {"body": "#cbd5e1", "cond": "#fcd34d", "warn": "#fb7185", "muted": "#94a3b8"}
 SHAPES = ("box", "pill")
+PAGES = ("diagram", "table", "cards", "matrix")
 CSS = """
 *{box-sizing:border-box}body{margin:0;background:#020617;color:#cbd5e1;
 font-family:'JetBrains Mono',SFMono-Regular,Menlo,'PingFang TC',monospace;font-size:13px}
@@ -41,6 +42,25 @@ table.cond,.cond thead,.cond tbody,.cond tr,.cond td{display:block}.cond thead{d
 .cond tr{border:1px solid #1e293b;border-radius:8px;margin:12px 0;padding:10px 12px}.cond td{border:0;padding:3px 0}
 .cond td:nth-child(1){font-size:15px;font-weight:700;overflow-wrap:anywhere}.cond td:nth-child(2)::before{content:"做什麼　";color:#64748b}
 .cond td:nth-child(3)::before{content:"條件　";color:#64748b}.cond td:nth-child(4){font-size:11px;overflow-wrap:anywhere}}
+"""
+
+# Diagram CSS is frozen; catalog rules extend its existing phone block only.
+CATALOG_CSS = CSS.replace("@media (max-width:700px)", """
+.cat{width:100%;border-collapse:collapse;margin:32px 0;line-height:1.8}
+.cat td:last-child{font-size:11.5px;color:#94a3b8}.cat tr.warn td{color:#fb7185}
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin:28px 0}
+.card{border:1px solid #1e293b;border-radius:8px;padding:20px;line-height:1.8;overflow-wrap:anywhere}
+.card h2{margin-top:0}.card dl{margin:16px 0}.card dt{color:#94a3b8}.card dd{margin:0 0 8px}
+.card small{color:#94a3b8}.card a{margin-right:12px}
+.heat{width:100%;border-collapse:collapse;margin:16px 0}.heat td{text-align:center}
+.heat th{white-space:nowrap}.heat td:empty{background:#0f172a}
+.mods td:last-child{font-size:inherit;color:inherit}
+@media (max-width:700px)""").rstrip()[:-1] + """
+table.cat,.cat thead,.cat tbody,.cat tr,.cat td{display:block}.cat thead{display:none}
+.cat tr{border:1px solid #1e293b;border-radius:8px;margin:12px 0;padding:10px 12px}
+.cat td{border:0;padding:3px 0}.cat td::before{content:attr(data-label);color:#64748b;margin-right:1em}
+.cards{grid-template-columns:1fr}
+}
 """
 
 
@@ -180,11 +200,11 @@ def render_svg(spec: dict, uid: str, route: Optional[dict] = None) -> str:
     return "\n".join(parts)
 
 
-def document(title: str, parts: list) -> str:
+def document(title: str, parts: list, css: str = CSS) -> str:
     return ('<!doctype html>\n<html lang="zh-Hant"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             '<title>{}</title><style>{}</style></head><body><main>\n{}\n</main></body></html>\n'
-            .format(esc(title), CSS, "\n".join(parts)))
+            .format(esc(title), css, "\n".join(parts)))
 
 
 KIND_NAMES = {"fe": "前端", "be": "後端", "db": "資料庫", "bus": "佇列", "ext": "外部", "sec": "安全", "cloud": "雲端"}
@@ -203,14 +223,139 @@ def pan(svg: str) -> str:
     return '<p class="pan-hint">← 左右滑動看整張圖 →</p><div class="pan">' + svg + '</div>'
 
 
+def page_header(spec: dict) -> list:
+    repo = spec["repo"]
+    return ['<h1>{}</h1>'.format(esc(spec["title"])),
+            '<p class="sub">{}</p>'.format(esc(" · ".join(filter(None, [spec.get("subtitle", ""), repo["name"], repo["commit"][:7]]))))]
+
+
+def page_footer(spec: dict) -> str:
+    return '<footer>Commit {}</footer>'.format(esc(spec["repo"]["commit"]))
+
+
+def src_text(src) -> str:
+    return " / ".join(src) if isinstance(src, list) else src
+
+
+def render_table(spec: dict) -> str:
+    parts = page_header(spec)
+    groups = {"": []}
+    for row in spec["rows"]:
+        groups.setdefault(row.get("group", ""), []).append(row)
+    columns = spec["columns"]
+    for group, rows in groups.items():
+        if not rows:
+            continue
+        if group:
+            parts.append('<h2>{}</h2>'.format(esc(group)))
+        parts.extend(['<table class="cat">', '<thead><tr>' + ''.join(
+            '<th>{}</th>'.format(esc(c["label"])) for c in columns) + '<th>程式碼</th></tr></thead>', '<tbody>'])
+        for row in rows:
+            warning = row.get("warn", False)
+            cells = [(c["label"], row["cells"].get(c["key"], "")) for c in columns]
+            cells.append(("程式碼", src_text(row["src"])))
+            parts.append('<tr{} id="row-{}">{}</tr>'.format(
+                ' class="warn"' if warning else '', attr(row["id"]), ''.join(
+                    '<td data-label="{}">{}{}</td>'.format(attr(label), "⚠ " if warning and i == 0 else "", esc(value))
+                    for i, (label, value) in enumerate(cells))))
+        parts.extend(['</tbody>', '</table>'])
+    parts.append(page_footer(spec))
+    return document(spec["title"], parts, CATALOG_CSS)
+
+
 def render_page(spec: dict) -> str:
+    page = spec.get("page", "diagram")
+    if page not in PAGES:
+        raise SpecError("unknown page: " + str(page))
+    if page != "diagram":
+        # Lazy import: check imports the renderer's shared constants and helpers.
+        from check import schema_errors
+        errors = schema_errors(spec)
+        if errors:
+            raise SpecError("\n".join(errors))
+        if page == "table":
+            return render_table(spec)
+        if page == "cards":
+            return render_cards(spec)
+        if page == "matrix":
+            return render_matrix(spec)
+        raise SpecError("unknown page: " + page)
+    return render_diagram(spec)
+
+
+def render_cards(spec: dict) -> str:
+    parts = page_header(spec)
+    if spec["cards"]:
+        parts.append('<div class="cards">')
+        for card in spec["cards"]:
+            parts.extend(['<article class="card" id="card-{}">'.format(attr(card["id"])),
+                          '<h2>{}</h2>'.format(esc(card["title"])), '<p>{}</p>'.format(esc(card["does"]))])
+            details = ''.join('<dt>{}</dt><dd>{}</dd>'.format(label, esc(card[key]))
+                              for key, label in (("entry", "入口"), ("data", "資料")) if key in card)
+            if details:
+                parts.append('<dl>' + details + '</dl>')
+            links = []
+            if card.get("topics"):
+                links.append('相關頁面 ' + ''.join('<a href="{}.html">{}</a>'.format(attr(t), esc(t)) for t in card["topics"]))
+            if card.get("jobs"):
+                links.append('背景程式 ' + ''.join('<a href="jobs.html#row-{}">{}</a>'.format(attr(j), esc(j)) for j in card["jobs"]))
+            if links:
+                parts.append('<p>' + ' · '.join(links) + '</p>')
+            parts.extend(['<small>{}</small>'.format(esc(src_text(card["src"]))), '</article>'])
+        parts.append('</div>')
+    parts.append(page_footer(spec))
+    return document(spec["title"], parts, CATALOG_CSS)
+
+
+def cycle_text(cycle: list) -> str:
+    """A pair reads a ⇄ b; a larger cycle is one group, not a chain of pairs."""
+    if len(cycle) == 2:
+        return ' ⇄ '.join(cycle)
+    return '{} 個模組互相循環：{}'.format(len(cycle), '、'.join(cycle))
+
+
+def render_matrix(spec: dict) -> str:
+    parts = page_header(spec)
+    modules, matrix = spec["modules"], spec["matrix"]
+    if modules:
+        maximum = max(max(row) for row in matrix)
+        heat = ['<table class="heat">', '<thead><tr><th>模組</th>' + ''.join(
+            '<th>{}</th>'.format(esc(m["id"])) for m in modules) + '</tr></thead>', '<tbody>']
+        for module, row in zip(modules, matrix):
+            heat.append('<tr><th>{}</th>'.format(esc(module["id"])))
+            for count in row:
+                if count:
+                    alpha = round(0.15 + 0.6 * count / maximum, 2)
+                    heat.append('<td style="background:rgba(34,211,238,{})">{}</td>'.format(alpha, count))
+                else:
+                    heat.append('<td></td>')
+            heat.append('</tr>')
+        heat.extend(['</tbody>', '</table>'])
+        parts.append('<p class="sub">每格 = 列的模組 import 欄的模組幾次（列 → 欄）</p>')
+        parts.append(pan(''.join(heat)))
+        labels = ("模組", "做什麼", "檔案", "行數", "被依賴", "依賴")
+        parts.extend(['<table class="cat mods">', '<thead><tr>' + ''.join('<th>{}</th>'.format(label) for label in labels) + '</tr></thead>', '<tbody>'])
+        for i, module in enumerate(modules):
+            fan_in = sum(matrix[j][i] > 0 for j in range(len(modules)) if j != i)
+            fan_out = sum(count > 0 for j, count in enumerate(matrix[i]) if j != i)
+            cells = (module["id"], module.get("does", ""), module["files"], module["lines"], fan_in, fan_out)
+            parts.append('<tr id="mod-{}">{}</tr>'.format(attr(module["id"]), ''.join(
+                '<td data-label="{}">{}</td>'.format(attr(label), esc(value)) for label, value in zip(labels, cells))))
+        parts.extend(['</tbody>', '</table>', '<h2>循環依賴</h2>'])
+        if spec["cycles"]:
+            parts.append('<ul>' + ''.join('<li>{}</li>'.format(esc(cycle_text(cycle))) for cycle in spec["cycles"]) + '</ul>')
+        else:
+            parts.append('<p>沒有循環依賴</p>')
+    parts.append(page_footer(spec))
+    return document(spec["title"], parts, CATALOG_CSS)
+
+
+def render_diagram(spec: dict) -> str:
     topic = spec["topic"]
     if not re.fullmatch(r"[a-z0-9-]+", topic):
         raise SpecError("invalid topic: " + topic)
-    repo = spec["repo"]
-    parts = ['<h1>{}</h1>'.format(esc(spec["title"])),
-             '<p class="sub">{}</p>'.format(esc(" · ".join(filter(None, [spec.get("subtitle", ""), repo["name"], repo["commit"][:7]])))),
-             '<section class="diagram">', pan(render_svg(spec, "{}-0".format(topic))), '</section>']
+    parts = page_header(spec)
+    parts.extend(['<section class="diagram">', pan(render_svg(spec, "{}-0".format(topic))), '</section>'])
     parts.append('<div class="legend">' + "".join('<span style="color:{}">{}</span>'.format(KINDS[k][1], esc(label)) for k, label in legend_items(spec)) + '</div>')
     for i, route in enumerate(spec.get("routes", [])):
         parts.extend(['<section class="route">', '<h2>{}</h2>'.format(esc(route["name"])),
@@ -230,7 +375,7 @@ def render_page(spec: dict) -> str:
                 ' class="warn"' if warning else "", "⚠ " if warning else "", esc(node),
                 esc(row["does"]), esc(row["when"]), esc(row["src"])))
         parts.extend(['</tbody>', '</table>'])
-    parts.append('<footer>Commit {}</footer>'.format(esc(repo["commit"])))
+    parts.append(page_footer(spec))
     return document(spec["title"], parts)
 
 
@@ -238,7 +383,8 @@ def render_index(specs: list) -> str:
     repos = sorted({spec["repo"]["name"] for spec in specs})
     title = " · ".join(["架構圖包"] + repos)
     parts = ['<h1>{}</h1>'.format(esc(title)), '<nav class="pack">']
-    for spec in sorted(specs, key=lambda s: (s["topic"] != "overview", s["topic"])):
+    ranks = {topic: i for i, topic in enumerate(("overview", "features", "modules", "jobs"))}
+    for spec in sorted(specs, key=lambda s: (ranks.get(s["topic"], 4), s["topic"])):
         if not re.fullmatch(r"[a-z0-9-]+", spec["topic"]):
             raise SpecError("invalid topic: " + spec["topic"])
         parts.append('<a href="{}.html">{}<span>{}</span></a>'.format(

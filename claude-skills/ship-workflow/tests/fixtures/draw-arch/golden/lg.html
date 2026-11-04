@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LangGraph</title><style>
+*{box-sizing:border-box}body{margin:0;background:#020617;color:#cbd5e1;
+font-family:'JetBrains Mono',SFMono-Regular,Menlo,'PingFang TC',monospace;font-size:13px}
+main{max-width:1440px;margin:auto;padding:40px}h1{font-size:26px;color:#f8fafc}
+h2{font-size:18px;color:#f8fafc}.sub,footer{color:#94a3b8;line-height:1.8}
+section{margin:28px 0}svg{width:100%;height:auto;display:block}
+.legend{display:flex;gap:20px;flex-wrap:wrap;margin:12px 0;font-size:11px}
+.route{border-top:1px solid #1e293b;padding-top:16px}.steps{line-height:1.8;padding-left:30px}
+.steps li{margin:12px 0}.steps span{display:block}.cond{width:100%;border-collapse:collapse;
+margin:32px 0;line-height:1.8}th,td{border:1px solid #1e293b;padding:12px;text-align:left;
+vertical-align:top;overflow-wrap:anywhere}th{color:#94a3b8}
+.cond th:nth-child(1){width:17%}.cond th:nth-child(2){width:20%}.cond th:nth-child(4){width:24%}
+.cond td:nth-child(1){overflow-wrap:normal;color:#f8fafc}.cond td:nth-child(4){font-size:11.5px;color:#94a3b8}.cond tr.warn td{color:#fb7185}tr.warn{color:#fb7185}
+footer{border-top:1px solid #1e293b;padding-top:20px}a{color:#22d3ee}
+.pack a{display:block;border:1px solid #1e293b;padding:20px;margin:16px 0;text-decoration:none}
+.pack span{display:block;color:#94a3b8;margin-top:8px}
+.pan-hint{display:none}
+@media (max-width:700px){main{padding:16px}h1{font-size:20px}.sub{font-size:12px;overflow-wrap:anywhere}
+.pan{overflow-x:auto;border:1px solid #1e293b;border-radius:8px}
+.pan svg{width:calc(var(--w)*0.8);max-width:none}.pan-hint{display:block;color:#94a3b8;font-size:12px;margin:6px 0 8px}
+table.cond,.cond thead,.cond tbody,.cond tr,.cond td{display:block}.cond thead{display:none}
+.cond tr{border:1px solid #1e293b;border-radius:8px;margin:12px 0;padding:10px 12px}.cond td{border:0;padding:3px 0}
+.cond td:nth-child(1){font-size:15px;font-weight:700;overflow-wrap:anywhere}.cond td:nth-child(2)::before{content:"做什麼　";color:#64748b}
+.cond td:nth-child(3)::before{content:"條件　";color:#64748b}.cond td:nth-child(4){font-size:11px;overflow-wrap:anywhere}}
+</style></head><body><main>
+<h1>LangGraph</h1>
+<p class="sub">AST fixture · demo · 0123456</p>
+<section class="diagram">
+<p class="pan-hint">← 左右滑動看整張圖 →</p><div class="pan"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" role="img" aria-label="LangGraph" style="--w:900px">
+<defs>
+<pattern id="langgraph-0-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0 H0 V40" fill="none" stroke="#1e293b" stroke-width="0.5"/></pattern>
+<marker id="langgraph-0-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#64748b"/></marker>
+<marker id="langgraph-0-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#fbbf24"/></marker>
+</defs>
+<rect width="100%" height="100%" fill="#020617"/>
+<rect width="100%" height="100%" fill="url(#langgraph-0-grid)"/>
+<g data-edge="START->a" opacity="1">
+<path d="M80&#32;135&#32;H120" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#langgraph-0-arrow)"/>
+</g>
+<g data-edge="a->b" opacity="1">
+<path d="M260&#32;125&#32;H290&#32;V65&#32;H320" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#langgraph-0-arrow)"/>
+<rect x="278.8" y="92" width="22.4" height="16" rx="3" fill="#020617"/>
+<text x="290" y="103.5" font-size="10" fill="#64748b" text-anchor="middle">go</text>
+</g>
+<g data-edge="a->END2" opacity="1">
+<path d="M260&#32;145&#32;H290&#32;V215&#32;H560" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#langgraph-0-arrow)"/>
+<rect x="382.6" y="207" width="34.8" height="16" rx="3" fill="#020617"/>
+<text x="400" y="218.5" font-size="10" fill="#64748b" text-anchor="middle">stop</text>
+</g>
+<g data-edge="b->END" opacity="1">
+<path d="M460&#32;65&#32;H520&#32;V135&#32;H560" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#langgraph-0-arrow)"/>
+</g>
+<g data-node="START" opacity="1">
+<rect x="10" y="120" width="70" height="30" rx="15.0" fill="#0f172a"/>
+<rect x="10" y="120" width="70" height="30" rx="15.0" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="45" y="139" font-size="13" font-weight="700" fill="#f8fafc" text-anchor="middle">START</text>
+</g>
+<g data-node="a" opacity="1">
+<rect x="120" y="110" width="140" height="50" rx="6" fill="#0f172a"/>
+<rect x="120" y="110" width="140" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="190" y="139" font-size="13" font-weight="700" fill="#f8fafc" text-anchor="middle">a</text>
+</g>
+<g data-node="b" opacity="1">
+<rect x="320" y="40" width="140" height="50" rx="6" fill="#0f172a"/>
+<rect x="320" y="40" width="140" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+<text x="390" y="69" font-size="13" font-weight="700" fill="#f8fafc" text-anchor="middle">b</text>
+</g>
+<g data-node="END" opacity="1">
+<rect x="560" y="120" width="70" height="30" rx="15.0" fill="#0f172a"/>
+<rect x="560" y="120" width="70" height="30" rx="15.0" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="595" y="139" font-size="13" font-weight="700" fill="#f8fafc" text-anchor="middle">END</text>
+</g>
+<g data-node="END2" opacity="1">
+<rect x="560" y="200" width="70" height="30" rx="15.0" fill="#0f172a"/>
+<rect x="560" y="200" width="70" height="30" rx="15.0" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="595" y="219" font-size="13" font-weight="700" fill="#f8fafc" text-anchor="middle">END</text>
+</g>
+</svg></div>
+</section>
+<div class="legend"><span style="color:#34d399">後端</span><span style="color:#94a3b8">外部</span></div>
+<footer>Commit 0123456789abcdef0123456789abcdef01234567</footer>
+</main></body></html>

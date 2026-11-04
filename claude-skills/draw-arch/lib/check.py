@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from render import KINDS, TONES, SHAPES, text_width, label_box, load_spec, SpecError
+from render import KINDS, TONES, SHAPES, PAGES, text_width, label_box, load_spec, SpecError
 
 
 def schema_errors(spec: dict) -> list:
@@ -51,14 +51,73 @@ def schema_errors(spec: dict) -> list:
         require(isinstance(value, list), name + " must be a list")
         return value if isinstance(value, list) else []
 
-    if not fields(spec, ("topic", "title", "repo", "canvas", "nodes", "edges"), "spec"):
+    if not fields(spec, ("topic", "title", "repo"), "spec"):
         return errors
+    choice(spec, "page", PAGES, "spec")
     strings(spec, ("topic", "title", "subtitle"), "spec")
     require(isinstance(spec.get("topic"), str) and re.fullmatch(r"[a-z0-9-]+", spec.get("topic", "")), "invalid topic")
     repo = spec.get("repo")
     if fields(repo, ("name", "commit"), "repo"):
         strings(repo, ("name", "commit"), "repo")
         require(isinstance(repo.get("commit"), str) and re.fullmatch(r"[0-9a-f]{7,40}", repo.get("commit", "")), "invalid repo.commit")
+    page = spec.get("page", "diagram")
+    if page == "table":
+        fields(spec, ("columns", "rows"), "spec")
+        for column in array("columns"):
+            if fields(column, ("key", "label"), "column"):
+                strings(column, ("key", "label"), "column")
+        for row in array("rows"):
+            if not fields(row, ("id", "cells", "src"), "row"):
+                continue
+            strings(row, ("id", "group"), "row")
+            require(isinstance(row.get("id"), str) and re.fullmatch(r"[A-Za-z0-9_.:-]+", row["id"]), "row.id is invalid")
+            cells = row.get("cells")
+            require(isinstance(cells, dict) and all(isinstance(v, str) for v in cells.values()), "row.cells must be an object of text")
+            src = row.get("src")
+            require(isinstance(src, str) or isinstance(src, list) and all(isinstance(v, str) for v in src), "row.src must be text or a list of text")
+            if "warn" in row:
+                require(isinstance(row["warn"], bool), "row.warn must be boolean")
+        if "registry" in spec and fields(spec["registry"], ("file", "call"), "registry"):
+            strings(spec["registry"], ("file", "call", "key"), "registry")
+        return errors
+    if page == "cards":
+        fields(spec, ("cards",), "spec")
+        for card in array("cards"):
+            if not fields(card, ("id", "title", "does", "src"), "card"):
+                continue
+            strings(card, ("id", "title", "does", "entry", "data"), "card")
+            require(isinstance(card.get("id"), str) and re.fullmatch(r"[A-Za-z0-9_.:-]+", card["id"]), "card.id is invalid")
+            require(isinstance(card.get("src"), list) and all(isinstance(v, str) for v in card["src"]), "card.src must be a list of text")
+            for key, pattern in (("topics", r"[a-z0-9-]+"), ("jobs", r"[A-Za-z0-9_.:-]+")):
+                value = card.get(key, [])
+                require(isinstance(value, list) and all(isinstance(v, str) and re.fullmatch(pattern, v) for v in value), "card." + key + " must be a list of ids")
+        return errors
+    if page == "matrix":
+        fields(spec, ("roots", "modules", "matrix", "cycles"), "spec")
+        require(all(isinstance(v, str) for v in array("roots")), "roots must be a list of text")
+        modules = array("modules")
+        ids = set()
+        for module in modules:
+            if not fields(module, ("id", "root", "files", "lines"), "module"):
+                continue
+            strings(module, ("id", "root", "does"), "module")
+            if isinstance(module.get("id"), str):
+                ids.add(module["id"])
+            for key in ("files", "lines"):
+                value = module.get(key)
+                require(type(value) is int and value >= 0, "module." + key + " must be a non-negative integer")
+        matrix = array("matrix")
+        require(len(matrix) == len(modules), "matrix must be square and sized to modules")
+        for row in matrix:
+            require(isinstance(row, list) and len(row) == len(modules), "matrix must be square and sized to modules")
+            if isinstance(row, list):
+                require(all(type(v) is int and v >= 0 for v in row), "matrix cells must be non-negative integers")
+        for cycle in array("cycles"):
+            require(isinstance(cycle, list) and all(isinstance(v, str) and v in ids for v in cycle), "cycles must be lists of known module ids")
+        return errors
+    if page != "diagram":
+        return errors
+    fields(spec, ("canvas", "nodes", "edges"), "spec")
     canvas = spec.get("canvas")
     if fields(canvas, ("w", "h"), "canvas"):
         for name in ("w", "h"):
@@ -179,9 +238,84 @@ def extract_graph(path: str) -> tuple:
     return nodes, edges, unresolved
 
 
-def check_spec(spec: dict, repo: Optional[str] = None) -> list:
+def extract_registry(path: str, call: str, key: str = "name") -> tuple:
+    tree = ast.parse(Path(path).read_text(encoding="utf-8"), filename=str(path))
+    names, unresolved = [], []
+    calls = sorted((n for n in ast.walk(tree) if isinstance(n, ast.Call)), key=lambda n: (n.lineno, n.col_offset))
+    for node in calls:
+        func = node.func
+        if not ((isinstance(func, ast.Name) and func.id == call) or
+                (isinstance(func, ast.Attribute) and func.attr == call)):
+            continue
+        value = next((kw.value for kw in node.keywords if kw.arg == key), None)
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            names.append(value.value)
+        else:
+            unresolved.append(node.lineno)
+    return names, unresolved
+
+
+def check_spec(spec: dict, repo: Optional[str] = None, spec_dir: Optional[str] = None) -> list:
     findings = schema_errors(spec)
     if findings:
+        return findings
+    if spec.get("page") == "table":
+        ids = set()
+        for row in spec["rows"]:
+            if row["id"] in ids:
+                findings.append("check: id: duplicate row " + row["id"])
+            ids.add(row["id"])
+        if repo is not None and "registry" in spec:
+            registry = spec["registry"]
+            path = Path(repo) / registry["file"]
+            if not path.is_file():
+                findings.append("check: registry: file not found " + str(path))
+            else:
+                try:
+                    names, unresolved = extract_registry(str(path), registry["call"], registry.get("key", "name"))
+                except (OSError, UnicodeError, SyntaxError) as exc:
+                    findings.append("check: registry: cannot parse {}: {}".format(path, exc))
+                    return findings
+                findings.extend("check: registry: missing row " + name for name in names if name not in ids)
+                findings.extend("check: registry: unresolved name at line " + str(n) for n in unresolved)
+        return findings
+    if spec.get("page") == "cards":
+        ids = set()
+        for card in spec["cards"]:
+            if card["id"] in ids:
+                findings.append("check: id: duplicate card " + card["id"])
+            ids.add(card["id"])
+        if spec_dir is not None:
+            try:
+                jobs = load_spec(str(Path(spec_dir) / "jobs.json"))
+            except SpecError:
+                jobs = {}
+            rows = jobs.get("rows", []) if isinstance(jobs, dict) else []
+            job_ids = {row["id"] for row in rows if isinstance(row, dict) and isinstance(row.get("id"), str)} if isinstance(rows, list) else set()
+            for card in spec["cards"]:
+                for topic in card.get("topics", []):
+                    if not (Path(spec_dir) / (topic + ".json")).is_file():
+                        findings.append("check: link: missing topic " + topic)
+                for job in card.get("jobs", []):
+                    if job not in job_ids:
+                        findings.append("check: link: missing job " + job)
+        return findings
+    if spec.get("page") == "matrix":
+        seen = set()
+        for module in spec["modules"]:
+            if module["id"] in seen:
+                findings.append("check: id: duplicate module " + module["id"])
+            seen.add(module["id"])
+        if repo is not None:
+            from modules import scan
+            try:
+                actual = scan(repo, spec["roots"])
+            except (OSError, UnicodeError, ValueError, SyntaxError) as exc:
+                findings.append("check: matrix: cannot scan " + str(exc))
+                return findings
+            recorded = [{k: v for k, v in m.items() if k != "does"} for m in spec["modules"]]
+            if recorded != actual["modules"] or spec["matrix"] != actual["matrix"] or spec["cycles"] != actual["cycles"]:
+                findings.append("check: matrix: stale")
         return findings
     nodes, edges = spec["nodes"], spec["edges"]
     ids = set()
@@ -261,7 +395,7 @@ def main(argv: list) -> int:
     parser.add_argument("--repo")
     args = parser.parse_args(argv)
     try:
-        findings = check_spec(load_spec(args.spec), args.repo)
+        findings = check_spec(load_spec(args.spec), args.repo, spec_dir=os.path.dirname(os.path.abspath(args.spec)))
     except SpecError as exc:
         print(str(exc), file=sys.stderr)
         return 2
