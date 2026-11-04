@@ -825,19 +825,36 @@ PY
 
 init_lgrepo() {
   cp -R "$FX/lgrepo" "$S/repo"
+  cp "$FX/graph_ok.py" "$S/repo/graph_ok.py"
   git -C "$S/repo" init -q
   git -C "$S/repo" config user.name 'Draw Arch Test'
   git -C "$S/repo" config user.email 'draw-arch@example.invalid'
   git -C "$S/repo" add .
   git -C "$S/repo" commit -qm fixture
-  cat > "$S/contract.json" <<'JSON'
-{
-  "topic": "contract", "page": "contract", "title": "節點契約",
-  "repo": {"name": "demo", "commit": "0123456789abcdef0123456789abcdef01234567"},
-  "graph": {"file": "pkg/graph.py", "state": "S", "roots": ["."]},
-  "nodes": [], "declared": [], "scenarios": []
+  python3 - "$FX/lg.json" "$S/contract.json" <<'PY2'
+import json, sys
+from pathlib import Path
+s = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+s['contract'] = {'graph': {'file': 'pkg/graph.py', 'state': 'S', 'roots': ['.']},
+                 'nodes': [], 'declared': [], 'highlights': [], 'scenarios': []}
+Path(sys.argv[2]).write_text(json.dumps(s), encoding='utf-8')
+PY2
 }
-JSON
+
+@test "a failed contract scan does not hide the diagram's own findings" {
+  init_lgrepo
+  scan_contract || return 1
+  python3 - "$S/contract.json" <<'PY2'
+import json, sys
+p = sys.argv[1]; s = json.load(open(p, encoding='utf-8'))
+s['contract']['graph']['file'] = 'pkg/moved.py'
+s['nodes'][1]['x'] = s['nodes'][0]['x']; s['nodes'][1]['y'] = s['nodes'][0]['y']
+json.dump(s, open(p, 'w', encoding='utf-8'))
+PY2
+  run python3 "$AD/check.py" "$S/contract.json" --repo "$S/repo"
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  echo "$output" | grep -q '^check: contract: cannot scan' || { echo "$output"; return 1; }
+  echo "$output" | grep -q '^check: overlap:' || { echo "$output"; return 1; }
 }
 
 scan_contract() {
@@ -874,7 +891,7 @@ PY2
   scan_contract || return 1
   python3 - "$S/contract.json" <<'PY2'
 import json, sys
-n = {x['id']: x for x in json.load(open(sys.argv[1], encoding='utf-8'))['nodes']}
+n = {x['id']: x for x in json.load(open(sys.argv[1], encoding='utf-8'))['contract']['nodes']}
 assert (n['twelve']['reads'], n['twelve']['writes'], n['twelve']['partial']) == (['a'], ['c'], []), n['twelve']
 assert (n['route_two']['reads'], n['route_two']['partial']) == (['a'], []), n['route_two']
 PY2
@@ -958,7 +975,14 @@ g.add_node(name_of_node(), single)
 g.add_conditional_edges("comp", path=router)
 PY2
   git -C "$S/r" init -q && git -C "$S/r" add . && git -C "$S/r" -c user.name=t -c user.email=t@example.invalid commit -qm i
-  printf '{"topic":"contract","page":"contract","title":"t","repo":{"name":"r","commit":"0000000"},"graph":{"file":"app/graph.py","state":"S","roots":["."]},"nodes":[],"declared":[],"scenarios":[]}' > "$S/c.json"
+  python3 - "$FX/lg.json" "$S/c.json" <<'PY2'
+import json, sys
+from pathlib import Path
+s = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+s['contract'] = {'graph': {'file': 'app/graph.py', 'state': 'S', 'roots': ['.']},
+                 'nodes': [], 'declared': [], 'highlights': [], 'scenarios': []}
+Path(sys.argv[2]).write_text(json.dumps(s), encoding='utf-8')
+PY2
   run python3 "$AD/contract.py" "$S/r" "$S/c.json"
   [ "$status" -ne 9 ] || return 1
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
@@ -966,7 +990,7 @@ PY2
 import json, re, sys
 s = json.load(open(sys.argv[1], encoding='utf-8'))
 assert re.fullmatch('[0-9a-f]{40}', s['repo']['commit']), s['repo']
-n = {x['id']: x for x in s['nodes']}
+n = {x['id']: x for x in s['contract']['nodes']}
 assert 'shadow' not in n['comp']['reads'] and n['comp']['partial'] == ['state rebound'], n['comp']
 assert 'loop' not in n['loopvar']['reads'] and n['loopvar']['partial'] == ['state rebound'], n['loopvar']
 assert 'fake' not in n['viarebind']['writes'] and n['viarebind']['partial'] == ['state rebound'], n['viarebind']
@@ -977,7 +1001,7 @@ assert (n['awaitnode']['writes'], n['awaitnode']['partial']) == (['via'], []), n
 assert n['named']['partial'] == ['return result'], n['named']
 assert n['bad']['partial'] == ['return far(...)', 'state passed to far'], n['bad']
 assert n['single']['writes'] == ['a'] and n['kwform']['writes'] == ['a'], (n.get('single'), n.get('kwform'))
-unknown = [x for x in s['nodes'] if x['id'].startswith('line-')]
+unknown = [x for x in s['contract']['nodes'] if x['id'].startswith('line-')]
 assert len(unknown) == 1 and unknown[0]['resolved'] is False, unknown
 assert n['router']['kind'] == 'router', n.get('router')
 PY2
@@ -989,19 +1013,16 @@ PY2
   python3 - "$S/contract.json" <<'PY2'
 import json, sys
 s = json.load(open(sys.argv[1], encoding='utf-8'))
-n = {x['id']: x for x in s['nodes']}
+n = {x['id']: x for x in s['contract']['nodes']}
 assert (n['nine']['reads'], n['nine']['writes'], n['nine']['partial']) == (['e'], ['h', 'm'], []), n['nine']
 assert (n['ten']['reads'], n['ten']['writes'], n['ten']['partial']) == (['a', 'g'], [], []), n['ten']
 assert n['eleven']['resolved'] and n['eleven']['partial'] == [], n['eleven']
 assert n['three']['partial'] == ['return helper(...)', 'state passed to helper'], n['three']
-assert all(x['kind'] == 'node' for x in s['nodes'] if x['id'] != 'route_one')
-routers = [x for x in s['nodes'] if x['kind'] == 'router']
+assert all(x['kind'] == 'node' for x in s['contract']['nodes'] if x['id'] != 'route_one')
+routers = [x for x in s['contract']['nodes'] if x['kind'] == 'router']
 assert [(r['id'], r['reads'], r['writes']) for r in routers] == [('route_one', ['b'], [])], routers
-assert s['nodes'][-1]['id'] == 'route_one'
+assert s['contract']['nodes'][-1]['id'] == 'route_one'
 PY2
-  python3 "$AD/render.py" page "$S/contract.json" "$S/contract.html"
-  grep -qF 'route_one（路由）' "$S/contract.html" || return 1
-  [ "$(grep -c 'nine（路由）' "$S/contract.html")" -eq 0 ]
 }
 
 @test "AC-2 contract.py resolves nodes and lists reads, writes and partial reasons" {
@@ -1010,8 +1031,8 @@ PY2
   python3 - "$S/contract.json" <<'PY'
 import json, re, sys
 s = json.load(open(sys.argv[1], encoding='utf-8'))
-assert [n['id'] for n in s['nodes']] == ['one', 'two', 'three', 'four', 'ghost', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'route_one']
-n = {n['id']: n for n in s['nodes']}
+assert [n['id'] for n in s['contract']['nodes']] == ['one', 'two', 'three', 'four', 'ghost', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'route_one']
+n = {n['id']: n for n in s['contract']['nodes']}
 assert n['one'] == {'id': 'one', 'kind': 'node', 'file': 'pkg/nodes/impl.py', 'line': 5, 'reads': ['a', 'b'], 'writes': ['c'], 'partial': [], 'resolved': True}, n['one']
 assert n['two']['reads'] == ['c'] and n['two']['writes'] == ['d']
 assert n['two']['file'] == 'pkg/nodes/impl.py' and n['two']['line'] == 12
@@ -1024,7 +1045,7 @@ for name in ('ghost', 'five', 'eight'):
 assert n['six']['resolved'] is True and n['six']['reads'] == ['a'] and n['six']['writes'] == ['c']
 assert n['seven']['reads'] == n['seven']['writes'] == []
 assert n['seven']['partial'] == ['no state parameter']
-assert s['declared'] == ['a', 'b', 'c', 'd', 'unused']
+assert s['contract']['declared'] == ['a', 'b', 'c', 'd', 'unused']
 assert re.fullmatch('[0-9a-f]{40}', s['repo']['commit'])
 PY
   cp "$S/contract.json" "$S/first.json"
@@ -1035,26 +1056,26 @@ import json, sys
 from pathlib import Path
 p = Path(sys.argv[1])
 s = json.loads(p.read_text(encoding='utf-8'))
-s['nodes'][0].update(verdict='easy', note='keep me')
-s['nodes'].append(dict(s['nodes'][0], id='removed'))
-s['scenarios'] = [{'title': 'replace', 'nodes': ['one'], 'summary': 'keep scenario'}]
+s['contract']['nodes'][0].update(verdict='easy', note='keep me')
+s['contract']['nodes'].append(dict(s['contract']['nodes'][0], id='removed'))
+s['contract']['scenarios'] = [{'title': 'replace', 'nodes': ['one']}]
 p.write_text(json.dumps(s), encoding='utf-8')
 PY
   scan_contract || return 1
   python3 - "$S/contract.json" <<'PY'
 import json, sys
 s = json.load(open(sys.argv[1], encoding='utf-8'))
-assert s['nodes'][0]['verdict'] == 'easy' and s['nodes'][0]['note'] == 'keep me'
-assert 'removed' not in [n['id'] for n in s['nodes']]
-assert s['scenarios'] == [{'title': 'replace', 'nodes': ['one'], 'summary': 'keep scenario'}]
-assert 'verdict' not in s['nodes'][1]
+assert s['contract']['nodes'][0]['verdict'] == 'easy' and s['contract']['nodes'][0]['note'] == 'keep me'
+assert 'removed' not in [n['id'] for n in s['contract']['nodes']]
+assert s['contract']['scenarios'] == [{'title': 'replace', 'nodes': ['one']}]
+assert 'verdict' not in s['contract']['nodes'][1]
 PY
 }
 
 @test "contract.py with a missing graph file or state class exits 2 and writes nothing" {
   init_lgrepo
   cp "$S/contract.json" "$S/original.json"
-  for change in 's["graph"]["file"] = "missing.py"' 's["graph"]["state"] = "Missing"'; do
+  for change in 's["contract"]["graph"]["file"] = "missing.py"' 's["contract"]["graph"]["state"] = "Missing"'; do
     python3 - "$S/original.json" "$S/contract.json" "$change" <<'PY'
 import json, sys
 from pathlib import Path
@@ -1075,7 +1096,7 @@ PY
   cmp "$S/original.json" "$S/contract.json"
 }
 
-@test "AC-3 check reports a stale contract" {
+@test "AC-4 check reports a stale contract" {
   init_lgrepo
   scan_contract || return 1
   run python3 "$AD/check.py" "$S/contract.json" --repo "$S/repo"
@@ -1094,7 +1115,7 @@ PY
   [ "$output" = 'check: contract: stale' ]
 }
 
-@test "AC-5 contract schema findings for an unknown scenario node" {
+@test "AC-6 contract scenario ids are checked" {
   init_lgrepo
   scan_contract || return 1
   python3 - "$S/contract.json" <<'PY'
@@ -1102,7 +1123,7 @@ import json, sys
 from pathlib import Path
 p = Path(sys.argv[1])
 s = json.loads(p.read_text())
-s['scenarios'] = [{'title': 't', 'nodes': ['zzz'], 'summary': 's'}]
+s['contract']['scenarios'] = [{'title': 't', 'nodes': ['zzz']}]
 p.write_text(json.dumps(s))
 PY
   run python3 "$AD/check.py" "$S/contract.json"
@@ -1118,7 +1139,7 @@ import json, sys
 from pathlib import Path
 p = Path(sys.argv[1])
 s = json.loads(p.read_text())
-s['nodes'].append(s['nodes'][0])
+s['contract']['nodes'].append(s['contract']['nodes'][0])
 p.write_text(json.dumps(s))
 PY
   run python3 "$AD/check.py" "$S/contract.json"
@@ -1134,7 +1155,7 @@ import json, sys
 from pathlib import Path
 p = Path(sys.argv[1])
 s = json.loads(p.read_text())
-s['nodes'][0]['verdict'] = 'maybe'
+s['contract']['nodes'][0]['verdict'] = 'maybe'
 p.write_text(json.dumps(s))
 PY
   run python3 "$AD/check.py" "$S/contract.json"
@@ -1153,118 +1174,8 @@ PY
   python3 - "$S/contract.json" <<'PY'
 import json, sys
 s = json.load(open(sys.argv[1], encoding='utf-8'))
-for n in [x for x in s['nodes'] if x['kind'] == 'node'][-2:]:
+for n in [x for x in s['contract']['nodes'] if x['kind'] == 'node'][-2:]:
     assert n['resolved'] is False and n['reads'] == n['writes'] == n['partial'] == []
-PY
-}
-
-@test "AC-4 contract page shows nodes, field findings and scenarios" {
-  init_lgrepo
-  scan_contract || return 1
-  python3 - "$S/contract.json" <<'PY'
-import json, sys
-from pathlib import Path
-p = Path(sys.argv[1])
-s = json.loads(p.read_text())
-s['nodes'][0].update(verdict='easy', note='n')
-s['nodes'][1]['verdict'] = 'medium'
-s['nodes'][3]['verdict'] = 'hard'
-s['scenarios'] = [{'title': '換掉一和二', 'nodes': ['one', 'two'], 'summary': 's'}]
-p.write_text(json.dumps(s), encoding='utf-8')
-PY
-  python3 "$AD/render.py" page "$S/contract.json" "$S/contract.html"
-  python3 "$AD/render.py" page "$S/contract.json" "$S/again.html"
-  cmp "$S/contract.html" "$S/again.html" || return 1
-  python3 - "$S/contract.html" <<'PY'
-import re, sys
-from html import unescape
-s = open(sys.argv[1], encoding='utf-8').read()
-assert '<svg' not in s
-assert '<table class="cat sum">' in s
-assert '<th>節點</th><th>讀</th><th>寫</th><th>好不好換</th><th>說明</th>' in s
-assert '<a href="#node-one">2</a>' in s and '<a href="#node-one">1</a>' in s
-rows = re.findall(r'<tr[^>]*>(.*?)</tr>', s, re.S)
-assert '⚠ 掃描不完整' in next(r for r in rows if '>three<' in r)
-assert '⚠ 找不到函式' in next(r for r in rows if '>ghost<' in r)
-for tone, label in (('easy', '容易換'), ('medium', '要改一些'), ('hard', '很難換')):
-    assert 'class="v-%s">%s<' % (tone, label) in s
-for heading, item in (
-    ('熱點欄位', 'a — one, three, four, six'),
-    ('只讀沒人寫', 'a — one, three, four, six'),
-    ('只寫沒人讀', 'd — two'),
-    ('宣告了但沒用', 'unused'),
-):
-    block = s[s.index('<h3>' + heading):]
-    block = block[:block.index('</ul>')]
-    assert item in unescape(re.sub('<[^>]+>', '', block)), block
-text = unescape(re.sub('<[^>]+>', '', s))
-assert '必須讀：a, b' in text and '必須寫：c, d' in text
-order = [s.index(x) for x in ('<table class="cat sum">', '<h3>熱點欄位', '<h3>只讀沒人寫', '<h3>只寫沒人讀', '<h3>宣告了但沒用', '替換情境', '<h3>換掉一和二', '<section id="node-one">')]
-assert order == sorted(order)
-section = s[s.index('<section id="node-three">'):].split('</section>')[0]
-assert 'return helper(...)' in section and 'state passed to helper' in section
-assert 'pkg/nodes/impl.py:20' in section
-css = s[s.index('<style>'):s.index('</style>')]
-assert '@media (max-width:700px)' in css and '.cat thead{display:none}' in css
-PY
-}
-
-@test "contract findings explain that read-only fields may be inputs and write-only fields may be outputs" {
-  init_lgrepo
-  scan_contract || return 1
-  python3 "$AD/render.py" page "$S/contract.json" "$S/contract.html"
-  python3 - "$S/contract.html" <<'PY2'
-import sys
-s = open(sys.argv[1], encoding='utf-8').read()
-ro = s.index('<h3>只讀沒人寫</h3>'); wo = s.index('<h3>只寫沒人讀</h3>')
-assert '呼叫 graph 時傳進來的輸入' in s[ro:wo]
-assert 'graph 外部讀的輸出' in s[wo:s.index('<h3>宣告了但沒用</h3>')]
-PY2
-}
-
-@test "AC-6 index puts overview, features, seams, contract, jobs first" {
-  init_lgrepo
-  scan_contract || return 1
-  mkdir -p "$S/pack"
-  cp "$FX/jobs.json" "$FX/features.json" "$FX/seams.json" "$S/contract.json" "$S/pack/"
-  python3 - "$FX/clean.json" "$S/pack" <<'PY'
-import json, sys
-from pathlib import Path
-s = json.load(open(sys.argv[1], encoding='utf-8'))
-for topic in ('overview', 'csat'):
-    s['topic'] = topic
-    (Path(sys.argv[2]) / (topic + '.json')).write_text(json.dumps(s), encoding='utf-8')
-PY
-  python3 "$AD/render.py" index "$S/pack" "$S/index.html"
-  python3 - "$S/index.html" <<'PY'
-import re, sys
-s = open(sys.argv[1], encoding='utf-8').read()
-assert re.findall(r'href="([^"]+)"', s) == ['overview.html', 'features.html', 'seams.html', 'contract.html', 'jobs.html', 'csat.html']
-PY
-}
-
-@test "AC-7 contract text is escaped and offline" {
-  init_lgrepo
-  scan_contract || return 1
-  python3 - "$S/contract.json" <<'PY'
-import json, sys
-from pathlib import Path
-p = Path(sys.argv[1])
-s = json.loads(p.read_text())
-text = '<script>alert(1)</script> https://evil.example & "q"'
-s['nodes'][0]['note'] = text
-s['scenarios'] = [{'title': 't', 'nodes': ['one'], 'summary': text}]
-p.write_text(json.dumps(s), encoding='utf-8')
-PY
-  python3 "$AD/render.py" page "$S/contract.json" "$S/contract.html"
-  python3 - "$S/contract.html" <<'PY'
-import re, sys
-from html import unescape
-s = open(sys.argv[1], encoding='utf-8').read()
-assert '<script' not in s and not re.search(r' on[a-z]+=', s)
-assert not re.search(r'https?://', s)
-assert '&lt;script&gt;alert(1)&lt;/script&gt;' in s and '&amp;' in s and '&quot;' in s
-assert 'https://evil.example' in unescape(s)
 PY
 }
 
@@ -1276,7 +1187,7 @@ import json, sys
 from pathlib import Path
 p = Path(sys.argv[1])
 s = json.loads(p.read_text())
-s['nodes'][0]['verdict'] = 'easy" onload="bad'
+s['contract']['nodes'][0]['verdict'] = 'easy" onload="bad'
 p.write_text(json.dumps(s))
 PY
   run python3 "$AD/render.py" page "$S/contract.json" "$S/out.html"
@@ -1289,7 +1200,7 @@ PY
 import json, re, sys
 from pathlib import Path
 examples = [json.loads(s) for s in re.findall(r'```json\n(.*?)\n```', Path(sys.argv[1]).read_text(encoding='utf-8'), re.S)]
-contract = next(s for s in examples if s.get('page') == 'contract')
+contract = next(s for s in examples if 'contract' in s)
 Path(sys.argv[2]).write_text(json.dumps(contract), encoding='utf-8')
 PY
   run python3 "$AD/check.py" "$S/contract.json"
@@ -1306,13 +1217,13 @@ PY
   python3 - "$S/contract.json" <<'PY'
 import json, sys
 s = json.load(open(sys.argv[1], encoding='utf-8'))
-n = s['nodes'][0]
+n = s['contract']['nodes'][0]
 assert n['id'] == 'one' and n['resolved'] is False, n
 assert n['reads'] == n['writes'] == n['partial'] == []
 PY
 }
 
-@test "an unrelated commit does not make the contract stale" {
+@test "AC-4 an unrelated commit does not make the contract stale" {
   init_lgrepo
   scan_contract || return 1
   printf 'raise SystemExit(9)\n' > "$S/repo/unrelated.py"
@@ -1321,4 +1232,198 @@ PY
   [ "$status" -ne 9 ] || return 1
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [ -z "$output" ]
+}
+
+@test "AC-2 contract is no longer a page type" {
+  init_lgrepo
+  python3 - "$S/contract.json" "$S/m.json" <<'PY2'
+import json, sys
+from pathlib import Path
+s = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+legacy = dict(s['contract'], topic='contract', page='contract', title='節點契約', repo=s['repo'])
+Path(sys.argv[2]).write_text(json.dumps(legacy), encoding='utf-8')
+PY2
+  check_rule schema || return 1
+  run python3 "$AD/render.py" page "$S/m.json" "$S/out.html"
+  [ "$status" -eq 2 ] || { echo "$output"; return 1; }
+  [ ! -e "$S/out.html" ]
+}
+
+@test "AC-3 contract.py rewrites only the contract object" {
+  init_lgrepo
+  cp "$S/contract.json" "$S/diagram-before.json"
+  scan_contract || return 1
+  python3 - "$S/contract.json" <<'PY'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = json.loads(p.read_text(encoding='utf-8'))
+s['contract']['nodes'][0].update(verdict='easy', note='keep note')
+s['contract']['highlights'] = ['keep highlight']
+s['contract']['scenarios'] = [{'title': 'replace', 'nodes': ['one', 'two']}]
+p.write_text(json.dumps(s), encoding='utf-8')
+PY
+  cp "$S/contract.json" "$S/before.json"
+  scan_contract || return 1
+  python3 - "$S/before.json" "$S/contract.json" "$S/diagram-before.json" <<'PY'
+import json, sys
+before, after, original = [json.load(open(p, encoding='utf-8')) for p in sys.argv[1:]]
+assert before == after
+for key in ('nodes', 'edges', 'canvas'):
+    assert after[key] == original[key]
+assert after['contract']['nodes'][0]['verdict'] == 'easy'
+assert after['contract']['nodes'][0]['note'] == 'keep note'
+assert after['contract']['highlights'] == ['keep highlight']
+assert after['contract']['scenarios'] == [{'title': 'replace', 'nodes': ['one', 'two']}]
+PY
+}
+
+@test "contract.py refuses a spec without a contract object" {
+  init_lgrepo
+  for fixture in lg seams; do
+    cp "$FX/$fixture.json" "$S/refused.json"
+    cp "$S/refused.json" "$S/before.json"
+    run python3 "$AD/contract.py" "$S/repo" "$S/refused.json"
+    [ "$status" -eq 2 ] || { echo "$output"; return 1; }
+    cmp "$S/before.json" "$S/refused.json" || return 1
+  done
+}
+
+@test "AC-6 contract highlights cap is checked" {
+  init_lgrepo
+  python3 - "$S/contract.json" <<'PY'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = json.loads(p.read_text(encoding='utf-8'))
+s['contract']['highlights'] = ['h'] * 6
+p.write_text(json.dumps(s), encoding='utf-8')
+PY
+  run python3 "$AD/check.py" "$S/contract.json"
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [[ "$output" == 'check: schema:'* ]]
+}
+
+@test "an empty contract object gives schema findings without crashing" {
+  mutate 's["contract"] = {}'
+  check_rule schema
+}
+
+@test "AC-5 diagram page ends with a short node contract section" {
+  init_lgrepo
+  scan_contract || return 1
+  python3 - "$S/contract.json" <<'PY'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = json.loads(p.read_text(encoding='utf-8'))
+c = s['contract']
+c['highlights'] = ['h1', 'h2']
+c['nodes'][0].update(verdict='easy', note='only state')
+c['nodes'][1]['verdict'] = 'medium'
+c['nodes'][2]['note'] = 'check helper'
+c['nodes'][3]['verdict'] = 'hard'
+c['scenarios'] = [{'title': '換一和二', 'nodes': ['one', 'two']}]
+s['conditions'] = [{'node': 'a', 'does': 'work', 'when': 'go', 'src': 'graph_ok.py:4'}]
+p.write_text(json.dumps(s), encoding='utf-8')
+PY
+  python3 "$AD/render.py" page "$S/contract.json" "$S/contract.html"
+  python3 "$AD/render.py" page "$S/contract.json" "$S/again.html"
+  cmp "$S/contract.html" "$S/again.html" || return 1
+  python3 - "$S/contract.html" <<'PY'
+import re, sys
+s = open(sys.argv[1], encoding='utf-8').read()
+order = [s.index(x) for x in ('class="diagram"', '<table class="cond">', '<section class="contract">', '<footer')]
+assert order == sorted(order)
+section = s[s.index('<section class="contract">'):s.index('<footer')]
+assert section.startswith('<section class="contract">\n<h2>節點契約</h2>')
+order = [section.index(x) for x in ('<li>h1</li>', '<li>h2</li>', '<table', '<h3>替換情境</h3>')]
+assert order == sorted(order)
+assert '<th>節點</th><th>讀</th><th>寫</th><th>好不好換</th><th>一句話</th>' in section
+rows = re.findall(r'<tr[^>]*>(.*?)</tr>', section, re.S)
+one = next(r for r in rows if '>one<' in r)
+assert '<td data-label="讀"><details><summary>2</summary>a, b</details></td>' in one
+assert '<td data-label="寫"><details><summary>1</summary>c</details></td>' in one
+assert 'class="v-easy">容易換<' in one and '<td data-label="一句話">only state</td>' in one
+three = next(r for r in rows if '>three<' in r)
+assert '<td data-label="一句話">check helper · ⚠ 掃描不完整：return helper(...)；state passed to helper</td>' in three
+assert '<td data-label="好不好換" class="">—</td>' in three
+assert '⚠ 找不到函式' in next(r for r in rows if '>ghost<' in r)
+assert 'route_one（路由）' in section and 'nine（路由）' not in section
+assert re.findall(r'<td data-label="節點">(.*?)</td>', section) == ['one', 'two', 'three', 'four', 'ghost', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'route_one（路由）']
+for tone, label in (('easy', '容易換'), ('medium', '要改一些'), ('hard', '很難換')):
+    assert 'class="v-%s">%s<' % (tone, label) in section
+assert '<li>換一和二 → 必須讀 <details><summary>2 個欄位</summary>a, b</details> · 必須寫 <details><summary>2 個欄位</summary>c, d</details></li>' in section
+assert '熱點欄位' not in section and 'id="node-' not in section
+css = s[s.index('<style>'):s.index('</style>')]
+assert '@media (max-width:700px)' in css and '.cat thead{display:none}' in css
+assert '.cat td::before{content:attr(data-label)' in css
+for tone in ('easy', 'medium', 'hard'):
+    assert '.v-' + tone + '{color:' in css
+PY
+}
+
+@test "AC-5 a node with zero reads or writes has no details" {
+  init_lgrepo
+  scan_contract || return 1
+  python3 "$AD/render.py" page "$S/contract.json" "$S/contract.html"
+  python3 - "$S/contract.html" <<'PY'
+import re, sys
+s = open(sys.argv[1], encoding='utf-8').read()
+rows = re.findall(r'<tr[^>]*>(.*?)</tr>', s, re.S)
+ghost = next(r for r in rows if '>ghost<' in r)
+assert '<td data-label="讀">0</td>' in ghost
+assert '<td data-label="寫">0</td>' in ghost
+assert '<details>' not in ghost
+PY
+}
+
+@test "AC-7 contract section text is escaped and offline" {
+  init_lgrepo
+  scan_contract || return 1
+  python3 - "$S/contract.json" <<'PY'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = json.loads(p.read_text(encoding='utf-8'))
+c = s['contract']
+text = '<script>alert(1)</script> https://evil.example & "q"'
+c['highlights'] = [text]
+c['nodes'][0]['note'] = text
+c['nodes'][2]['partial'].append('return <dynamic>')
+c['scenarios'] = [{'title': text, 'nodes': ['one']}]
+p.write_text(json.dumps(s), encoding='utf-8')
+PY
+  python3 "$AD/render.py" page "$S/contract.json" "$S/contract.html"
+  python3 - "$S/contract.html" <<'PY'
+import re, sys
+from html import unescape
+s = open(sys.argv[1], encoding='utf-8').read()
+assert '<script' not in s and not re.search(r' on[a-z]+=', s)
+assert not re.search(r'https?://', s)
+text = '&lt;script&gt;alert(1)&lt;/script&gt; https&#58;//evil.example &amp; &quot;q&quot;'
+assert '<li>' + text + '</li>' in s
+assert '<td data-label="一句話">' + text + '</td>' in s
+assert '<li>' + text + ' → 必須讀 <details><summary>2 個欄位</summary>a, b</details> · 必須寫 <details><summary>1 個欄位</summary>c</details></li>' in s
+three = next(r for r in re.findall(r'<tr[^>]*>(.*?)</tr>', s, re.S) if '>three<' in r)
+assert 'return &lt;dynamic&gt;' in three and '<dynamic>' not in three
+assert 'https://evil.example' in unescape(s)
+PY
+}
+
+@test "a scenario that writes nothing shows the empty label" {
+  init_lgrepo
+  scan_contract || return 1
+  python3 - "$S/contract.json" <<'PY'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = json.loads(p.read_text(encoding='utf-8'))
+s['contract']['scenarios'] = [{'title': '只換讀取節點', 'nodes': ['ten', 'ghost']},
+                             {'title': '未解析節點', 'nodes': ['ghost']}]
+p.write_text(json.dumps(s), encoding='utf-8')
+PY
+  python3 "$AD/render.py" page "$S/contract.json" "$S/contract.html"
+  grep -qF '<li>只換讀取節點 → 必須讀 <details><summary>2 個欄位</summary>a, g</details> · 必須寫 沒有</li>' "$S/contract.html" || return 1
+  grep -qF '<li>未解析節點 → 必須讀 沒有 · 必須寫 沒有</li>' "$S/contract.html"
 }

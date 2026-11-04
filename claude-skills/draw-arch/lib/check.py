@@ -48,8 +48,8 @@ def schema_errors(spec: dict) -> list:
         if name in obj:
             require(isinstance(obj[name], str) and obj[name] in choices, where + "." + name + " is unknown")
 
-    def array(name):
-        value = spec.get(name, [])
+    def array(name, obj=spec):
+        value = obj.get(name, [])
         require(isinstance(value, list), name + " must be a list")
         return value if isinstance(value, list) else []
 
@@ -127,9 +127,11 @@ def schema_errors(spec: dict) -> list:
                     require(isinstance(lines, list) and all(type(line) is int for line in lines), "touchpoint.lines must be a list of integers")
                     require(isinstance(point.get("adapter"), bool), "touchpoint.adapter must be boolean")
         return errors
-    if page == "contract":
-        fields(spec, ("graph", "nodes", "declared", "scenarios"), "spec")
-        graph = spec.get("graph")
+    if page != "diagram":
+        return errors
+    if "contract" in spec and fields(spec["contract"], ("graph", "nodes", "declared", "highlights", "scenarios"), "contract"):
+        contract = spec["contract"]
+        graph = contract.get("graph")
         if fields(graph, ("file", "state", "roots"), "graph"):
             strings(graph, ("file", "state"), "graph")
             file = graph.get("file")
@@ -139,7 +141,7 @@ def schema_errors(spec: dict) -> list:
             require(isinstance(roots, list) and bool(roots) and all(
                 isinstance(root, str) and bool(root) and not Path(root).is_absolute() and
                 ".." not in Path(root).parts for root in roots), "graph.roots must be a list of repo-relative directories")
-        for node in array("nodes"):
+        for node in array("nodes", contract):
             if not fields(node, ("id", "kind", "file", "line", "reads", "writes", "partial", "resolved"), "node"):
                 continue
             strings(node, ("id", "file", "note", "verdict"), "node")
@@ -151,16 +153,16 @@ def schema_errors(spec: dict) -> list:
             for key in ("reads", "writes", "partial"):
                 value = node.get(key)
                 require(isinstance(value, list) and all(isinstance(v, str) for v in value), "node." + key + " must be a list of text")
-        declared = spec.get("declared")
+        declared = contract.get("declared")
         require(isinstance(declared, list) and all(isinstance(v, str) for v in declared), "declared must be a list of text")
-        for scenario in array("scenarios"):
-            if fields(scenario, ("title", "nodes", "summary"), "scenario"):
-                strings(scenario, ("title", "summary"), "scenario")
+        for scenario in array("scenarios", contract):
+            if fields(scenario, ("title", "nodes"), "scenario"):
+                strings(scenario, ("title",), "scenario")
                 value = scenario.get("nodes")
                 require(isinstance(value, list) and all(isinstance(v, str) for v in value), "scenario.nodes must be a list of ids")
-        return errors
-    if page != "diagram":
-        return errors
+        highlights = contract.get("highlights")
+        require(isinstance(highlights, list) and len(highlights) <= 5 and
+                all(isinstance(v, str) for v in highlights), "contract.highlights must be a list of at most 5 text items")
     fields(spec, ("canvas", "nodes", "edges"), "spec")
     canvas = spec.get("canvas")
     if fields(canvas, ("w", "h"), "canvas"):
@@ -368,27 +370,29 @@ def check_spec(spec: dict, repo: Optional[str] = None, spec_dir: Optional[str] =
                 if recorded != current:
                     findings.append("check: seams: stale " + system["id"])
         return findings
-    if spec.get("page") == "contract":
+    if "contract" in spec:
+        contract = spec["contract"]
         ids = set()
-        for node in spec["nodes"]:
+        for node in contract["nodes"]:
             if node["id"] in ids:
                 findings.append("check: id: duplicate node " + node["id"])
             ids.add(node["id"])
-        for scenario in spec["scenarios"]:
+        for scenario in contract["scenarios"]:
             for node in scenario["nodes"]:
                 if node not in ids:
                     findings.append("check: edge: unknown scenario node " + node)
         if repo is not None and not findings:
             from contract import scan
             try:
-                actual = scan(repo, spec["graph"])
+                actual = scan(repo, contract["graph"])
             except (OSError, UnicodeError, SyntaxError, ValueError) as exc:
-                return ["check: contract: cannot scan " + str(exc)]
-            computed = ("id", "kind", "file", "line", "reads", "writes", "partial", "resolved")
-            recorded = [{key: node[key] for key in computed} for node in spec["nodes"]]
-            if actual != {"nodes": recorded, "declared": spec["declared"]}:
-                findings.append("check: contract: stale")
-        return findings
+                # Keep going: the diagram's own checks still apply.
+                findings.append("check: contract: cannot scan " + str(exc))
+            else:
+                computed = ("id", "kind", "file", "line", "reads", "writes", "partial", "resolved")
+                recorded = [{key: node[key] for key in computed} for node in contract["nodes"]]
+                if actual != {"nodes": recorded, "declared": contract["declared"]}:
+                    findings.append("check: contract: stale")
     nodes, edges = spec["nodes"], spec["edges"]
     ids = set()
     for node in nodes:

@@ -328,20 +328,21 @@ def main(argv: list) -> int:
     args = parser.parse_args(argv)
     try:
         spec = load_spec(args.spec)
+        if not isinstance(spec, dict) or spec.get("page", "diagram") != "diagram" or not isinstance(spec.get("contract"), dict):
+            raise ValueError("spec must be a diagram with a contract object")
         from check import check_spec
         findings = check_spec(spec)
         if findings:
             raise ValueError("\n".join(findings))
-        if spec.get("page") != "contract":
-            raise ValueError("spec.page must be contract")
-        actual = scan(args.repo, spec["graph"])
+        contract = spec["contract"]
+        actual = scan(args.repo, contract["graph"])
         commit = git_output(args.repo, "rev-parse", "HEAD").strip()
-        previous = {node["id"]: node for node in spec["nodes"]}
+        previous = {node["id"]: node for node in contract["nodes"]}
         for node in actual["nodes"]:
             for field in ("verdict", "note"):
                 if field in previous.get(node["id"], {}):
                     node[field] = previous[node["id"]][field]
-        spec.update(actual)
+        contract.update(actual)
         spec["repo"]["commit"] = commit
         Path(args.spec).write_text(json.dumps(spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     except (SpecError, OSError, UnicodeError, SyntaxError, ValueError) as exc:

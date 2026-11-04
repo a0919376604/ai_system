@@ -17,7 +17,7 @@ KINDS = {
 }
 TONES = {"body": "#cbd5e1", "cond": "#fcd34d", "warn": "#fb7185", "muted": "#94a3b8"}
 SHAPES = ("box", "pill")
-PAGES = ("diagram", "table", "cards", "seams", "contract")
+PAGES = ("diagram", "table", "cards", "seams")
 CSS = """
 *{box-sizing:border-box}body{margin:0;background:#020617;color:#cbd5e1;
 font-family:'JetBrains Mono',SFMono-Regular,Menlo,'PingFang TC',monospace;font-size:13px}
@@ -68,6 +68,22 @@ SEAMS_CSS = SEAMS_CSS.replace(".card{", """.v-easy{color:#34d399}.v-medium{color
 .sum th,.sum td:nth-child(2),.sum td:nth-child(3),.sum td:nth-child(4),.tp td:nth-child(3){white-space:nowrap}
 .tp td:nth-child(2){width:12%}
 .card{""", 1)
+
+
+CONTRACT_CSS = """
+.contract{border-top:1px solid #1e293b;padding-top:16px}
+.cat{width:100%;border-collapse:collapse;margin:32px 0;line-height:1.8}
+.cat td:last-child{font-size:11.5px;color:#94a3b8}
+.v-easy{color:#34d399}.v-medium{color:#fcd34d}.v-hard{color:#fb7185}
+.contract summary{cursor:pointer}
+.contract li details{display:inline-block;vertical-align:top}.contract li summary{display:inline;text-decoration:underline dotted}.contract li details[open]{display:block;margin:4px 0 8px 1em}
+.contract .cat summary,.contract .cat td:nth-child(4),.contract .cat th{white-space:nowrap}
+@media (max-width:700px){
+table.cat,.cat thead,.cat tbody,.cat tr,.cat td{display:block}.cat thead{display:none}
+.cat tr{border:1px solid #1e293b;border-radius:8px;margin:12px 0;padding:10px 12px}
+.cat td{border:0;padding:3px 0}.cat td::before{content:attr(data-label);color:#64748b;margin-right:1em}
+}
+"""
 
 
 class SpecError(Exception):
@@ -146,8 +162,11 @@ def render_svg(spec: dict, uid: str, route: Optional[dict] = None) -> str:
         if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 < v < float("inf"):
             raise SpecError("canvas.w and canvas.h must be positive numbers")
     ident = attr(uid)
-    parts = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" role="img" aria-label="{}" style="--w:{}px">'
-             .format(attr(w), attr(h), attr(spec["title"]), attr(w)), '<defs>']
+    namespace = "http://www.w3.org/2000/svg"
+    if spec.get("contract"):
+        namespace = attr(namespace)
+    parts = ['<svg xmlns="{}" viewBox="0 0 {} {}" role="img" aria-label="{}" style="--w:{}px">'
+             .format(namespace, attr(w), attr(h), attr(spec["title"]), attr(w)), '<defs>']
     parts.append('<pattern id="{}-grid" width="40" height="40" patternUnits="userSpaceOnUse">'
                  '<path d="M40 0 H0 V40" fill="none" stroke="#1e293b" stroke-width="0.5"/></pattern>'.format(ident))
     for name, color in (("arrow", "#64748b"), ("amber", "#fbbf24")):
@@ -273,7 +292,7 @@ def render_page(spec: dict) -> str:
     page = spec.get("page", "diagram")
     if page not in PAGES:
         raise SpecError("unknown page: " + str(page))
-    if page != "diagram":
+    if page != "diagram" or "contract" in spec:
         # Lazy import: check imports the renderer's shared constants and helpers.
         from check import schema_errors
         errors = schema_errors(spec)
@@ -285,9 +304,6 @@ def render_page(spec: dict) -> str:
             return render_cards(spec)
         if page == "seams":
             return render_seams(spec)
-        if page == "contract":
-            return render_contract(spec)
-        raise SpecError("unknown page: " + page)
     return render_diagram(spec)
 
 
@@ -357,64 +373,41 @@ def node_label(node: dict) -> str:
     return node["id"] + ("（路由）" if node.get("kind") == "router" else "")
 
 
-def render_contract(spec: dict) -> str:
-    parts = page_header(spec)
+def field_count(fields: list) -> str:
+    """A count that opens to the field names, so a long interface stays one short line."""
+    if not fields:
+        return "沒有"
+    return '<details><summary>{} 個欄位</summary>{}</details>'.format(len(fields), esc(", ".join(fields)))
+
+
+def render_contract_section(contract: dict) -> list[str]:
+    parts = ['<section class="contract">', '<h2>節點契約</h2>',
+             '<ul>' + ''.join('<li>{}</li>'.format(esc(text)) for text in contract["highlights"]) + '</ul>']
     verdicts = {"easy": ("v-easy", "容易換"), "medium": ("v-medium", "要改一些"),
                 "hard": ("v-hard", "很難換")}
-    labels = ("節點", "讀", "寫", "好不好換", "說明")
-    parts.extend(['<table class="cat sum">', '<thead><tr>' + ''.join(
+    labels = ("節點", "讀", "寫", "好不好換", "一句話")
+    parts.extend(['<table class="cat">', '<thead><tr>' + ''.join(
         '<th>{}</th>'.format(label) for label in labels) + '</tr></thead>', '<tbody>'])
-    for node in spec["nodes"]:
+    for node in contract["nodes"]:
         tone, verdict = verdicts[node["verdict"]] if "verdict" in node else ("", "—")
-        warning = "⚠ 找不到函式" if not node["resolved"] else "⚠ 掃描不完整" if node["partial"] else ""
-        explanation = " · ".join(text for text in (warning, node.get("note", "")) if text)
-        parts.append('<tr><td data-label="節點">{}</td>{}<td data-label="好不好換" class="{}">{}</td><td data-label="說明">{}</td></tr>'.format(
-            esc(node_label(node)), ''.join('<td data-label="{}"><a href="#node-{}">{}</a></td>'.format(
-                label, attr(node["id"]), len(node[key])) for label, key in (("讀", "reads"), ("寫", "writes"))),
-            tone, verdict, esc(explanation)))
-    parts.extend(['</tbody>', '</table>'])
-    readers, writers = {}, {}
-    for node in spec["nodes"]:
-        if node["resolved"]:
-            for key, found in (("reads", readers), ("writes", writers)):
-                for field in set(node[key]):
-                    found.setdefault(field, []).append(node["id"])
-    findings = (
-        ("熱點欄位 (≥3 個節點讀)", "", {field: nodes for field, nodes in readers.items() if len(nodes) >= 3}),
-        ("只讀沒人寫", "通常是呼叫 graph 時傳進來的輸入；若不是，就是沒有節點負責寫這個欄位。",
-         {field: nodes for field, nodes in readers.items() if field not in writers}),
-        ("只寫沒人讀", "可能是給 graph 外部讀的輸出；若不是，就是死欄位。",
-         {field: nodes for field, nodes in writers.items() if field not in readers}),
-        ("宣告了但沒用", "", {field: [] for field in spec["declared"] if field not in readers and field not in writers}),
-    )
-    for heading, hint, fields in findings:
-        items = [field + (" — " + ", ".join(fields[field]) if fields[field] else "") for field in sorted(fields)]
-        parts.append('<h3>{}</h3>'.format(esc(heading)))
-        if hint:
-            parts.append('<p class="sub">{}</p>'.format(esc(hint)))
-        parts.append('<ul>' + ''.join('<li>{}</li>'.format(esc(item)) for item in (items or ["沒有"])) + '</ul>')
-    parts.append('<h2>替換情境</h2>')
-    by_id = {node["id"]: node for node in spec["nodes"]}
-    for scenario in spec["scenarios"]:
+        warning = ("⚠ 找不到函式" if not node["resolved"] else
+                   "⚠ 掃描不完整：" + "；".join(node["partial"]) if node["partial"] else "")
+        explanation = " · ".join(text for text in (node.get("note", ""), warning) if text)
+        counts = ''.join('<td data-label="{}">{}</td>'.format(label,
+            '<details><summary>{}</summary>{}</details>'.format(len(node[key]), esc(", ".join(node[key])))
+            if node[key] else '0') for label, key in (("讀", "reads"), ("寫", "writes")))
+        parts.append('<tr><td data-label="節點">{}</td>{}<td data-label="好不好換" class="{}">{}</td><td data-label="一句話">{}</td></tr>'.format(
+            esc(node_label(node)), counts, tone, verdict, esc(explanation)))
+    parts.extend(['</tbody>', '</table>', '<h3>替換情境</h3>', '<ul>'])
+    by_id = {node["id"]: node for node in contract["nodes"]}
+    for scenario in contract["scenarios"]:
         chosen = [by_id[node] for node in scenario["nodes"]]
         reads = {field for node in chosen if node["resolved"] for field in node["reads"]}
         writes = {field for node in chosen if node["resolved"] for field in node["writes"]}
-        parts.extend(['<h3>{}</h3>'.format(esc(scenario["title"])),
-                      '<p>{}</p>'.format(esc(scenario["summary"])),
-                      '<p>必須讀：{}</p>'.format(esc(", ".join(sorted(reads - writes)) or "沒有")),
-                      '<p>必須寫：{}</p>'.format(esc(", ".join(sorted(writes)) or "沒有"))])
-    for node in spec["nodes"]:
-        parts.extend(['<section id="node-{}">'.format(attr(node["id"])), '<h2>{}</h2>'.format(esc(node_label(node))),
-                      '<p>讀：{}</p>'.format(esc(", ".join(node["reads"]) or "沒有")),
-                      '<p>寫：{}</p>'.format(esc(", ".join(node["writes"]) or "沒有"))])
-        if not node["resolved"]:
-            parts.append('<p>⚠ 找不到函式</p>')
-        if node["partial"]:
-            parts.extend(['<h3>⚠ 掃描不完整</h3>', '<ul>' + ''.join(
-                '<li>{}</li>'.format(esc(reason)) for reason in node["partial"]) + '</ul>'])
-        parts.extend(['<p>{}</p>'.format(esc("{}:{}".format(node["file"], node["line"]))), '</section>'])
-    parts.append(page_footer(spec))
-    return document(spec["title"], parts, SEAMS_CSS)
+        parts.append('<li>{} → 必須讀 {} · 必須寫 {}</li>'.format(
+            esc(scenario["title"]), field_count(sorted(reads - writes)), field_count(sorted(writes))))
+    parts.extend(['</ul>', '</section>'])
+    return parts
 
 
 def render_diagram(spec: dict) -> str:
@@ -442,15 +435,17 @@ def render_diagram(spec: dict) -> str:
                 ' class="warn"' if warning else "", "⚠ " if warning else "", esc(node),
                 esc(row["does"]), esc(row["when"]), esc(row["src"])))
         parts.extend(['</tbody>', '</table>'])
+    if spec.get("contract"):
+        parts.extend(render_contract_section(spec["contract"]))
     parts.append(page_footer(spec))
-    return document(spec["title"], parts)
+    return document(spec["title"], parts, CSS + CONTRACT_CSS if spec.get("contract") else CSS)
 
 
 def render_index(specs: list) -> str:
     repos = sorted({spec["repo"]["name"] for spec in specs})
     title = " · ".join(["架構圖包"] + repos)
     parts = ['<h1>{}</h1>'.format(esc(title)), '<nav class="pack">']
-    ranks = {topic: i for i, topic in enumerate(("overview", "features", "seams", "contract", "jobs"))}
+    ranks = {topic: i for i, topic in enumerate(("overview", "features", "seams", "jobs"))}
     for spec in sorted(specs, key=lambda s: (ranks.get(s["topic"], len(ranks)), s["topic"])):
         if not re.fullmatch(r"[a-z0-9-]+", spec["topic"]):
             raise SpecError("invalid topic: " + spec["topic"])
