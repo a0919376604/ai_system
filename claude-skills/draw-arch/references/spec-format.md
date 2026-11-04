@@ -7,7 +7,7 @@ Every page shares these fields:
 | Field | Meaning |
 |---|---|
 | `topic` | Required slug matching `^[a-z0-9-]+$`; the page name and deterministic SVG id prefix. |
-| `page` | Optional `diagram` (default), `table`, `cards` or `seams`. An unknown type is a schema finding and render exit 2 without output. |
+| `page` | Optional `diagram` (default), `table`, `cards`, `seams` or `contract`. An unknown type is a schema finding and render exit 2 without output. |
 | `title` | Required page and diagram title. |
 | `subtitle` | Optional short page subtitle. |
 | `repo.name`, `repo.commit` | Required repo name and 7–40 lowercase hex commit; use the full 40-hex commit for delivered packs. |
@@ -185,5 +185,81 @@ the schema and duplicate ids.
 }
 ```
 
-The pack index places overview, features, seams and jobs first when present,
+## contract
+
+Set `page: "contract"` for a LangGraph node state contract. In order it shows
+節點 / 讀 / 寫 / 好不好換 / 說明, four field findings, replacement scenarios,
+and a section per node. Read and write counts link to `#node-<id>`. A partial
+node shows ⚠ 掃描不完整; an unresolved node shows ⚠ 找不到函式. Tables become
+cards below 700 px. Missing verdicts display `—`.
+
+| Field | Meaning |
+|---|---|
+| `graph.file` | Required repo-relative Python file containing `add_node` calls. |
+| `graph.state` | Required state class name in that file's namespace. |
+| `graph.roots` | Required non-empty list of repo-relative import roots, e.g. `["backend"]` or `["."]`. |
+| `nodes` | Required list, computed: graph nodes in `add_node` source order, then conditional-edge routers. Node ids come from the string literal name (`add_node("x", fn)` or `action=fn`), the function name for `add_node(fn)`, or `line-<n>` (unresolved) when the name cannot be read. |
+| `nodes[].kind` | Required computed `node` or `router`; routers come from `add_conditional_edges(src, fn)` / `path=fn`, one per function, and show （路由） after the id. |
+| `nodes[].id` | Required unique id matching `^[A-Za-z0-9_.:-]+$`; section anchor is `node-<id>`. |
+| `nodes[].file`, `line` | Required computed repo-relative function file and definition line; unresolved nodes use `""` and `0`. |
+| `nodes[].reads`, `writes` | Required computed sorted unique lists of state fields. |
+| `nodes[].partial` | Required computed sorted unique reasons why scanning is incomplete. |
+| `nodes[].resolved` | Required computed boolean; unresolved nodes have empty reads, writes and partial lists. |
+| `nodes[].verdict`, `note` | Optional judgment: `easy` (容易換), `medium` (要改一些), `hard` (很難換), and explanation text. |
+| `declared` | Required computed sorted unique annotated state-class fields. |
+| `scenarios` | Required list of `{title, nodes: [id], summary}`; each node id must exist. |
+
+Start the computed lists empty, then run
+`python3 "$SKILL_DIR/lib/contract.py" "$REPO" "$OUT/contract.json"`.
+Source is parsed through AST and never imported or executed. Module lookup uses
+`graph.roots`; absolute and relative re-exports are followed up to five hops.
+Plain functions, async functions and factories returning an inner function are
+resolved. Assignments (including partials and lambdas) remain unresolved.
+
+Reads are constant-string subscripts and `.get()` on the first positional
+parameter. Writes are constant keys in returned dicts, returned dict variables
+(including subscript assignments and `.update()` keys), and direct state
+subscript assignments; `**state` spreads are ignored. When the state is passed to
+a helper that resolves inside the repo (a bare name or `module.func`), the helper
+is analysed too, up to three levels deep with a cycle guard; its reads and
+`state[k] = …` writes count, and its returned keys count when the caller returns
+the call (awaited or not). What the scanner cannot read becomes a partial reason
+instead of a silent gap: `return <expr>` (a call shows `f(...)`), `return {**<expr>}`,
+`<var>.update(<expr>)`, `state passed to <callee>` for an unresolvable helper,
+`state used in nested function <name>`, `state rebound` (the state name is
+reassigned or shadowed; reads and writes through it are then not counted), and
+`no state parameter`. A router's return names the next node and is never a reason.
+
+The scanner rewrites computed fields and `repo.commit` from HEAD, adds new nodes,
+drops removed ones, and keeps verdicts and notes by node id plus all scenarios.
+Repeated runs are byte-identical. Missing repo, spec, graph file or state class
+exits 2 without changing the spec. `check.py --repo` reruns the scan and reports
+`check: contract: stale` when computed facts differ. Without `--repo` it checks
+the schema, duplicate node ids (`check: id: duplicate node <id>`) and scenario
+references (`check: edge: unknown scenario node <id>`).
+
+Field findings use resolved nodes only: 熱點欄位 means at least three readers;
+只讀沒人寫 and 只寫沒人讀 compare all reads and writes; 宣告了但沒用 lists
+declared fields used by neither. Fields are sorted, with involved nodes in source
+order; empty findings show 沒有. Each replacement scenario derives 必須讀 as the
+union of its nodes' reads minus their writes, and 必須寫 as their write union.
+Both lists are sorted and show 沒有 when empty. Each node section lists reads,
+writes, partial reasons and `file:line`.
+
+```json
+{
+  "topic": "contract", "page": "contract", "title": "節點契約",
+  "repo": {"name": "demo", "commit": "0123456789abcdef0123456789abcdef01234567"},
+  "graph": {"file": "app/graph.py", "state": "AgentState", "roots": ["."]},
+  "nodes": [{
+    "id": "reply", "kind": "node", "file": "app/nodes.py", "line": 12,
+    "reads": ["question"], "writes": ["answer"], "partial": [], "resolved": true,
+    "verdict": "easy", "note": "只透過兩個 state 欄位溝通"
+  }],
+  "declared": ["answer", "question", "unused"],
+  "scenarios": [{"title": "換掉回覆節點", "nodes": ["reply"], "summary": "保留輸入問題和輸出答案的契約"}]
+}
+```
+
+The pack index places overview, features, seams, contract and jobs first when present,
 then every other topic alphabetically. All page types remain static and offline.

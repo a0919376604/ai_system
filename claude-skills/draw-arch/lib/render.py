@@ -17,7 +17,7 @@ KINDS = {
 }
 TONES = {"body": "#cbd5e1", "cond": "#fcd34d", "warn": "#fb7185", "muted": "#94a3b8"}
 SHAPES = ("box", "pill")
-PAGES = ("diagram", "table", "cards", "seams")
+PAGES = ("diagram", "table", "cards", "seams", "contract")
 CSS = """
 *{box-sizing:border-box}body{margin:0;background:#020617;color:#cbd5e1;
 font-family:'JetBrains Mono',SFMono-Regular,Menlo,'PingFang TC',monospace;font-size:13px}
@@ -285,6 +285,8 @@ def render_page(spec: dict) -> str:
             return render_cards(spec)
         if page == "seams":
             return render_seams(spec)
+        if page == "contract":
+            return render_contract(spec)
         raise SpecError("unknown page: " + page)
     return render_diagram(spec)
 
@@ -350,6 +352,71 @@ def render_seams(spec: dict) -> str:
     return document(spec["title"], parts, SEAMS_CSS)
 
 
+def node_label(node: dict) -> str:
+    """A conditional-edge router is marked so it is not read as a graph node."""
+    return node["id"] + ("（路由）" if node.get("kind") == "router" else "")
+
+
+def render_contract(spec: dict) -> str:
+    parts = page_header(spec)
+    verdicts = {"easy": ("v-easy", "容易換"), "medium": ("v-medium", "要改一些"),
+                "hard": ("v-hard", "很難換")}
+    labels = ("節點", "讀", "寫", "好不好換", "說明")
+    parts.extend(['<table class="cat sum">', '<thead><tr>' + ''.join(
+        '<th>{}</th>'.format(label) for label in labels) + '</tr></thead>', '<tbody>'])
+    for node in spec["nodes"]:
+        tone, verdict = verdicts[node["verdict"]] if "verdict" in node else ("", "—")
+        warning = "⚠ 找不到函式" if not node["resolved"] else "⚠ 掃描不完整" if node["partial"] else ""
+        explanation = " · ".join(text for text in (warning, node.get("note", "")) if text)
+        parts.append('<tr><td data-label="節點">{}</td>{}<td data-label="好不好換" class="{}">{}</td><td data-label="說明">{}</td></tr>'.format(
+            esc(node_label(node)), ''.join('<td data-label="{}"><a href="#node-{}">{}</a></td>'.format(
+                label, attr(node["id"]), len(node[key])) for label, key in (("讀", "reads"), ("寫", "writes"))),
+            tone, verdict, esc(explanation)))
+    parts.extend(['</tbody>', '</table>'])
+    readers, writers = {}, {}
+    for node in spec["nodes"]:
+        if node["resolved"]:
+            for key, found in (("reads", readers), ("writes", writers)):
+                for field in set(node[key]):
+                    found.setdefault(field, []).append(node["id"])
+    findings = (
+        ("熱點欄位 (≥3 個節點讀)", "", {field: nodes for field, nodes in readers.items() if len(nodes) >= 3}),
+        ("只讀沒人寫", "通常是呼叫 graph 時傳進來的輸入；若不是，就是沒有節點負責寫這個欄位。",
+         {field: nodes for field, nodes in readers.items() if field not in writers}),
+        ("只寫沒人讀", "可能是給 graph 外部讀的輸出；若不是，就是死欄位。",
+         {field: nodes for field, nodes in writers.items() if field not in readers}),
+        ("宣告了但沒用", "", {field: [] for field in spec["declared"] if field not in readers and field not in writers}),
+    )
+    for heading, hint, fields in findings:
+        items = [field + (" — " + ", ".join(fields[field]) if fields[field] else "") for field in sorted(fields)]
+        parts.append('<h3>{}</h3>'.format(esc(heading)))
+        if hint:
+            parts.append('<p class="sub">{}</p>'.format(esc(hint)))
+        parts.append('<ul>' + ''.join('<li>{}</li>'.format(esc(item)) for item in (items or ["沒有"])) + '</ul>')
+    parts.append('<h2>替換情境</h2>')
+    by_id = {node["id"]: node for node in spec["nodes"]}
+    for scenario in spec["scenarios"]:
+        chosen = [by_id[node] for node in scenario["nodes"]]
+        reads = {field for node in chosen if node["resolved"] for field in node["reads"]}
+        writes = {field for node in chosen if node["resolved"] for field in node["writes"]}
+        parts.extend(['<h3>{}</h3>'.format(esc(scenario["title"])),
+                      '<p>{}</p>'.format(esc(scenario["summary"])),
+                      '<p>必須讀：{}</p>'.format(esc(", ".join(sorted(reads - writes)) or "沒有")),
+                      '<p>必須寫：{}</p>'.format(esc(", ".join(sorted(writes)) or "沒有"))])
+    for node in spec["nodes"]:
+        parts.extend(['<section id="node-{}">'.format(attr(node["id"])), '<h2>{}</h2>'.format(esc(node_label(node))),
+                      '<p>讀：{}</p>'.format(esc(", ".join(node["reads"]) or "沒有")),
+                      '<p>寫：{}</p>'.format(esc(", ".join(node["writes"]) or "沒有"))])
+        if not node["resolved"]:
+            parts.append('<p>⚠ 找不到函式</p>')
+        if node["partial"]:
+            parts.extend(['<h3>⚠ 掃描不完整</h3>', '<ul>' + ''.join(
+                '<li>{}</li>'.format(esc(reason)) for reason in node["partial"]) + '</ul>'])
+        parts.extend(['<p>{}</p>'.format(esc("{}:{}".format(node["file"], node["line"]))), '</section>'])
+    parts.append(page_footer(spec))
+    return document(spec["title"], parts, SEAMS_CSS)
+
+
 def render_diagram(spec: dict) -> str:
     topic = spec["topic"]
     if not re.fullmatch(r"[a-z0-9-]+", topic):
@@ -383,8 +450,8 @@ def render_index(specs: list) -> str:
     repos = sorted({spec["repo"]["name"] for spec in specs})
     title = " · ".join(["架構圖包"] + repos)
     parts = ['<h1>{}</h1>'.format(esc(title)), '<nav class="pack">']
-    ranks = {topic: i for i, topic in enumerate(("overview", "features", "seams", "jobs"))}
-    for spec in sorted(specs, key=lambda s: (ranks.get(s["topic"], 4), s["topic"])):
+    ranks = {topic: i for i, topic in enumerate(("overview", "features", "seams", "contract", "jobs"))}
+    for spec in sorted(specs, key=lambda s: (ranks.get(s["topic"], len(ranks)), s["topic"])):
         if not re.fullmatch(r"[a-z0-9-]+", spec["topic"]):
             raise SpecError("invalid topic: " + spec["topic"])
         parts.append('<a href="{}.html">{}<span>{}</span></a>'.format(

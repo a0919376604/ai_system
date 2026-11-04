@@ -32,6 +32,7 @@ secret values are not. Do not use stale UA material or call archify.
    exist, confirm which first graph to draw and ask before adding a second
    StateGraph. Ask before adding other pipelines or extra topics. For line-oa the
    first graph is `lang_ai_customer`.
+   Include `contract` among the default topics when the repo has a StateGraph.
 
 3. **Trace each topic.** Start from entry points, manifests and deployment files.
    Follow imports and call sites to the actual input, output and side effects;
@@ -48,6 +49,19 @@ secret values are not. Do not use stale UA material or call archify.
      4. From the generated touchpoints, write `verdict`, `summary`, `change`
         and notes on leaks outside the adapters.
      5. Re-run `python3 "$SKILL_DIR/lib/check.py" "$OUT/seams.json" --repo "$REPO"`.
+   - **contract** — show what replacing a LangGraph node requires from shared state:
+     1. Use the first StateGraph's source file, state class and import roots as
+        `graph: {file, state, roots}`. Start `nodes`, `declared` and `scenarios`
+        as empty lists in `$OUT/contract.json`.
+     2. Run `python3 "$SKILL_DIR/lib/contract.py" "$REPO" "$OUT/contract.json"`.
+        The scanner resolves functions through AST, including re-exports and
+        factories, without importing or executing source.
+     3. Write a `verdict` (easy/medium/hard) and `note` for every node. Inspect
+        partial reasons and unresolved nodes before judging replacement effort.
+     4. Write at least three replacement scenarios, each with `title`, node ids
+        in `nodes`, and `summary`. The page computes 必須讀 and 必須寫.
+     5. Run `python3 "$SKILL_DIR/lib/check.py" "$OUT/contract.json" --repo "$REPO"`.
+        Re-run the scanner when stale; it keeps verdicts, notes and scenarios.
    - **jobs** — find the registry with
      `git grep -nE 'SweeperSpecMeta|add_job|@app.task|create_task|while True'`
      from the target repo, excluding tests and secrets. Set `registry` with its
@@ -73,7 +87,7 @@ secret values are not. Do not use stale UA material or call archify.
 
 5. **Check, render, look: at most three rounds per topic.**
    Run these commands with quoted paths for every topic, including features,
-   seams and jobs:
+   seams, contract and jobs:
    ```bash
    python3 "$SKILL_DIR/lib/check.py" "$OUT/$topic.json" --repo "$REPO"
    python3 "$SKILL_DIR/lib/render.py" page "$OUT/$topic.json" "$OUT/$topic.html"

@@ -127,6 +127,38 @@ def schema_errors(spec: dict) -> list:
                     require(isinstance(lines, list) and all(type(line) is int for line in lines), "touchpoint.lines must be a list of integers")
                     require(isinstance(point.get("adapter"), bool), "touchpoint.adapter must be boolean")
         return errors
+    if page == "contract":
+        fields(spec, ("graph", "nodes", "declared", "scenarios"), "spec")
+        graph = spec.get("graph")
+        if fields(graph, ("file", "state", "roots"), "graph"):
+            strings(graph, ("file", "state"), "graph")
+            file = graph.get("file")
+            require(isinstance(file, str) and bool(file) and not Path(file).is_absolute() and
+                    ".." not in Path(file).parts, "graph.file must be repo-relative")
+            roots = graph.get("roots")
+            require(isinstance(roots, list) and bool(roots) and all(
+                isinstance(root, str) and bool(root) and not Path(root).is_absolute() and
+                ".." not in Path(root).parts for root in roots), "graph.roots must be a list of repo-relative directories")
+        for node in array("nodes"):
+            if not fields(node, ("id", "kind", "file", "line", "reads", "writes", "partial", "resolved"), "node"):
+                continue
+            strings(node, ("id", "file", "note", "verdict"), "node")
+            require(isinstance(node.get("id"), str) and re.fullmatch(r"[A-Za-z0-9_.:-]+", node["id"]), "node.id is invalid")
+            require(type(node.get("line")) is int and node["line"] >= 0, "node.line must be a non-negative integer")
+            require(isinstance(node.get("resolved"), bool), "node.resolved must be boolean")
+            choice(node, "kind", ("node", "router"), "node")
+            choice(node, "verdict", ("easy", "medium", "hard"), "node")
+            for key in ("reads", "writes", "partial"):
+                value = node.get(key)
+                require(isinstance(value, list) and all(isinstance(v, str) for v in value), "node." + key + " must be a list of text")
+        declared = spec.get("declared")
+        require(isinstance(declared, list) and all(isinstance(v, str) for v in declared), "declared must be a list of text")
+        for scenario in array("scenarios"):
+            if fields(scenario, ("title", "nodes", "summary"), "scenario"):
+                strings(scenario, ("title", "summary"), "scenario")
+                value = scenario.get("nodes")
+                require(isinstance(value, list) and all(isinstance(v, str) for v in value), "scenario.nodes must be a list of ids")
+        return errors
     if page != "diagram":
         return errors
     fields(spec, ("canvas", "nodes", "edges"), "spec")
@@ -335,6 +367,27 @@ def check_spec(spec: dict, repo: Optional[str] = None, spec_dir: Optional[str] =
                            for point in actual[system["id"]]}
                 if recorded != current:
                     findings.append("check: seams: stale " + system["id"])
+        return findings
+    if spec.get("page") == "contract":
+        ids = set()
+        for node in spec["nodes"]:
+            if node["id"] in ids:
+                findings.append("check: id: duplicate node " + node["id"])
+            ids.add(node["id"])
+        for scenario in spec["scenarios"]:
+            for node in scenario["nodes"]:
+                if node not in ids:
+                    findings.append("check: edge: unknown scenario node " + node)
+        if repo is not None and not findings:
+            from contract import scan
+            try:
+                actual = scan(repo, spec["graph"])
+            except (OSError, UnicodeError, SyntaxError, ValueError) as exc:
+                return ["check: contract: cannot scan " + str(exc)]
+            computed = ("id", "kind", "file", "line", "reads", "writes", "partial", "resolved")
+            recorded = [{key: node[key] for key in computed} for node in spec["nodes"]]
+            if actual != {"nodes": recorded, "declared": spec["declared"]}:
+                findings.append("check: contract: stale")
         return findings
     nodes, edges = spec["nodes"], spec["edges"]
     ids = set()
