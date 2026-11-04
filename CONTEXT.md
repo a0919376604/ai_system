@@ -29,5 +29,5 @@
 - **condition table** — the three-column table under a diagram: 做什麼 / 什麼條件走到這、離開時往哪 / 程式碼, ⚠ only for a cited risk.
 - **route overlay** — a copy of a diagram with one route's nodes and edges in amber, the rest at 0.2, plus numbered badges and steps.
 - **catalog page** — an architecture-pack page with no diagram, chosen by the spec's `page` field: `table` (rows under groups, e.g. background programs), `cards` (one card per feature) or `seams` (external-system 可替換性). An absent `page` is a diagram, rendered byte-identically to before.
-- **seams page** — 外部系統的可替換性頁（R-034）：每個系統用 import/text probes 找出接觸檔與行號，以 adapters globs 區分預期整合邊界和漏進核心的接觸點，列出 verdict、summary 與換掉要改的清單；`check.py --repo` 重掃以偵測過期。
+- **seams page** — the 可替換性 page `/draw-arch` writes per external system (R-034): Claude declares probes (import prefixes, host or REST regexes) and adapter globs; `seams.py` finds every touchpoint as file and lines, each marked ✅ in an adapter or ❌ leaked into the core; `check.py --repo` reports it stale when the code moves. Replaced the R-033 module matrix.
 - **registry check** — `check.py` reading a code registry's calls (`registry: {file, call}`) through `ast` and naming every registered entry that has no row (R-033), so a catalog cannot silently omit one.
