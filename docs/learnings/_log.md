@@ -65,3 +65,4 @@
 | 2026-11-04 12:14 | ship-idea | IDEA-005 | Node 26 的 node --test 不再接受目錄參數：test_repo-layout.bats 的 plugin 測試（node --test obsidian-roadmap-view/test/）與 CLAUDE.md 的指令都要改成 glob（obsidian-roadmap-view/test/*.test.js） | n |
 | 2026-11-04 15:09 | ship-idea | IDEA-007 | id-gen 不掃 vault ROADMAP 撞號 | n |
 | 2026-11-04 15:11 | ship-compound | R-033 | shipped | n |
+| 2026-11-04 15:11 | ship-next | R-033 | shipped (review: blocking=0, major=0, ponytail=3, spec_gaps=0, door=two-way, xreview=skipped, ratio 1042bp vs baseline 1563bp, codex: 1 round(s) done_with_concerns) | n |
