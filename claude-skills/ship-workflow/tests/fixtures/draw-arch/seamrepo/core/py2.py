@@ -1,2 +1,2 @@
 raise SystemExit(9)
-from pkg.c import q
+print "api.line.me"

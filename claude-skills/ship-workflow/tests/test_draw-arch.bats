@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
 load helpers
+bats_require_minimum_version 1.5.0
 
 setup() {
   AD="$SHIP_SKILL_ROOT/../draw-arch/lib"
@@ -466,6 +467,18 @@ PY
   [ ! -e "$S/out.html" ]
 }
 
+@test "AC-2 matrix is no longer a page type" {
+  mutate 's.update(page="matrix", roots=[], modules=[], matrix=[], cycles=[])'
+  run python3 "$AD/check.py" "$S/m.json"
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [[ "$output" == 'check: schema:'* ]] || return 1
+  run python3 "$AD/render.py" page "$S/m.json" "$S/out.html"
+  [ "$status" -eq 2 ] || { echo "$output"; return 1; }
+  [ ! -e "$S/out.html" ] || return 1
+  [ ! -e "$AD/modules.py" ] || return 1
+  ! grep -rq 'modules.py' "$AD/../SKILL.md" "$AD/../references"
+}
+
 @test "empty table renders title and footer only" {
   mutate_catalog jobs 's["rows"] = []'
   python3 "$AD/render.py" page "$S/jobs.json" "$S/jobs.html"
@@ -569,8 +582,9 @@ PY
   done
 }
 
-init_modrepo() {
-  cp -R "$FX/modrepo" "$S/repo"
+init_seamrepo() {
+  cp -R "$FX/seamrepo" "$S/repo"
+  cp "$FX/seams.json" "$S/seams.json"
   git -C "$S/repo" init -q
   git -C "$S/repo" config user.name 'Draw Arch Test'
   git -C "$S/repo" config user.email 'draw-arch@example.invalid'
@@ -578,225 +592,154 @@ init_modrepo() {
   git -C "$S/repo" commit -qm fixture
 }
 
-make_modules() {
-  init_modrepo
-  run python3 "$AD/modules.py" "$S/repo" "$S/modules.json" --root pkg --name demo
+@test "AC-3 seams.py finds import and text touchpoints, marks adapters, skips tests and excludes" {
+  init_seamrepo
+  run --separate-stderr python3 "$AD/seams.py" "$S/repo" "$S/seams.json"
   [ "$status" -ne 9 ] || return 1
+  [ "$status" -eq 0 ] || { echo "$stderr"; return 1; }
+  [ "$stderr" = 'seams: cannot parse core/py2.py' ] || { echo "$stderr"; return 1; }
+  python3 - "$S/seams.json" <<'PY'
+import json, re, sys
+s = json.load(open(sys.argv[1], encoding='utf-8'))
+assert s['systems'][0]['touchpoints'] == [
+    {'file': 'adapters/line.py', 'lines': [2], 'adapter': True},
+    {'file': 'core/a.py', 'lines': [2, 3, 4], 'adapter': False},
+    {'file': 'core/py2.py', 'lines': [2], 'adapter': False},
+], s
+assert s['systems'][1]['touchpoints'] == []
+assert re.fullmatch('[0-9a-f]{40}', s['repo']['commit'])
+PY
+  cp "$S/seams.json" "$S/first.json"
+  run python3 "$AD/seams.py" "$S/repo" "$S/seams.json"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-}
-
-mutate_matrix() {
-  python3 - "$S/modules.json" "$1" <<'PY'
+  cmp "$S/first.json" "$S/seams.json" || return 1
+  python3 - "$S/seams.json" <<'PY'
 import json, sys
 from pathlib import Path
 p = Path(sys.argv[1])
 s = json.loads(p.read_text(encoding='utf-8'))
-exec(sys.argv[2])
+s['systems'][0]['touchpoints'][1]['note'] = 'x'
 p.write_text(json.dumps(s, ensure_ascii=False), encoding='utf-8')
 PY
-}
-
-@test "AC-5 modules.py counts cross-module imports, finds cycles and skips tests" {
-  make_modules
-  python3 - "$S/modules.json" <<'PY'
-import json, re, sys
-s = json.load(open(sys.argv[1], encoding='utf-8'))
-assert [m['id'] for m in s['modules']] == ['a', 'b', 'c']
-assert s['matrix'] == [[0, 1, 0], [1, 0, 0], [0, 2, 0]], s
-assert s['cycles'] == [['a', 'b']]
-assert [(m['root'], m['files'], m['lines']) for m in s['modules']] == [('pkg', 1, 2), ('pkg', 2, 4), ('pkg', 1, 3)]
-assert s['page'] == 'matrix' and s['roots'] == ['pkg']
-assert s['repo']['name'] == 'demo' and re.fullmatch('[0-9a-f]{40}', s['repo']['commit'])
-PY
-  cp "$S/modules.json" "$S/first.json"
-  python3 "$AD/modules.py" "$S/repo" "$S/modules.json" --root pkg --name demo
-  cmp "$S/first.json" "$S/modules.json" || return 1
-  mutate_matrix 's["modules"][0]["does"] = "入口"; s["subtitle"] = "x"; s["title"] = "模組目錄"'
-  python3 "$AD/modules.py" "$S/repo" "$S/modules.json" --root pkg --name demo
-  python3 - "$S/modules.json" <<'PY'
+  run python3 "$AD/seams.py" "$S/repo" "$S/seams.json"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  python3 - "$S/seams.json" <<'PY'
 import json, sys
 s = json.load(open(sys.argv[1], encoding='utf-8'))
-assert s['modules'][0]['does'] == '入口' and s['subtitle'] == 'x' and s['title'] == '模組目錄'
+assert s['systems'][0]['touchpoints'][1]['note'] == 'x'
 PY
 }
 
-@test "modules.py with a missing root exits 2 and writes nothing" {
-  init_modrepo
-  run python3 "$AD/modules.py" "$S/repo" "$S/modules.json" --root missing
-  [ "$status" -eq 2 ] || { echo "$output"; return 1; }
-  [[ "$output" == *missing* ]] || return 1
-  [ ! -e "$S/modules.json" ]
+@test "seams.py with a missing repo or spec exits 2 and writes nothing" {
+  cp "$FX/seams.json" "$S/seams.json"
+  cp "$S/seams.json" "$S/first.json"
+  run --separate-stderr python3 "$AD/seams.py" "$S/missing-repo" "$S/seams.json"
+  [ "$status" -eq 2 ] || { echo "$stderr"; return 1; }
+  [ -z "$output" ] && [ -n "$stderr" ] || return 1
+  cmp "$S/first.json" "$S/seams.json" || return 1
+  [ ! -e "$S/missing-repo" ] || return 1
+  init_seamrepo
+  run --separate-stderr python3 "$AD/seams.py" "$S/repo" "$S/missing.json"
+  [ "$status" -eq 2 ] || { echo "$stderr"; return 1; }
+  [ -z "$output" ] && [ -n "$stderr" ] || return 1
+  [ ! -e "$S/missing.json" ]
 }
 
-@test "two roots with the same child name get prefixed ids" {
-  init_modrepo
-  mkdir -p "$S/repo/pkg/core" "$S/repo/other/core"
-  printf 'raise SystemExit(9)\nfrom other.core import x\n' > "$S/repo/pkg/core/__init__.py"
-  printf 'raise SystemExit(9)\nfrom pkg.core import x\n' > "$S/repo/other/core/__init__.py"
-  run python3 "$AD/modules.py" "$S/repo" "$S/modules.json" --root pkg --root other
+@test "AC-4 check reports a stale system after the code changes" {
+  init_seamrepo
+  run python3 "$AD/seams.py" "$S/repo" "$S/seams.json"
   [ "$status" -ne 9 ] || return 1
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  python3 - "$S/modules.json" <<'PY'
-import json, sys
-s = json.load(open(sys.argv[1], encoding='utf-8'))
-ids = [m['id'] for m in s['modules']]
-assert ids == ['a', 'b', 'c', 'other/core', 'pkg/core'], ids
-assert s['matrix'][ids.index('other/core')][ids.index('pkg/core')] == 1
-assert s['matrix'][ids.index('pkg/core')][ids.index('other/core')] == 1
-PY
-}
-
-@test "AC-6 matrix page shows fan-in, fan-out and the cycle; check finds a stale matrix" {
-  make_modules
-  python3 "$AD/render.py" page "$S/modules.json" "$S/modules.html"
-  python3 - "$S/modules.html" <<'PY'
-import re, sys
-s = open(sys.argv[1], encoding='utf-8').read()
-row = re.search(r'<tr id="mod-b">(.*?)</tr>', s).group(1)
-assert re.findall(r'<td[^>]*>(.*?)</td>', row) == ['b', '', '2', '4', '2', '1'], row
-assert 'a ⇄ b' in s
-heat = s[s.index('<table class="heat">'):s.index('</table>')]
-assert heat.count('<td></td>') == 6, heat
-assert '<td style="background:rgba(34,211,238,0.75)">2</td>' in heat
-assert '<div class="pan"><table class="heat">' in s
-PY
-  run python3 "$AD/check.py" "$S/modules.json" --repo "$S/repo"
-  [ "$status" -ne 9 ] || return 1
+  run python3 "$AD/check.py" "$S/seams.json" --repo "$S/repo"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [ -z "$output" ] || return 1
-  printf 'from pkg.c import q\n' >> "$S/repo/pkg/a/__init__.py"
-  run python3 "$AD/check.py" "$S/modules.json" --repo "$S/repo"
+  [ -z "$output" ] || { echo "$output"; return 1; }
+  printf 'import linebot\n' >> "$S/repo/core/b.py"
+  git -C "$S/repo" add .
+  git -C "$S/repo" commit -qm 'add touchpoint'
+  run python3 "$AD/check.py" "$S/seams.json" --repo "$S/repo"
   [ "$status" -ne 9 ] || return 1
   [ "$status" -eq 1 ] || { echo "$output"; return 1; }
-  [ "$output" = 'check: matrix: stale' ] || return 1
-  mutate_matrix 's["cycles"] = []'
-  python3 "$AD/render.py" page "$S/modules.json" "$S/no-cycle.html"
-  grep -qF '沒有循環依賴' "$S/no-cycle.html"
+  [ "$output" = 'check: seams: stale line' ]
 }
 
-@test "modules.py resolves bare absolute imports against the root itself (src layout)" {
-  mkdir -p "$S/r/src/foo" "$S/r/src/bar"
-  printf 'raise SystemExit(9)\nfrom bar import x\n' > "$S/r/src/foo/__init__.py"
-  printf 'raise SystemExit(9)\n' > "$S/r/src/bar/__init__.py"
-  git -C "$S/r" init -q && git -C "$S/r" add . && git -C "$S/r" -c user.name=t -c user.email=t@example.invalid commit -qm i
-  run python3 "$AD/modules.py" "$S/r" "$S/m.json" --root src
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  python3 -c "import json,sys; s=json.load(open(sys.argv[1])); assert s['matrix'] == [[0,0],[1,0]], s['matrix']" "$S/m.json"
-}
-
-@test "module ids stay unique across roots with one basename and a file beside its package" {
-  mkdir -p "$S/r/x/pkg" "$S/r/y/pkg" "$S/r/z/foo"
-  printf 'raise SystemExit(9)\nfrom y.pkg.util import q\n' > "$S/r/x/pkg/util.py"
-  printf 'raise SystemExit(9)\n' > "$S/r/y/pkg/util.py"
-  printf 'raise SystemExit(9)\n' > "$S/r/z/foo/__init__.py"
-  printf 'raise SystemExit(9)\n' > "$S/r/z/foo.py"
-  printf 'raise SystemExit(9)\nimport z.foo\n' > "$S/r/z/bar.py"
-  git -C "$S/r" init -q && git -C "$S/r" add . && git -C "$S/r" -c user.name=t -c user.email=t@example.invalid commit -qm i
-  run python3 "$AD/modules.py" "$S/r" "$S/m.json" --root x/pkg --root y/pkg --root z
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  python3 - "$S/m.json" <<'PY'
-import json, sys
-s = json.load(open(sys.argv[1], encoding='utf-8'))
-ids = [m['id'] for m in s['modules']]
-assert ids == ['bar', 'foo', 'x/pkg/util', 'y/pkg/util'], ids
-assert s['matrix'][ids.index('x/pkg/util')][ids.index('y/pkg/util')] == 1
-assert s['matrix'][ids.index('bar')][ids.index('foo')] == 1
-PY
-  python3 - "$S/m.json" <<'PY'
-import json, sys
-s = json.load(open(sys.argv[1], encoding='utf-8'))
-s['modules'].append(dict(s['modules'][0]))
-s['matrix'] = [r + [0] for r in s['matrix']] + [[0] * (len(s['matrix']) + 1)]
-json.dump(s, open(sys.argv[1], 'w', encoding='utf-8'))
-PY
-  run python3 "$AD/check.py" "$S/m.json"
+@test "AC-6 seams schema findings" {
+  mutate_catalog seams 's["systems"].append(s["systems"][0])'
+  run python3 "$AD/check.py" "$S/seams.json"
   [ "$status" -eq 1 ] || { echo "$output"; return 1; }
-  [ "$output" = 'check: id: duplicate module bar' ] || { echo "$output"; return 1; }
-}
-
-@test "matrix page says which way it reads, styles fan-out as data, and names big cycles" {
-  make_modules
-  mutate_matrix 's["cycles"] = [["a", "b"], ["a", "b", "c"]]'
-  python3 "$AD/render.py" page "$S/modules.json" "$S/modules.html"
-  python3 - "$S/modules.html" <<'PY'
-import sys
-s = open(sys.argv[1], encoding='utf-8').read()
-assert s.index('列 → 欄') < s.index('<table class="heat">')
-assert '<table class="cat mods">' in s
-assert '.mods td:last-child{font-size:inherit;color:inherit}' in s
-assert '<li>a ⇄ b</li>' in s
-assert '<li>3 個模組互相循環：a、b、c</li>' in s
-PY
-}
-
-@test "non-integer matrix cell is refused" {
-  make_modules
-  mutate_matrix 's["matrix"][0][1] = "9);background:url(//x)"'
-  run python3 "$AD/check.py" "$S/modules.json"
-  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
-  [[ "$output" == 'check: schema:'* ]] || return 1
-  run python3 "$AD/render.py" page "$S/modules.json" "$S/modules.html"
-  [ "$status" -eq 2 ] || { echo "$output"; return 1; }
-  [ ! -e "$S/modules.html" ]
-}
-
-@test "empty matrix renders title and footer only" {
-  make_modules
-  mutate_matrix 's.update(roots=[], modules=[], matrix=[], cycles=[])'
-  python3 "$AD/render.py" page "$S/modules.json" "$S/modules.html"
-  grep -qF '<h1>模組耦合</h1>' "$S/modules.html" || return 1
-  grep -qF '<footer>' "$S/modules.html" || return 1
-  ! grep -qF '<table' "$S/modules.html" || return 1
-  run python3 "$AD/check.py" "$S/modules.json" --repo "$S/repo"
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [ -z "$output" ]
-}
-
-@test "modules.py resolves nested root prefixes and distinct targets per statement" {
-  init_modrepo
-  mkdir -p "$S/repo/backend/app/a" "$S/repo/backend/app/tests" "$S/repo/backend/app/a/test" "$S/repo/backend/app/.hidden"
-  cat > "$S/repo/backend/app/a/__init__.py" <<'PY'
-raise SystemExit(9)
-from backend.app import b, c
-import app.b, app.b, os
-from .. import b, c
-from . import internal
-from .....pkg import c
-PY
-  printf 'raise SystemExit(9)\n' > "$S/repo/backend/app/b.py"
-  printf 'raise SystemExit(9)\n' > "$S/repo/backend/app/c.py"
-  for path in a/test_ignore.py a/ignore_test.py a/test/skip.py tests/test_c.py .hidden/skip.py; do
-    printf 'raise SystemExit(9)\nfrom app import b\n' > "$S/repo/backend/app/$path"
-  done
-  run python3 "$AD/modules.py" "$S/repo" "$S/modules.json" --root backend/app
-  [ "$status" -ne 9 ] || return 1
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  python3 - "$S/modules.json" <<'PY'
-import json, sys
-s = json.load(open(sys.argv[1], encoding='utf-8'))
-assert [m['id'] for m in s['modules']] == ['a', 'b', 'c'], s
-assert s['modules'][0]['files'] == 1 and s['modules'][0]['lines'] == 6
-assert s['matrix'] == [[0, 3, 2], [0, 0, 0], [0, 0, 0]], s
-assert s['cycles'] == []
-PY
-}
-
-@test "matrix schema requires square non-negative integer cells and known cycle ids" {
-  make_modules
-  cp "$S/modules.json" "$S/valid.json"
-  for change in 's["matrix"][0][1] = True' 's["matrix"][0][1] = -1' 's["matrix"][0][1] = 0.5' 's["matrix"][0].pop()' 's["cycles"] = [["ghost"]]' 's["modules"][0]["files"] = True'; do
-    cp "$S/valid.json" "$S/modules.json"
-    mutate_matrix "$change"
-    run python3 "$AD/check.py" "$S/modules.json"
+  [ "$output" = 'check: id: duplicate system line' ] || { echo "$output"; return 1; }
+  for change in 's["systems"][0]["verdict"] = "maybe"' 's["systems"][0]["probes"] = []' 's["systems"][0]["probes"][1]["pattern"] = "("' 's["systems"][0]["probes"][1]["pattern"] = "a{4294967296}"'; do
+    mutate_catalog seams "$change"
+    run python3 "$AD/check.py" "$S/seams.json"
     [ "$status" -eq 1 ] || { echo "$output"; return 1; }
-    [[ "$output" == 'check: schema:'* ]] || return 1
+    [[ "$output" == 'check: schema:'* ]] || { echo "$output"; return 1; }
   done
 }
 
-@test "AC-7 index puts overview, features, modules, jobs first" {
-  make_modules
+@test "AC-5 seams page leads with a summary and lists leaks first" {
+  mutate_catalog seams 's["systems"][0]["touchpoints"] = [{"file": "adapters/line.py", "lines": [2], "adapter": True}, {"file": "core/a.py", "lines": [2, 3], "adapter": False}]'
+  python3 "$AD/render.py" page "$S/seams.json" "$S/seams.html"
+  python3 - "$S/seams.html" <<'PY'
+import re, sys
+from html import unescape
+s = open(sys.argv[1], encoding='utf-8').read()
+assert s.index('<table class="cat sum">') < s.index('<section id="sys-line">')
+summary = re.search(r'<table class="cat sum">(.*?)</table>', s, re.S).group(1)
+assert re.findall(r'<th>(.*?)</th>', summary) == ['系統', '能不能換', '接觸檔', '漏進核心', '一句話']
+rows = re.findall(r'<tr>(.*?)</tr>', summary, re.S)[1:]
+cells = [[unescape(re.sub('<[^>]*>', '', value)) for value in re.findall(r'<td[^>]*>(.*?)</td>', row)] for row in rows]
+assert [row[:4] for row in cells] == [['LINE', '很難換', '2', '1'], ['資料倉儲', '容易換', '0', '0']], cells
+assert 'href="#sys-line"' in summary and 'href="#sys-dw"' in summary
+line = re.search(r'<section id="sys-line">(.*?)</section>', s, re.S).group(1)
+assert '<h2>LINE' in line and '很難換' in line
+assert line.index('❌ 漏進核心') < line.index('✅ 在 adapter 內')
+assert '<tr class="warn">' in line
+assert 'core/a.py' in line and '>2, 3</td>' in line
+assert re.findall(r'<th>(.*?)</th>', line) == ['檔案', '行', '位置', '說明']
+dw = re.search(r'<section id="sys-dw">(.*?)</section>', s, re.S).group(1)
+assert '沒有找到接觸點' in dw
+assert '換掉要改' in s and '<svg' not in s
+PY
+}
+
+@test "seams.py counts lines on newlines only and survives NUL bytes and unreadable files" {
+  mkdir -p "$S/r"
+  printf 'raise SystemExit(9)\nx = "a\fb\xe2\x80\xa8c"\ny = 1\nURL = "api.line.me"\n' > "$S/r/ff.py"
+  printf 'raise SystemExit(9)\nURL = "api.line.me"\x00\n' > "$S/r/nul.py"
+  printf 'raise SystemExit(9)\nURL = "api.line.me" # \xe9\n' > "$S/r/latin.py"
+  git -C "$S/r" init -q && git -C "$S/r" add . && git -C "$S/r" -c user.name=t -c user.email=t@example.invalid commit -qm i
+  python3 - "$S/s.json" <<'PY2'
+import json, sys
+json.dump({"topic": "seams", "page": "seams", "title": "t", "repo": {"name": "r", "commit": "0000000"},
+           "systems": [{"id": "line", "title": "L", "verdict": "hard", "summary": "", "change": [],
+                        "probes": [{"kind": "text", "pattern": "api\\.line\\.me"}, {"kind": "import", "pattern": "linebot"}],
+                        "adapters": [], "touchpoints": []}]}, open(sys.argv[1], "w"))
+PY2
+  run python3 "$AD/seams.py" "$S/r" "$S/s.json"
+  [ "$status" -ne 9 ] || return 1
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  echo "$output" | grep -qF 'seams: cannot parse nul.py' || { echo "$output"; return 1; }
+  echo "$output" | grep -qF 'seams: cannot read latin.py' || { echo "$output"; return 1; }
+  python3 -c "import json,sys; t=json.load(open(sys.argv[1]))['systems'][0]['touchpoints']; assert t == [{'file':'ff.py','lines':[4],'adapter':False},{'file':'nul.py','lines':[2],'adapter':False}], t" "$S/s.json"
+  run python3 "$AD/check.py" "$S/s.json" --repo "$S/r"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
+@test "seams verdicts carry a tone class in the summary and the section heading" {
+  python3 - "$S/v.json" <<'PY2'
+import json, sys
+spec = {"topic": "seams", "page": "seams", "title": "t", "repo": {"name": "r", "commit": "0123456"},
+        "systems": [{"id": i, "title": i, "verdict": v, "summary": "s", "change": [], "probes": [{"kind": "import", "pattern": "x"}],
+                     "adapters": [], "touchpoints": []} for i, v in (("a", "easy"), ("b", "medium"), ("c", "hard"))]}
+json.dump(spec, open(sys.argv[1], "w"))
+PY2
+  python3 "$AD/render.py" page "$S/v.json" "$S/v.html"
+  for v in easy medium hard; do grep -qF "class=\"v-$v\"" "$S/v.html" || return 1; done
+  [ "$(grep -o 'class="v-hard"' "$S/v.html" | wc -l | tr -d ' ')" -eq 2 ] || return 1
+}
+
+@test "AC-7 index puts overview, features, seams, jobs first" {
   mkdir -p "$S/pack"
-  cp "$FX/jobs.json" "$FX/features.json" "$S/modules.json" "$S/pack/"
+  cp "$FX/jobs.json" "$FX/features.json" "$FX/seams.json" "$S/pack/"
   python3 - "$FX/clean.json" "$S/pack" <<'PY'
 import json, sys
 from pathlib import Path
@@ -809,16 +752,30 @@ PY
   python3 - "$S/index.html" <<'PY'
 import re, sys
 s = open(sys.argv[1], encoding='utf-8').read()
-assert re.findall(r'href="([^"]+)"', s) == ['overview.html', 'features.html', 'modules.html', 'jobs.html', 'csat.html']
+assert re.findall(r'href="([^"]+)"', s) == ['overview.html', 'features.html', 'seams.html', 'jobs.html', 'csat.html']
+PY
+}
+
+@test "AC-8 seams text is escaped and offline" {
+  mutate_catalog seams 'text = "<script>alert(1)</script> https://evil.example"; s["systems"][0].update(summary=text, change=[text], touchpoints=[{"file": "core/a.py", "lines": [2], "adapter": False, "note": text}])'
+  python3 "$AD/render.py" page "$S/seams.json" "$S/seams.html"
+  python3 "$AD/render.py" page "$S/seams.json" "$S/again.html"
+  cmp "$S/seams.html" "$S/again.html" || return 1
+  python3 - "$S/seams.html" <<'PY'
+import re, sys
+from html import unescape
+s = open(sys.argv[1], encoding='utf-8').read()
+assert '<script>alert' not in s and not re.search(r' on[a-z]+=', s)
+assert not re.search(r'https?://', s)
+assert s.count('&lt;script&gt;alert(1)&lt;/script&gt;') == 4
+assert 'https://evil.example' in unescape(s)
 PY
 }
 
 @test "AC-9 catalog pages stay offline" {
-  make_modules
   mutate_catalog jobs 's["rows"][0]["cells"]["does"] = "https://evil.example <script>bad</script> & quote\""'
   mutate_catalog features 's["cards"][0]["does"] = "https://evil.example <script>bad</script> & quote\""'
-  mutate_matrix 's["modules"][0]["does"] = "https://evil.example <script>bad</script> & quote\""'
-  for topic in jobs features modules; do
+  for topic in jobs features; do
     python3 "$AD/render.py" page "$S/$topic.json" "$S/$topic.html"
     python3 "$AD/render.py" page "$S/$topic.json" "$S/again.html"
     cmp "$S/$topic.html" "$S/again.html" || return 1
@@ -827,7 +784,7 @@ PY
 import re, sys
 from pathlib import Path
 from html import unescape
-for topic in ('jobs', 'features', 'modules'):
+for topic in ('jobs', 'features'):
     s = (Path(sys.argv[1]) / (topic + '.html')).read_text(encoding='utf-8')
     assert '<script' not in s and not re.search(r' on[a-z]+=', s), topic
     assert not re.search(r'https?://', s), topic
@@ -837,7 +794,7 @@ PY
 }
 
 @test "spec-format documents the new page types" {
-  for field in page columns registry cards modules.py; do
+  for field in page columns registry cards seams probes adapters touchpoints; do
     grep -qF "$field" "$AD/../references/spec-format.md" || return 1
   done
   python3 - "$AD/../references/spec-format.md" "$S/table.json" <<'PY'
@@ -852,18 +809,16 @@ PY
   python3 "$AD/render.py" page "$S/table.json" "$S/table.html"
 }
 
-@test "modules.py resolves absolute imports when the root is the repository itself" {
-  init_modrepo
-  printf 'raise SystemExit(9)\nimport b\n' > "$S/repo/a.py"
-  printf 'raise SystemExit(9)\nfrom a import x\n' > "$S/repo/b.py"
-  run python3 "$AD/modules.py" "$S/repo" "$S/modules.json" --root .
-  [ "$status" -ne 9 ] || return 1
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  python3 - "$S/modules.json" <<'PY'
-import json, sys
-s = json.load(open(sys.argv[1], encoding='utf-8'))
-assert [m['id'] for m in s['modules']] == ['a', 'b', 'pkg']
-assert s['matrix'] == [[0, 1, 0], [1, 0, 0], [0, 0, 0]], s['matrix']
-assert s['cycles'] == [['a', 'b']]
+@test "spec-format seams example passes check.py" {
+  python3 - "$AD/../references/spec-format.md" "$S/seams.json" <<'PY'
+import json, re, sys
+from pathlib import Path
+examples = [json.loads(s) for s in re.findall(r'```json\n(.*?)\n```', Path(sys.argv[1]).read_text(encoding='utf-8'), re.S)]
+seams = next(s for s in examples if s.get('page') == 'seams')
+Path(sys.argv[2]).write_text(json.dumps(seams), encoding='utf-8')
 PY
+  run python3 "$AD/check.py" "$S/seams.json"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ -z "$output" ] || return 1
+  python3 "$AD/render.py" page "$S/seams.json" "$S/seams.html"
 }

@@ -1,0 +1,52 @@
+{
+  "topic": "seams",
+  "page": "seams",
+  "title": "外部系統可替換性",
+  "repo": {
+    "name": "demo",
+    "commit": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "exclude": [
+    "vendor/*"
+  ],
+  "systems": [
+    {
+      "id": "line",
+      "title": "LINE",
+      "verdict": "hard",
+      "summary": "核心直接接觸 LINE API",
+      "change": [
+        "替換 SDK 並移動核心的呼叫"
+      ],
+      "probes": [
+        {
+          "kind": "import",
+          "pattern": "linebot"
+        },
+        {
+          "kind": "text",
+          "pattern": "api\\.line\\.me"
+        }
+      ],
+      "adapters": [
+        "adapters/*"
+      ],
+      "touchpoints": []
+    },
+    {
+      "id": "dw",
+      "title": "資料倉儲",
+      "verdict": "easy",
+      "summary": "目前沒有接觸點",
+      "change": [],
+      "probes": [
+        {
+          "kind": "import",
+          "pattern": "pymysql"
+        }
+      ],
+      "adapters": [],
+      "touchpoints": []
+    }
+  ]
+}

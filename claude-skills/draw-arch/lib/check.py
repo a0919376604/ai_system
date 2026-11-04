@@ -1,6 +1,8 @@
 """Validate diagram structure and geometry without third-party dependencies."""
 import argparse
 import ast
+import contextlib
+import io
 import math
 import os
 import re
@@ -92,28 +94,38 @@ def schema_errors(spec: dict) -> list:
                 value = card.get(key, [])
                 require(isinstance(value, list) and all(isinstance(v, str) and re.fullmatch(pattern, v) for v in value), "card." + key + " must be a list of ids")
         return errors
-    if page == "matrix":
-        fields(spec, ("roots", "modules", "matrix", "cycles"), "spec")
-        require(all(isinstance(v, str) for v in array("roots")), "roots must be a list of text")
-        modules = array("modules")
-        ids = set()
-        for module in modules:
-            if not fields(module, ("id", "root", "files", "lines"), "module"):
+    if page == "seams":
+        fields(spec, ("systems",), "spec")
+        exclude = spec.get("exclude", [])
+        require(isinstance(exclude, list) and all(isinstance(v, str) for v in exclude), "exclude must be a list of text")
+        for system in array("systems"):
+            if not fields(system, ("id", "title", "verdict", "summary", "change", "probes", "adapters", "touchpoints"), "system"):
                 continue
-            strings(module, ("id", "root", "does"), "module")
-            if isinstance(module.get("id"), str):
-                ids.add(module["id"])
-            for key in ("files", "lines"):
-                value = module.get(key)
-                require(type(value) is int and value >= 0, "module." + key + " must be a non-negative integer")
-        matrix = array("matrix")
-        require(len(matrix) == len(modules), "matrix must be square and sized to modules")
-        for row in matrix:
-            require(isinstance(row, list) and len(row) == len(modules), "matrix must be square and sized to modules")
-            if isinstance(row, list):
-                require(all(type(v) is int and v >= 0 for v in row), "matrix cells must be non-negative integers")
-        for cycle in array("cycles"):
-            require(isinstance(cycle, list) and all(isinstance(v, str) and v in ids for v in cycle), "cycles must be lists of known module ids")
+            strings(system, ("id", "title", "verdict", "summary"), "system")
+            require(isinstance(system.get("id"), str) and re.fullmatch(r"[A-Za-z0-9_.:-]+", system["id"]), "system.id is invalid")
+            choice(system, "verdict", ("easy", "medium", "hard"), "system")
+            for key in ("change", "adapters"):
+                value = system.get(key)
+                require(isinstance(value, list) and all(isinstance(v, str) for v in value), "system." + key + " must be a list of text")
+            probes = system.get("probes")
+            require(isinstance(probes, list) and bool(probes), "system.probes must be a non-empty list")
+            for probe in probes if isinstance(probes, list) else []:
+                if fields(probe, ("kind", "pattern"), "probe"):
+                    strings(probe, ("kind", "pattern"), "probe")
+                    choice(probe, "kind", ("import", "text"), "probe")
+                    if probe.get("kind") == "text" and isinstance(probe.get("pattern"), str):
+                        try:
+                            re.compile(probe["pattern"])
+                        except (re.error, OverflowError):
+                            require(False, "probe.pattern must be a valid regex")
+            points = system.get("touchpoints")
+            require(isinstance(points, list), "system.touchpoints must be a list")
+            for point in points if isinstance(points, list) else []:
+                if fields(point, ("file", "lines", "adapter"), "touchpoint"):
+                    strings(point, ("file", "note"), "touchpoint")
+                    lines = point.get("lines")
+                    require(isinstance(lines, list) and all(type(line) is int for line in lines), "touchpoint.lines must be a list of integers")
+                    require(isinstance(point.get("adapter"), bool), "touchpoint.adapter must be boolean")
         return errors
     if page != "diagram":
         return errors
@@ -300,22 +312,29 @@ def check_spec(spec: dict, repo: Optional[str] = None, spec_dir: Optional[str] =
                     if job not in job_ids:
                         findings.append("check: link: missing job " + job)
         return findings
-    if spec.get("page") == "matrix":
-        seen = set()
-        for module in spec["modules"]:
-            if module["id"] in seen:
-                findings.append("check: id: duplicate module " + module["id"])
-            seen.add(module["id"])
+    if spec.get("page") == "seams":
+        ids = set()
+        for system in spec["systems"]:
+            if system["id"] in ids:
+                findings.append("check: id: duplicate system " + system["id"])
+            ids.add(system["id"])
+        if findings:
+            return findings
         if repo is not None:
-            from modules import scan
+            from seams import scan
             try:
-                actual = scan(repo, spec["roots"])
-            except (OSError, UnicodeError, ValueError, SyntaxError) as exc:
-                findings.append("check: matrix: cannot scan " + str(exc))
-                return findings
-            recorded = [{k: v for k, v in m.items() if k != "does"} for m in spec["modules"]]
-            if recorded != actual["modules"] or spec["matrix"] != actual["matrix"] or spec["cycles"] != actual["cycles"]:
-                findings.append("check: matrix: stale")
+                # The scanner CLI owns parse warnings; a clean check is silent.
+                with contextlib.redirect_stderr(io.StringIO()):
+                    actual = scan(repo, spec["systems"], spec.get("exclude", []))
+            except (OSError, UnicodeError, ValueError) as exc:
+                return ["check: seams: cannot scan " + str(exc)]
+            for system in spec["systems"]:
+                recorded = {(point["file"], tuple(sorted(set(point["lines"]))), point["adapter"])
+                            for point in system["touchpoints"]}
+                current = {(point["file"], tuple(point["lines"]), point["adapter"])
+                           for point in actual[system["id"]]}
+                if recorded != current:
+                    findings.append("check: seams: stale " + system["id"])
         return findings
     nodes, edges = spec["nodes"], spec["edges"]
     ids = set()

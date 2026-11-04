@@ -7,7 +7,7 @@ Every page shares these fields:
 | Field | Meaning |
 |---|---|
 | `topic` | Required slug matching `^[a-z0-9-]+$`; the page name and deterministic SVG id prefix. |
-| `page` | Optional `diagram` (default), `table`, `cards` or `matrix`. An unknown type is a schema finding and render exit 2 without output. |
+| `page` | Optional `diagram` (default), `table`, `cards` or `seams`. An unknown type is a schema finding and render exit 2 without output. |
 | `title` | Required page and diagram title. |
 | `subtitle` | Optional short page subtitle. |
 | `repo.name`, `repo.commit` | Required repo name and 7–40 lowercase hex commit; use the full 40-hex commit for delivered packs. |
@@ -130,42 +130,60 @@ The CLI checks links beside the spec: each topic needs `<slug>.json`, and each
 job needs a row id in `jobs.json`. An absent or unreadable `jobs.json` has no ids.
 Findings are `check: link: missing topic <slug>` and `check: link: missing job <id>`.
 
-## matrix
+## seams
 
-Generate `page: "matrix"` with `modules.py` rather than estimating the numbers:
-
-```bash
-python3 "$SKILL_DIR/lib/modules.py" "$REPO" "$OUT/modules.json" --root backend/app --name demo
-```
-
-Repeat `--root` for multiple source packages. Each immediate child package or
-`.py` file (except `__init__.py`) becomes a module, sorted by id. Test files and
-directories, hidden paths and `__pycache__` are skipped. If a child name occurs
-under multiple roots, all those ids become `<root basename>/<child>`.
+Set `page: "seams"` for an external-system 可替換性 page. It opens with a summary
+table 系統 / 能不能換 / 接觸檔 / 漏進核心 / 一句話 in system order; titles link
+to each system's section. 接觸檔 counts touchpoint files and 漏進核心 counts files
+outside adapters. Each section shows its verdict, summary, 換掉要改 list and
+檔案 / 行 / 位置 / 說明 table. Rose ❌ 漏進核心 rows precede ✅ 在 adapter 內
+rows, each group sorted by file. Empty touchpoints shows 沒有找到接觸點.
+Below 700 px, table rows become cards.
 
 | Field | Meaning |
 |---|---|
-| `roots` | Required list of source-root paths relative to the repository. |
-| `modules` | Required list of module records, sorted by id by the scanner. Empty modules renders the title and footer without tables. |
-| `modules[].id`, `root` | Required text identifying the module and its source root. |
-| `modules[].files`, `lines` | Required non-negative integers counting non-test Python files and lines. |
-| `modules[].does` | Optional description written after generation. |
-| `matrix` | Required square list of non-negative integers sized to `modules`; cell `[i][j]` counts import statements from i to j. |
-| `cycles` | Required list of lists of known module ids, containing sorted strongly connected sets of at least two modules. |
+| `systems` | Required list of external systems, displayed in spec order. |
+| `systems[].id` | Required unique id matching `^[A-Za-z0-9_.:-]+$`; its anchor is `sys-<id>`. |
+| `systems[].title`, `summary` | Required title and plain-language summary. |
+| `systems[].verdict` | Required `easy` (容易換), `medium` (要改一些) or `hard` (很難換). |
+| `systems[].change` | Required list of text describing what replacement requires. |
+| `systems[].probes` | Required non-empty list of `{kind, pattern}`. `import` matches a package or submodule prefix through AST; `text` is a valid Python regex matched on every source line, including comments and docstrings. |
+| `systems[].adapters` | Required list of globs for the files intended to own the integration. |
+| `systems[].touchpoints` | Required list of `{file, lines, adapter, note?}`. `file` is repo-relative text, `lines` a list of integers, `adapter` a boolean, and optional `note` text. |
+| `exclude` | Optional list of globs excluded from both scanning and the stale check. |
 
-The scanner resolves absolute and in-repo relative imports through AST only,
-counts each distinct target once per statement, and ignores self, stdlib and
-unresolved imports. It records the repository's HEAD commit, produces deterministic
-JSON, and exits 2 without output when a root is missing. Re-runs preserve `title`,
-`subtitle` and each surviving id's `does`.
+Write the spec, then run
+`python3 "$SKILL_DIR/lib/seams.py" "$REPO" "$OUT/seams.json"`.
+The scanner reads tracked Python files from `git ls-files`, skipping paths with
+`test`/`tests` components and files named `test_*.py` or `*_test.py`. Globs use
+`fnmatch` on repo-relative paths. Relative imports never match import probes;
+`linebot` matches `linebot.v3.messaging`, but not `linebotx` or `my_linebot`.
+A file that cannot parse still gets text probes and is named once on stderr.
+Source is never imported or executed.
 
-The page shows a heat table under the caption 列 → 欄 (row imports column; zero cells
-empty, shade computed only from counts),
-then 模組 / 做什麼 / 檔案 / 行數 / 被依賴 / 依賴. 被依賴 and 依賴 count distinct
-other modules, not import statements. 循環依賴 lists each cycle — a pair as `a ⇄ b`,
-a larger one as `N 個模組互相循環：a、b、c` — or 沒有循環依賴. A root also acts as a
-`sys.path` entry, so `--root src` resolves `import foo` to `src/foo`. `check.py --repo` recomputes `modules`, `matrix` and `cycles`, ignoring
-`does`, and reports `check: matrix: stale` when they differ.
+The scanner rewrites touchpoints sorted by file, with ascending unique lines,
+and `repo.commit` from HEAD; it preserves other fields and notes by system id and
+file. Missing repo/spec exits 2 without writing. Repeated runs are byte-identical.
+Write the verdict, summary, change list and leak notes from these results.
+`check.py --repo` repeats the scan and reports `check: seams: stale <id>` for
+changed file/lines/adapter sets, ignoring notes. Without `--repo` it checks only
+the schema and duplicate ids.
 
-The pack index places overview, features, modules and jobs first when present,
+```json
+{
+  "topic": "seams", "page": "seams", "title": "外部系統可替換性",
+  "repo": {"name": "demo", "commit": "0123456789abcdef0123456789abcdef01234567"},
+  "exclude": ["vendor/*"],
+  "systems": [{
+    "id": "line", "title": "LINE", "verdict": "medium",
+    "summary": "SDK 集中在 adapter，替換時仍要調整事件格式",
+    "change": ["改寫 adapter 的 SDK 呼叫與事件轉換"],
+    "probes": [{"kind": "import", "pattern": "linebot"}, {"kind": "text", "pattern": "api\\.line\\.me"}],
+    "adapters": ["adapters/*"],
+    "touchpoints": [{"file": "adapters/line.py", "lines": [2], "adapter": true, "note": "SDK 入口"}]
+  }]
+}
+```
+
+The pack index places overview, features, seams and jobs first when present,
 then every other topic alphabetically. All page types remain static and offline.

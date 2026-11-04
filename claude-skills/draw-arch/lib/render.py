@@ -17,7 +17,7 @@ KINDS = {
 }
 TONES = {"body": "#cbd5e1", "cond": "#fcd34d", "warn": "#fb7185", "muted": "#94a3b8"}
 SHAPES = ("box", "pill")
-PAGES = ("diagram", "table", "cards", "matrix")
+PAGES = ("diagram", "table", "cards", "seams")
 CSS = """
 *{box-sizing:border-box}body{margin:0;background:#020617;color:#cbd5e1;
 font-family:'JetBrains Mono',SFMono-Regular,Menlo,'PingFang TC',monospace;font-size:13px}
@@ -44,7 +44,8 @@ table.cond,.cond thead,.cond tbody,.cond tr,.cond td{display:block}.cond thead{d
 .cond td:nth-child(3)::before{content:"條件　";color:#64748b}.cond td:nth-child(4){font-size:11px;overflow-wrap:anywhere}}
 """
 
-# Diagram CSS is frozen; catalog rules extend its existing phone block only.
+# Diagram and table/cards CSS are frozen for byte-identical output.
+# The unused legacy catalog selectors below remain part of those frozen bytes.
 CATALOG_CSS = CSS.replace("@media (max-width:700px)", """
 .cat{width:100%;border-collapse:collapse;margin:32px 0;line-height:1.8}
 .cat td:last-child{font-size:11.5px;color:#94a3b8}.cat tr.warn td{color:#fb7185}
@@ -62,6 +63,11 @@ table.cat,.cat thead,.cat tbody,.cat tr,.cat td{display:block}.cat thead{display
 .cards{grid-template-columns:1fr}
 }
 """
+SEAMS_CSS = re.sub(r"^\.(?:heat|mods)[^\n]*\n", "", CATALOG_CSS, flags=re.M)
+SEAMS_CSS = SEAMS_CSS.replace(".card{", """.v-easy{color:#34d399}.v-medium{color:#fcd34d}.v-hard{color:#fb7185}
+.sum th,.sum td:nth-child(2),.sum td:nth-child(3),.sum td:nth-child(4),.tp td:nth-child(3){white-space:nowrap}
+.tp td:nth-child(2){width:12%}
+.card{""", 1)
 
 
 class SpecError(Exception):
@@ -277,8 +283,8 @@ def render_page(spec: dict) -> str:
             return render_table(spec)
         if page == "cards":
             return render_cards(spec)
-        if page == "matrix":
-            return render_matrix(spec)
+        if page == "seams":
+            return render_seams(spec)
         raise SpecError("unknown page: " + page)
     return render_diagram(spec)
 
@@ -307,47 +313,41 @@ def render_cards(spec: dict) -> str:
     return document(spec["title"], parts, CATALOG_CSS)
 
 
-def cycle_text(cycle: list) -> str:
-    """A pair reads a ⇄ b; a larger cycle is one group, not a chain of pairs."""
-    if len(cycle) == 2:
-        return ' ⇄ '.join(cycle)
-    return '{} 個模組互相循環：{}'.format(len(cycle), '、'.join(cycle))
-
-
-def render_matrix(spec: dict) -> str:
+def render_seams(spec: dict) -> str:
     parts = page_header(spec)
-    modules, matrix = spec["modules"], spec["matrix"]
-    if modules:
-        maximum = max(max(row) for row in matrix)
-        heat = ['<table class="heat">', '<thead><tr><th>模組</th>' + ''.join(
-            '<th>{}</th>'.format(esc(m["id"])) for m in modules) + '</tr></thead>', '<tbody>']
-        for module, row in zip(modules, matrix):
-            heat.append('<tr><th>{}</th>'.format(esc(module["id"])))
-            for count in row:
-                if count:
-                    alpha = round(0.15 + 0.6 * count / maximum, 2)
-                    heat.append('<td style="background:rgba(34,211,238,{})">{}</td>'.format(alpha, count))
-                else:
-                    heat.append('<td></td>')
-            heat.append('</tr>')
-        heat.extend(['</tbody>', '</table>'])
-        parts.append('<p class="sub">每格 = 列的模組 import 欄的模組幾次（列 → 欄）</p>')
-        parts.append(pan(''.join(heat)))
-        labels = ("模組", "做什麼", "檔案", "行數", "被依賴", "依賴")
-        parts.extend(['<table class="cat mods">', '<thead><tr>' + ''.join('<th>{}</th>'.format(label) for label in labels) + '</tr></thead>', '<tbody>'])
-        for i, module in enumerate(modules):
-            fan_in = sum(matrix[j][i] > 0 for j in range(len(modules)) if j != i)
-            fan_out = sum(count > 0 for j, count in enumerate(matrix[i]) if j != i)
-            cells = (module["id"], module.get("does", ""), module["files"], module["lines"], fan_in, fan_out)
-            parts.append('<tr id="mod-{}">{}</tr>'.format(attr(module["id"]), ''.join(
-                '<td data-label="{}">{}</td>'.format(attr(label), esc(value)) for label, value in zip(labels, cells))))
-        parts.extend(['</tbody>', '</table>', '<h2>循環依賴</h2>'])
-        if spec["cycles"]:
-            parts.append('<ul>' + ''.join('<li>{}</li>'.format(esc(cycle_text(cycle))) for cycle in spec["cycles"]) + '</ul>')
+    verdicts = {"easy": "容易換", "medium": "要改一些", "hard": "很難換"}
+    labels = ("系統", "能不能換", "接觸檔", "漏進核心", "一句話")
+    parts.extend(['<table class="cat sum">', '<thead><tr>' + ''.join(
+        '<th>{}</th>'.format(label) for label in labels) + '</tr></thead>', '<tbody>'])
+    for system in spec["systems"]:
+        points = system["touchpoints"]
+        cells = (len(points), sum(not point["adapter"] for point in points), system["summary"])
+        parts.append('<tr><td data-label="系統"><a href="#sys-{}">{}</a></td><td data-label="能不能換" class="v-{}">{}</td>{}</tr>'.format(
+            attr(system["id"]), esc(system["title"]), system["verdict"], verdicts[system["verdict"]], ''.join(
+                '<td data-label="{}">{}</td>'.format(attr(label), esc(value))
+                for label, value in zip(labels[2:], cells))))
+    parts.extend(['</tbody>', '</table>'])
+    for system in spec["systems"]:
+        parts.extend(['<section id="sys-{}">'.format(attr(system["id"])),
+                      '<h2>{} · <span class="v-{}">{}</span></h2>'.format(esc(system["title"]), system["verdict"], verdicts[system["verdict"]]),
+                      '<p>{}</p>'.format(esc(system["summary"])), '<h3>換掉要改</h3>',
+                      '<ul>' + ''.join('<li>{}</li>'.format(esc(change)) for change in system["change"]) + '</ul>'])
+        if system["touchpoints"]:
+            labels = ("檔案", "行", "位置", "說明")
+            parts.extend(['<table class="cat tp">', '<thead><tr>' + ''.join(
+                '<th>{}</th>'.format(label) for label in labels) + '</tr></thead>', '<tbody>'])
+            for point in sorted(system["touchpoints"], key=lambda p: (p["adapter"], p["file"])):
+                cells = (point["file"], ", ".join(str(line) for line in point["lines"]),
+                         "✅ 在 adapter 內" if point["adapter"] else "❌ 漏進核心", point.get("note", ""))
+                parts.append('<tr{}>{}</tr>'.format('' if point["adapter"] else ' class="warn"', ''.join(
+                    '<td data-label="{}">{}</td>'.format(attr(label), esc(value))
+                    for label, value in zip(labels, cells))))
+            parts.extend(['</tbody>', '</table>'])
         else:
-            parts.append('<p>沒有循環依賴</p>')
+            parts.append('<p>沒有找到接觸點</p>')
+        parts.append('</section>')
     parts.append(page_footer(spec))
-    return document(spec["title"], parts, CATALOG_CSS)
+    return document(spec["title"], parts, SEAMS_CSS)
 
 
 def render_diagram(spec: dict) -> str:
@@ -383,7 +383,7 @@ def render_index(specs: list) -> str:
     repos = sorted({spec["repo"]["name"] for spec in specs})
     title = " · ".join(["架構圖包"] + repos)
     parts = ['<h1>{}</h1>'.format(esc(title)), '<nav class="pack">']
-    ranks = {topic: i for i, topic in enumerate(("overview", "features", "modules", "jobs"))}
+    ranks = {topic: i for i, topic in enumerate(("overview", "features", "seams", "jobs"))}
     for spec in sorted(specs, key=lambda s: (ranks.get(s["topic"], 4), s["topic"])):
         if not re.fullmatch(r"[a-z0-9-]+", spec["topic"]):
             raise SpecError("invalid topic: " + spec["topic"])

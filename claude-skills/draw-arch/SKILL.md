@@ -27,7 +27,7 @@ secret values are not. Do not use stale UA material or call archify.
    If a destination is inside the target repo, ask for an external directory.
 
 2. **Choose topics.** Use named topics. With none, re-run the saved specs in the
-   output directory if present. Otherwise start with overview, features, modules,
+   output directory if present. Otherwise start with overview, features, seams,
    jobs, the message route, and a flow per `StateGraph(` outside test directories. When multiple graphs
    exist, confirm which first graph to draw and ask before adding a second
    StateGraph. Ask before adding other pipelines or extra topics. For line-oa the
@@ -40,11 +40,14 @@ secret values are not. Do not use stale UA material or call archify.
    LangGraph flow, read the StateGraph definition and set `langgraph.file`;
    `check.py` compares its AST without importing or executing the source.
 
-   - **modules** — run
-     `python3 "$SKILL_DIR/lib/modules.py" "$REPO" "$OUT/modules.json" --root <each top-level source package>`,
-     repeating `--root` for each source package. Then write `does` per module.
-     The script computes imports, files, lines and cycles; re-runs preserve `does`,
-     `title` and `subtitle`.
+   - **seams** — build the external-system 可替換性 page:
+     1. List the external systems from manifests, config keys and SDK imports.
+     2. Write each system's `probes` (SDK import prefixes and API hosts / REST
+        paths as regex) and `adapters` (the files meant to own that system).
+     3. Run `python3 "$SKILL_DIR/lib/seams.py" "$REPO" "$OUT/seams.json"`.
+     4. From the generated touchpoints, write `verdict`, `summary`, `change`
+        and notes on leaks outside the adapters.
+     5. Re-run `python3 "$SKILL_DIR/lib/check.py" "$OUT/seams.json" --repo "$REPO"`.
    - **jobs** — find the registry with
      `git grep -nE 'SweeperSpecMeta|add_job|@app.task|create_task|while True'`
      from the target repo, excluding tests and secrets. Set `registry` with its
@@ -70,7 +73,7 @@ secret values are not. Do not use stale UA material or call archify.
 
 5. **Check, render, look: at most three rounds per topic.**
    Run these commands with quoted paths for every topic, including features,
-   modules and jobs:
+   seams and jobs:
    ```bash
    python3 "$SKILL_DIR/lib/check.py" "$OUT/$topic.json" --repo "$REPO"
    python3 "$SKILL_DIR/lib/render.py" page "$OUT/$topic.json" "$OUT/$topic.html"
