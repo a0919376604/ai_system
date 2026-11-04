@@ -28,3 +28,6 @@
 - **diagram spec** — one JSON per topic: nodes, edges and coordinates chosen by Claude, rendered by `render.py`, gated by `check.py`.
 - **condition table** — the three-column table under a diagram: 做什麼 / 什麼條件走到這、離開時往哪 / 程式碼, ⚠ only for a cited risk.
 - **route overlay** — a copy of a diagram with one route's nodes and edges in amber, the rest at 0.2, plus numbered badges and steps.
+- **catalog page** — an architecture-pack page with no diagram, chosen by the spec's `page` field (R-033): `table` (rows under groups, e.g. background programs), `cards` (one card per feature) or `matrix` (module coupling). An absent `page` is a diagram, rendered byte-identically to before.
+- **registry check** — `check.py` reading a code registry's calls (`registry: {file, call}`) through `ast` and naming every registered entry that has no row (R-033), so a catalog cannot silently omit one.
+- **module matrix** — `modules.py`'s import counts between the children of the given roots (row imports column), with fan-in, fan-out and the strongly connected cycles; `check.py --repo` reports it stale when the code changed (R-033).
