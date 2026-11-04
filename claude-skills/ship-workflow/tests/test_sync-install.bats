@@ -14,7 +14,7 @@ setup() {
   R="$SCRATCH/ai_system"; export R
   mkdir -p "$R/claude-skills/ship-workflow/commands" "$R/claude-skills/run-plan" \
            "$R/claude-skills/code-review-skill" "$R/claude-skills/pr-review" \
-           "$R/claude-skills/weekly-report" "$R/claude-skills/arch-diagram" "$R/config/claude" "$R/devsync"
+           "$R/claude-skills/weekly-report" "$R/claude-skills/draw-arch" "$R/config/claude" "$R/devsync"
   cp "$SHIP_SKILL_ROOT/../../sync.sh" "$R/sync.sh"
   mkdir -p "$R/claude-skills/run-plan/skills/run-plan-model"
   echo 'run-plan-model skill' > "$R/claude-skills/run-plan/skills/run-plan-model/SKILL.md"
@@ -54,7 +54,7 @@ snapshot() {  # every path under HOME, with link targets
 @test "restore links the 6 skills, 7 commands and the Codex brand skill, moves a real dir aside, clears only our dangling links" {
   run bash "$R/sync.sh" restore --yes
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  for s in ship-workflow run-plan code-review-skill pr-review weekly-report arch-diagram; do
+  for s in ship-workflow run-plan code-review-skill pr-review weekly-report draw-arch; do
     [ "$(readlink "$HOME/.claude/skills/$s")" = "$R/claude-skills/$s" ] || { echo "skill $s"; return 1; }
   done
   for c in ship-next ship-compound ship-idea ship-land ship-init ship-refactor-scan ship-refactor-brand; do
@@ -90,6 +90,33 @@ snapshot() {  # every path under HOME, with link targets
   [[ "$output" == *"ship-arch.md"* ]]
 }
 
+# --- R-031: a renamed or removed skill leaves no dangling link -------------------
+
+@test "restore removes a skill link that dangles into claude-skills, keeps one that dangles elsewhere" {
+  ln -s "$R/claude-skills/old-skill" "$HOME/.claude/skills/old-skill"
+  ln -s "$SCRATCH/elsewhere/foreign" "$HOME/.claude/skills/foreign"
+  run bash "$R/sync.sh" restore --yes
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ ! -L "$HOME/.claude/skills/old-skill" ] || { echo "our dangling skill link kept"; return 1; }
+  [ -L "$HOME/.claude/skills/foreign" ] || { echo "removed a skill link that is not ours"; return 1; }
+  [ "$(readlink "$HOME/.claude/skills/draw-arch")" = "$R/claude-skills/draw-arch" ]
+}
+
+@test "restore never removes a kept skill's link, even when its target is missing" {
+  rm -rf "$R/claude-skills/pr-review"
+  run bash "$R/sync.sh" restore --yes
+  if [[ "$output" == *"dangling"*"skills/pr-review"* ]]; then echo "$output"; return 1; fi
+  [ "$(readlink "$HOME/.claude/skills/pr-review")" = "$R/claude-skills/pr-review" ]
+}
+
+@test "restore --dry-run names a dangling skill link and keeps it" {
+  ln -s "$R/claude-skills/old-skill" "$HOME/.claude/skills/old-skill"
+  run bash "$R/sync.sh" restore --dry-run
+  [ "$status" -eq 0 ] || return 1
+  [[ "$output" == *"would remove dangling"*"skills/old-skill"* ]] || { echo "$output"; return 1; }
+  [ -L "$HOME/.claude/skills/old-skill" ]
+}
+
 @test "restore without --yes asks before overwriting a differing config file" {
   mkdir -p "$HOME/.claude" && echo "newer live rules" > "$HOME/.claude/CLAUDE.md"
   run bash -c "echo n | bash '$R/sync.sh' restore"
@@ -105,7 +132,7 @@ snapshot() {  # every path under HOME, with link targets
   [ "$status" -eq 0 ] || return 1
   [ "$(cat "$R/config/claude/CLAUDE.md")" = "live global rules" ] || return 1
   [ "$(cat "$R/devsync/config.toml")" = "[live]" ] || return 1
-  [ "$(ls "$R/claude-skills" | sort | tr '\n' ' ')" = "arch-diagram code-review-skill pr-review run-plan ship-workflow weekly-report " ]
+  [ "$(ls "$R/claude-skills" | sort | tr '\n' ' ')" = "code-review-skill draw-arch pr-review run-plan ship-workflow weekly-report " ]
 }
 
 @test "status exits 0 when every link is right and 1 naming a missing one" {

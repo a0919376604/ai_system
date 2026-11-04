@@ -1,11 +1,11 @@
 ---
-name: arch-diagram
+name: draw-arch
 description: Use when asked to draw or update a Cocoon-style architecture pack from repository code into the vault project's Architecture/diagrams/.
 ---
 
 # Architecture pack
 
-Use `/arch-diagram [<topic>…] [--out <dir>]` to produce one saved JSON spec and one
+Use `/draw-arch [<topic>…] [--out <dir>]` to produce one saved JSON spec and one
 static HTML page per topic, plus `index.html`. Trace current code; choose the
 content and coordinates; let the Python 3.9 stdlib CLIs check and render them.
 Never write into the target repo. Never read `env.json`, `.env*` or key files

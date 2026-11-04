@@ -1,13 +1,13 @@
 #!/usr/bin/env bats
 # R-004, R-029: ai_system holds exactly six skills: ship-workflow, run-plan,
-# code-review-skill, pr-review, weekly-report and arch-diagram.
+# code-review-skill, pr-review, weekly-report and draw-arch.
 load helpers
 
 setup() { export REPO_ROOT="$(cd "$SHIP_SKILL_ROOT/../.." && pwd)"; }
 
 @test "claude-skills holds exactly six skills" {
   run bash -c "ls -1 '$REPO_ROOT/claude-skills' | sort | tr '\n' ' '"
-  [ "$output" = "arch-diagram code-review-skill pr-review run-plan ship-workflow weekly-report " ]
+  [ "$output" = "code-review-skill draw-arch pr-review run-plan ship-workflow weekly-report " ]
 }
 
 @test "run-plan carries the REPAIR RULE" {
@@ -77,5 +77,5 @@ setup() { export REPO_ROOT="$(cd "$SHIP_SKILL_ROOT/../.." && pwd)"; }
 @test "CLAUDE.md names the six skills" {
   rule=$(grep -F 'R-004' "$REPO_ROOT/CLAUDE.md")
   echo "$rule" | grep -qF 'weekly-report' || return 1
-  echo "$rule" | grep -qF 'arch-diagram' || return 1
+  echo "$rule" | grep -qF 'draw-arch' || return 1
 }

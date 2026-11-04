@@ -2,9 +2,9 @@
 load helpers
 
 setup() {
-  AD="$SHIP_SKILL_ROOT/../arch-diagram/lib"
-  FX="$SHIP_SKILL_ROOT/tests/fixtures/arch-diagram"
-  S="$(make_scratch arch-diagram)"
+  AD="$SHIP_SKILL_ROOT/../draw-arch/lib"
+  FX="$SHIP_SKILL_ROOT/tests/fixtures/draw-arch"
+  S="$(make_scratch draw-arch)"
 }
 teardown() { rm -rf "$S"; }
 
@@ -208,7 +208,7 @@ PY
 }
 
 @test "skill files exist and the spec-format example passes check.py" {
-  grep -qF 'name: arch-diagram' "$AD/../SKILL.md" || return 1
+  grep -qF 'name: draw-arch' "$AD/../SKILL.md" || return 1
   [ -f "$AD/../references/spec-format.md" ] || return 1
   [ -f "$AD/../references/cocoon-style.md" ] || return 1
   awk '/^```json/{inside=1;next} inside && /^```/{exit} inside{print}' \

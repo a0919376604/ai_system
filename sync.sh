@@ -23,7 +23,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_HOME="$HOME/.claude"
 DISPLACED="$CLAUDE_HOME/.ai_system-displaced"
-SKILLS=(ship-workflow run-plan code-review-skill pr-review weekly-report arch-diagram)
+SKILLS=(ship-workflow run-plan code-review-skill pr-review weekly-report draw-arch)
 COMMANDS=(ship-next ship-compound ship-idea ship-land ship-init ship-refactor-scan ship-refactor-brand)
 # live::repo
 CONFIG_FILES=(
@@ -115,10 +115,24 @@ ensure_link() {
   ok "linked $link"
 }
 
-# Remove ~/.claude/commands/ship-*.md links that point into ship-workflow's commands/
-# at a file that no longer exists (a removed command). Nothing else is touched.
+# Remove dangling links we made: ~/.claude/skills/* pointing into this repo's
+# claude-skills/ (a renamed or removed skill), and ~/.claude/commands/ship-*.md
+# pointing into ship-workflow's commands/ (a removed command). Nothing else is touched.
 remove_dangling() {
   local f t
+  for f in "$CLAUDE_HOME/skills"/*; do
+    [[ -L "$f" && ! -e "$f" ]] || continue
+    # A kept skill's link dangles only while its target is missing; ensure_link owns it.
+    case " ${SKILLS[*]} run-plan-model " in *" $(basename "$f") "*) continue ;; esac
+    t=$(readlink "$f")
+    [[ "$t" == "$SCRIPT_DIR/claude-skills/"* ]] || continue
+    if (( DRY )); then
+      log "would remove dangling $f -> $t"
+    else
+      rm "$f"
+      ok "removed dangling $f"
+    fi
+  done
   [[ -d "$CLAUDE_HOME/commands" ]] || return 0
   for f in "$CLAUDE_HOME/commands"/ship-*.md; do
     [[ -L "$f" && ! -e "$f" ]] || continue
@@ -298,7 +312,7 @@ cmd_status() {
 
 usage() {
   cat <<EOF
-${C_BOLD}sync.sh${C_RESET} — install ai_system (ship-workflow + run-plan + code-review-skill + pr-review + weekly-report + arch-diagram)
+${C_BOLD}sync.sh${C_RESET} — install ai_system (ship-workflow + run-plan + code-review-skill + pr-review + weekly-report + draw-arch)
 
   $(basename "$0") restore [--yes] [--dry-run]  link Claude skills/commands and the Codex brand skill,
                                               restore the config files, copy the Obsidian
