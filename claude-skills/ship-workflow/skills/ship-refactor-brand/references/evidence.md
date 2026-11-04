@@ -16,7 +16,15 @@ Use ship-workflow's `templates/refactor-report.html` when available. Replace its
 - What would be unified, what stays independent, and expected before/after differences.
 - Proposed migration order and prerequisites, estimated 小/中/大 effort, recommendation and acceptance outcome.
 
-Keep candidate anchors `c1`, `c2`, … and matching zoom overlays `z1`, `z2`, …. Use readable stacked before/after pictures; label proposed outcomes as proposals, not captured screenshots. Link to the AI report by relative basename. Keep HTML self-contained, with no scripts or external URLs; escape copied source text. Preserve useful intentional variations in examples.
+Keep candidate anchors `c1`, `c2`, … and matching zoom overlays `z1`, `z2`, …. Each visual-alignment candidate shows 「現在」 as a captured screenshot and 「改完」 as a screenshot of its screen built in the picked direction, labelled 「提案 · 方案 X」. For the same screen, reuse the step-1 build; for another screen, reuse its shell, tokens and type with that screen's real content and run one `inspect.mjs` check, with no new deal or full taste run. The direction candidate (c1) shows the picked panel's screenshots. Structural-consolidation candidates show 「現在」 only, labelled 「外觀不變」; they promise no visual change and need no rendered after-picture. Hand-drawn schematic boxes are never a brand after-picture. Pictures are images only: embed PNG or JPEG data URIs, never SVG, and never copy a build's markup or scripts into the report. Link to the AI report by relative basename. Keep HTML self-contained, with no scripts or external URLs; escape copied source text. Preserve useful intentional variations in examples.
+
+Add a 「品牌方向」 block near the top with the picked option, its 390 screenshot and a relative link to the comparison mockup. Without taste v2, the first screen says 「mockup 未驗證：沒有安裝 taste v2」 with the install command from the direction procedure, and after-slots say 「未驗證」; nothing is hand-drawn in their place.
+
+When rendering the fallback install command in HTML, encode its URL slashes as `&#47;` so the displayed, copyable command stays verbatim while `rs_report_check` sees no raw external URL. Use this example:
+
+```html
+<p class="taste-fallback">mockup 未驗證：沒有安裝 taste v2 <code>npx skills add https:&#47;&#47;github.com/Leonxlnx/taste-skill --skill design-taste-frontend -g</code></p>
+```
 
 For code-sensitive merge forecasts, use `rs_merge_label HEAD <candidate files>` and label the result as a forecast; final merge handling belongs to ship-next. If the helper is unavailable, mark the forecast unknown rather than inventing it.
 

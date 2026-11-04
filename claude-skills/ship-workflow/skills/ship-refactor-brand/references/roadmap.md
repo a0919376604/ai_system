@@ -19,6 +19,8 @@ A linked worktree requires care: ship sync can skip there. Before enqueueing, re
 
 ## Selection and row preparation
 
+When a direction was picked in step 1 of this scan, candidate c1 is 「把選定方向寫進 BRAND_GUIDE」 (kind: brand decision, now resolved), and visual-alignment candidates depend on it. On a reuse run whose direction row is already queued or done, do not re-propose it: number candidates from c1 as usual and depend on that existing R-ID. If the recorded direction is reused but its BRAND_GUIDE row is neither queued nor done, propose this direction-documentation candidate as c1 again and keep visual-alignment candidates dependent on it.
+
 Before any sync, reservation or Roadmap mutation:
 
 1. Have a report and reviewable proposed rows. Get explicit selection of those candidates/rows. A recommendation is not selection; “thanks/OK” without a concrete selected set is not an instruction to enqueue everything.
@@ -33,7 +35,7 @@ Before any sync, reservation or Roadmap mutation:
 
 For **structural consolidation**, preserve appearance and behavior. Where available, use `rs_done_when <outcome>` to include ship's established refactor safeguards in that row's done-when.
 
-For **intentional visual alignment**, name the approved target and expected appearance differences, require relevant before/after and interaction checks, and preserve unrelated business behavior. Do not append “only structure changes” or “all visuals unchanged”. For **brand decision needed**, define a decision/documentation deliverable, not implementation of an unchosen identity.
+For **intentional visual alignment**, name the approved target and expected appearance differences, require relevant before/after and interaction checks, and preserve unrelated business behavior. Do not append “only structure changes” or “all visuals unchanged”. For **brand decision needed**, a direction picked in step 1 is resolved; its deliverable is documenting it in BRAND_GUIDE. For any still-unresolved brand decision, define a decision/documentation deliverable, not implementation of an unchosen identity.
 
 Include a `Door: one-way — <reason>` annotation only when grounded in a genuinely one-way external contract change. Never downgrade ship's eventual risk checks based on this scan.
 
@@ -44,7 +46,7 @@ Once selection is settled:
 1. Re-resolve and verify the vault binding and report paths. Confirm Roadmap still has Next and recheck duplicates.
 2. Run `bash "$SHIP_LIB/sync.sh" --force` from the main repo root. This bypasses freshness only; preserve divergence protection. On failure, show the error and write no rows. Never add `--override-divergence` automatically.
 3. Reserve IDs with `bash "$SHIP_LIB/id-gen.sh" roadmap --reserve` in intended reading order, persisting each ID into the rows record before insertion. Resolve prerequisites to actual R-IDs, e.g. 「接在 R-031 之後做」. Do not guess IDs or depend on an unselected/unallocated ID.
-4. Make each description link to `Reports/<stem>.ai.md#c<N>`, and its human summary link to `Reports/<stem>.html#c<N>`. Invoke the existing insertion helper with separate arguments:
+4. Make each description link to `Reports/<stem>.ai.md#c<N>`, and its human summary link to `Reports/<stem>.html#c<N>`. Only the direction-documentation candidate's row (c1 when proposed) also contains the comparison mockup path `Proposals/mockups/refactor-brand-<stamp>-directions-mockup.html` and `mockup 定案 <X>` (the picked option letter), so Roadmap 檢視 shows the picked option (R-024). Use the picked direction's recorded comparison mockup path and option, even on reuse; do not add mockup metadata to an ordinary c1 or when no direction was picked. Invoke the existing insertion helper with separate arguments:
 
    ```text
    bash <SHIP_LIB>/roadmap-insert.sh <vault ROADMAP.md> <reserved R-ID> <description>

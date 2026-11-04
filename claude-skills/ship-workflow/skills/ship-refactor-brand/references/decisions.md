@@ -4,7 +4,7 @@ Use these criteria for an existing frontend. Scale the inventory to the requeste
 
 ## Brand coherence
 
-Tie each rule to an approved source or mark it as observed/proposed. Check:
+Tie each rule to an approved source or mark it as observed/proposed. A direction picked in step 1 counts as proposed until its BRAND_GUIDE row lands. Check:
 
 - **Typography:** families, roles, hierarchy, line height, readable measure, density, language coverage and fallbacks. Marketing, reading and task-oriented surfaces may use different scales within one system.
 - **Color:** text, surfaces, borders, actions, status and focus; contrast and existing themes.
@@ -57,3 +57,5 @@ These are background sources, not dependencies to open on every run:
 - [Atlassian design tokens](https://atlassian.design/foundations/tokens/design-tokens): choose semantic roles.
 - [GOV.UK contribution criteria](https://design-system.service.gov.uk/community/contribution-criteria/): useful, unique, usable, consistent and versatile components.
 - [Impeccable extract flow](https://github.com/pbakaus/impeccable/blob/main/skill/reference/extract.md): discover, extract, migrate and document.
+
+Unlike these, [tasteskill v2](https://github.com/Leonxlnx/taste-skill) runs on every scan: it deals and checks the step-1 directions ([direction procedure](directions.md)).
