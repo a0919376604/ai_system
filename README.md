@@ -30,7 +30,75 @@
 - **遠端開發**：在公司的 GPU server 上跑程式時，本機寫的 code 會即時同步過去。
 - **手機上看 Roadmap**：Obsidian 外掛「Roadmap 檢視」，一次看一個專案的近況，寫給人看的版本。
 
-## 2. Quick start
+## 2. Skills 一覽
+
+`claude-skills/` 裡的六個 skill，`./sync.sh restore` 會全部裝好：
+
+| Skill | 一句話 | 怎麼叫 |
+|---|---|---|
+| **ship-workflow** | 從 Roadmap 的一列做到 merge 的開發流程；另外附兩個「找出該整頓的地方」的掃描 | `/ship-next`、`/ship-refactor-scan`、`/ship-refactor-brand`、`/ship-idea`… |
+| **draw-arch** | 讀程式碼，畫出一包給人看的架構說明（圖、背景程式、功能、可替換性） | `/draw-arch` |
+| **pr-review** | 用四個角度 review 一個 PR／MR／branch：程式規範、對照 spec、codex 交叉 review、資安 | `/pr-review [<PR 編號或網址>]` |
+| **run-plan** | 把寫好的實作計畫交給 codex 在背景跑完，邊跑邊回報 | `/run-plan <plan.md>` |
+| **code-review-skill** | 各語言的 code review 準則，給 `/ship-next` 和 `/pr-review` 用 | 不直接叫 |
+| **weekly-report** | 從 git log 整理一週做了什麼 | 「整理這週做的事」 |
+
+### ship-refactor：先找出該整頓的地方，再交給 `/ship-next`
+
+`/ship-next` 只負責「把一列做完」，不會主動告訴你哪裡該重構。ship-refactor 是在它之前的一步：**掃描 → 出報告 → 你挑 → 寫進 Roadmap**，本身不改任何程式碼。
+
+```
+/ship-refactor-scan [方向]          /ship-refactor-brand [頁面範圍]
+  │ 架構：哪些模組太淺、太黏            │ 品牌：先畫三個品牌方向讓你挑
+  ▼                                     ▼ 再盤點不一致的樣式與重複元件
+報告兩份（同一個檔名）
+  ├── 給人看的 HTML：結論在前，每個候選有前後對照圖
+  └── 給 AI 看的 Markdown：證據、檔案、建議做法
+  ▼
+你挑要做哪幾個（也可以只看報告、不挑）
+  ▼
+挑中的寫進 Roadmap 🔜 Next（附 done when）  →  之後用 /ship-next R-NNN 實作
+```
+
+- **`/ship-refactor-scan`**：照 Matt Pocock 的 *improve-codebase-architecture* 方法。不指定方向時，先挑「最近半年改最多 × 行數最多」的熱點檔案開始看；被你拒絕過的候選會記下來，下次除非問題明顯變嚴重，否則不再提。每個候選列出問題、建議的介面、好處和推薦程度，最後給一個「最推薦先做」。
+- **`/ship-refactor-brand`**：給已經上線的網站用。第一步先用 taste v2 畫三個品牌方向的 mockup 讓你挑（之後沿用，說「重選」才重挑）；接著對照選定的方向，盤點字體、顏色、間距、圖示、互動狀態的不一致，以及長得很像卻各寫一份的元件，提出整合方案和遷移順序。
+- **寫進 Roadmap 的列**一律帶「先用測試鎖住現有行為、搬結構時不動既有測試、只改結構不改行為」這幾條守則，避免重構順手改壞東西。
+
+報告存在 vault 的 `<專案>/Reports/`。
+
+### draw-arch：讀程式碼，產生一包架構說明
+
+給「想搞懂這個系統」的人看，例如新同事、PM，或是要決定能不能換掉某個外部服務的時候。**Claude 讀程式碼、寫內容與排版；腳本負責畫圖、檢查、掃描事實**，所以數字和程式碼位置不是猜的。
+
+```
+/draw-arch [主題…]
+  │ 1. 找到目標 repo 和 vault 專案，記下 commit
+  │ 2. 追程式碼：從入口、設定一路追到實際的輸入、輸出和副作用，每個節點都附 檔案:行
+  │ 3. 寫成 JSON spec（specs/<主題>.json）
+  │ 4. check.py 檢查：版面重疊、文字放不下、LangGraph 圖要和程式碼一致、清單不能漏…
+  │ 5. render.py 產生 HTML，開 headless Chrome 截圖、看圖修正（最多三輪）
+  ▼
+<vault 專案>/Architecture/diagrams/
+├── README.md   ← 入口：怎麼看、每頁重點、怎麼更新（GitLab 會直接顯示）
+├── html/       ← 完整頁面，打開 html/index.html；離線可看、支援手機
+└── specs/      ← 來源 JSON
+```
+
+預設會產生這幾種頁面：
+
+| 頁面 | 回答什麼問題 | 事實從哪來 |
+|---|---|---|
+| 系統總覽、訊息流程 | 系統由哪些部分組成？一則訊息怎麼走？ | Claude 追程式碼，每個節點附出處 |
+| LangGraph 流程 + 節點契約 | AI 流程有哪些節點？每個節點讀寫哪些欄位、哪個好換？ | `check.py` 對照 AST 驗證圖；`contract.py` 掃每個節點的 state 讀寫 |
+| 可替換性（seams） | LINE、Confluence、LLM、向量庫能不能換？哪裡漏進核心？ | `seams.py` 掃 import 和 API 網址，標出在 adapter 內還是漏進核心 |
+| 背景程式（jobs） | 到底有幾個背景程式？各做什麼、多久跑一次？ | 對照程式碼裡的登記表，漏列會被抓出來 |
+| 功能目錄（features） | 有哪些功能？從哪裡觸發、用到哪些資料？ | Claude 從 API 和前端路由整理 |
+
+**跟程式碼保持一致**：程式改了以後跑 `python3 <skill>/lib/check.py specs/<主題>.json --repo <repo>`，會指出哪一頁過期（背景程式少列、接觸點變了、圖跟程式碼對不上）。重跑 `/draw-arch` 會保留原本的排版，只更新變動的部分。
+
+**放進專案 repo**：draw-arch 只寫進 vault，不直接改目標 repo。要放上 GitLab／GitHub，就把整包複製到該 repo 的 `docs/architecture/` 再開 MR。
+
+## 3. Quick start
 
 ```bash
 git clone git@github.com:a0919376604/ai_system.git ~/Desktop/code/ai_system
@@ -42,7 +110,7 @@ cd ~/Desktop/code/ai_system
 
 | repo 內 | 安裝到 | 內容 |
 |---|---|---|
-| `claude-skills/` | `~/.claude/skills/`（symlink） | ship-workflow、`run-plan`（codex 執行器）、`code-review-skill`（Phase 6 的 review） |
+| `claude-skills/` | `~/.claude/skills/`（symlink） | 六個 skill：`ship-workflow`、`run-plan`、`code-review-skill`、`pr-review`、`weekly-report`、`draw-arch`（見 [Skills 一覽](#2-skills-一覽)） |
 | `claude-skills/ship-workflow/commands/` | `~/.claude/commands/`（symlink） | `/ship-next`、`/ship-compound`、`/ship-idea`、`/ship-land`、`/ship-init`、`/ship-refactor-scan`、`/ship-refactor-brand` |
 | `claude-skills/ship-workflow/skills/ship-refactor-brand/` | `~/.codex/skills/ship-refactor-brand`（symlink） | 品牌一致性與共用元件盤點，提出候選供選入 Roadmap |
 | `config/claude/CLAUDE.md` | `~/.claude/CLAUDE.md` | 全域規則的備份；內容不同時會先問你 |
@@ -58,7 +126,7 @@ cp ~/.claude/skills/ship-workflow/examples/ship-workflow.example.yml ~/.claude/s
 
 再安裝 [superpowers](https://github.com/obra/superpowers) plugin，然後在目標 repo 執行 `/ship-init`。
 
-## 3. 使用範例
+## 4. 使用範例
 
 ### 安裝與備份
 
@@ -70,9 +138,24 @@ cp ~/.claude/skills/ship-workflow/examples/ship-workflow.example.yml ~/.claude/s
 
 主 checkout 要停在 `main`：本機每個 session 跑的都是這個 checkout，連未提交的修改也算。不在 `main` 或有未提交修改時，`/ship-next` 會警告。
 
-### 品牌與共用元件整頓
+### 找出該重構的地方
 
-在目標 repo 呼叫 `/ship-refactor-brand`（Codex 使用 `$ship-refactor-brand`），可帶頁面或子系統範圍。它會盤點品牌不一致與重複元件，提出整合方案、遷移順序與驗收條件，產生人看的 HTML 與 AI 用的 Markdown 報告。選定候選後才加入 Roadmap 的 Next；實作交給 `/ship-next R-NNN`。
+```text
+/ship-refactor-scan                 # 架構：從熱點檔案找太淺、太黏的模組
+/ship-refactor-scan 推播            # 指定方向
+/ship-refactor-brand 首頁、會員中心  # 品牌：先挑方向，再盤點不一致與重複元件
+```
+
+流程與報告內容見 [ship-refactor](#ship-refactor先找出該整頓的地方再交給-ship-next)。Codex 使用 `$ship-refactor-brand`。
+
+### 畫架構說明
+
+```text
+/draw-arch                          # 預設：總覽、功能、可替換性、背景程式、訊息流程、LangGraph
+/draw-arch seams jobs               # 只更新指定的頁面
+```
+
+說明見 [draw-arch](#draw-arch讀程式碼產生一包架構說明)。
 
 ### 用 Roadmap 開發功能
 
@@ -174,7 +257,7 @@ devsync ls             # 列出 session
 devsync stop my-repo   # 結束
 ```
 
-## 4. 好處與缺點
+## 5. 好處與缺點
 
 **好處**
 
@@ -193,7 +276,7 @@ devsync stop my-repo   # 結束
 - **全自動的品質看 Roadmap 寫得多清楚**：`--auto:yes` 遇到問題一律選建議選項，Roadmap 寫得越模糊，做出來的就越可能和你想的不一樣。
 - **策略只能在 Obsidian 改**：同步是單向的，直接在 repo 改 ROADMAP 會被擋下來。
 
-## 5. 需求
+## 6. 需求
 
 **必要**：macOS + Homebrew、Claude Code、Obsidian vault、[superpowers](https://github.com/obra/superpowers)、dl01–dl04 的 SSH 帳號（devsync 用）。[code-review-skill](https://github.com/awesome-skills/code-review-skill) 已經收在 repo 裡。
 
@@ -208,7 +291,7 @@ devsync stop my-repo   # 結束
 
 測試：`bats claude-skills/ship-workflow/tests/`（包含 Roadmap 檢視外掛的 `node --test`，需要 Node 22 以上）
 
-## 6. `/ship-next`
+## 7. `/ship-next`
 
 在獨立 worktree（`<repo>-worktrees/R-NNN-<slug>`，branch `ship/R-NNN-<slug>`）裡把一個 Roadmap 項目從 brainstorm 做到 merge，merge 前不會動到主 repo。
 
