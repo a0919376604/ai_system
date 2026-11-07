@@ -295,6 +295,8 @@ const DEFAULTS = { projectsDir: "10 Projects", recentDays: 14, project: "" };
 const WATCHED = ["ROADMAP.md", "Proposals/mockups/", "Specs/", "Brainstorms/", "ship-status/"];
 const W = 1100;          // mockups are laid out at desktop width, then scaled down
 const MAX_THUMBS = 2;    // thumbnails rendering at once
+const RECENT_DAYS = 7;
+const RESEARCH_DIR = "20 Research";
 
 function isWatched(path, projectDir) {
   if (!path || !projectDir || !path.startsWith(`${projectDir}/`)) return false;
@@ -380,11 +382,13 @@ class RoadmapView extends ItemView {
     super(leaf);
     this.plugin = plugin;
     // Never a field named `open`: it shadows View.open and blanks the pane (spike v0.0.2).
-    this.tab = "near";          // near | all
+    this.tab = "near";          // near | all | recent
     this.detail = null;         // id of the item on the detail page
     this.query = "";
     this.todoExpanded = false;
     this.folds = new Set();     // titles of the detail page's open folds
+    this.recentOpen = new Set();
+    this.titles = new Map();    // "<path>#<mtime>" → title
     this.listScroll = 0;        // the list's scroll position when a card was opened
     this.shown = null;          // the screen last drawn: a tab, or `detail:<id>`
     this.docs = new Map();      // "<mockup path>#now|opt:X" → { mtime, doc, label, h }
@@ -407,8 +411,8 @@ class RoadmapView extends ItemView {
     const n = ++this.renders;
     const root = this.contentEl;
     try {
-      const data = await this.readProject();
-      if (n !== this.renders) return;   // a newer render started meanwhile
+      const data = this.tab === "recent" ? await this.readRecent(n) : await this.readProject();
+      if (data === null || n !== this.renders) return;   // a newer render started meanwhile
       clearTimeout(this.typing);        // a pending search would redraw the old list
       // A redraw of the same screen (a live refresh, 待做 opening) keeps the reader's place.
       const screen = this.detail ? `detail:${this.detail}` : this.tab;
@@ -458,33 +462,96 @@ class RoadmapView extends ItemView {
     return { projects, project, dir, rows, docs };
   }
 
-  draw(root, d) {
-    if (!d.projects.length) {
-      root.createDiv({ cls: "rv-empty", text: `「${this.plugin.settings.projectsDir}」底下沒有含 ROADMAP.md 的專案資料夾` });
-      return;
+  async readRecent(n) {
+    const s = this.plugin.settings;
+    const groups = recentGroups(this.app.vault.getFiles().map((f) => ({ path: f.path, mtime: f.stat && f.stat.mtime })),
+      this.plugin.now(), { projectsDir: s.projectsDir, researchDir: RESEARCH_DIR, days: RECENT_DAYS });
+    for (const g of groups) {
+      const items = this.recentOpen.has(g.group) ? g.items : g.items.slice(0, 3);
+      await Promise.all(items.map(async (item) => {
+        const key = `${item.path}#${item.mtime}`;
+        if (!this.titles.has(key)) {
+          let html = null;
+          try { html = await this.app.vault.adapter.read(item.path); } catch (e) { /* half-synced: keep the row */ }
+          if (n !== this.renders) return null;
+          this.titles.set(key, htmlTitle(html, item.path));
+        }
+        item.title = this.titles.get(key);
+        item.unread = isUnread(item, s.opened || {}, s.recentSince || 0);
+      }));
+      if (n !== this.renders) return null;
     }
-    const row = this.detail && d.rows.find((r) => r.item.id === this.detail);
-    if (this.detail && !row) { this.detail = null; this.folds.clear(); }   // its row went away: back to the list
+    return { groups };
+  }
+
+  draw(root, d) {
+    const row = this.detail && d.rows && d.rows.find((r) => r.item.id === this.detail);
+    if (this.detail && d.rows && !row) { this.detail = null; this.folds.clear(); }   // its row went away: back to the list
     const bar = root.createDiv({ cls: "rv-bar" });
-    const sel = bar.createEl("select", { cls: "dropdown rv-project" });
-    for (const p of d.projects) sel.createEl("option", { text: p, value: p });
-    sel.value = d.project;
-    sel.addEventListener("change", async () => {
-      this.plugin.settings.project = sel.value;
-      this.detail = null;
-      this.listScroll = 0;
-      await this.plugin.saveSettings();
-      await this.render();
-    });
+    if (this.tab !== "recent" && d.projects.length) {
+      const sel = bar.createEl("select", { cls: "dropdown rv-project" });
+      for (const p of d.projects) sel.createEl("option", { text: p, value: p });
+      sel.value = d.project;
+      sel.addEventListener("change", async () => {
+        this.plugin.settings.project = sel.value;
+        this.detail = null;
+        this.listScroll = 0;
+        await this.plugin.saveSettings();
+        await this.render();
+      });
+    }
     const tabs = bar.createDiv({ cls: "rv-tabs" });
-    for (const [k, label] of [["near", "近況"], ["all", "全部"]]) {
+    for (const [k, label] of [["near", "近況"], ["all", "全部"], ["recent", "最近"]]) {
       const b = tabs.createEl("button", { text: label });
       if (this.tab === k && !this.detail) b.addClass("is-on");
       b.addEventListener("click", () => { this.tab = k; this.detail = null; this.listScroll = 0; this.render(); });
     }
+    if (this.tab === "recent") return this.drawRecent(root, d);
+    if (!d.projects.length) {
+      root.createDiv({ cls: "rv-empty", text: `「${this.plugin.settings.projectsDir}」底下沒有含 ROADMAP.md 的專案資料夾` });
+      return;
+    }
     if (row) return this.drawDetail(root, d, row);
     if (this.tab === "all") this.drawAll(root, d);
     else this.drawNear(root, d);
+  }
+
+  drawRecent(root, { groups }) {
+    if (!groups.length) {
+      root.createDiv({ cls: "rv-empty", text: "7 天內沒有新的 mockup、報告或研究" });
+      return;
+    }
+    const labels = { mockup: "mockup", report: "報告", research: "研究", architecture: "架構圖", doc: "文件" };
+    const now = this.plugin.now(), yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const pad = (n) => String(n).padStart(2, "0");
+    for (const g of groups) {
+      root.createDiv({ cls: "rv-group", text: `${g.group} · ${g.items.length} 份` });
+      const expanded = this.recentOpen.has(g.group);
+      for (const item of expanded ? g.items : g.items.slice(0, 3)) {
+        const card = root.createDiv({ cls: "rv-card rv-recent" });
+        const left = card.createDiv({ cls: "rv-left" });
+        const top = left.createDiv({ cls: "rv-top" });
+        if (item.unread) top.createSpan({ cls: "rv-dot" });
+        top.createSpan({ cls: `rv-chip rv-k-${item.kind}`, text: labels[item.kind] });
+        left.createDiv({ cls: "rv-title", text: item.title });
+        const date = new Date(item.mtime);
+        const prefix = date.toDateString() === now.toDateString() ? "" : date.toDateString() === yesterday.toDateString()
+          ? "昨天 " : `${pad(date.getMonth() + 1)}/${pad(date.getDate())} `;
+        const where = g.group === RESEARCH_DIR && item.where ? `${item.where} · ` : "";
+        left.createDiv({ cls: "rv-exp", text: `${where}${prefix}${pad(date.getHours())}:${pad(date.getMinutes())}` });
+        const find = async () => {
+          const entry = await this.entryFor(item.path, "now");
+          return entry && entry.doc ? { key: `${item.path}#now`, title: item.title } : null;
+        };
+        this.lazyThumb(card.createDiv({ cls: "rv-thumb" }), `recent|${item.path}`, find, 70, { zoom: false });
+        card.addEventListener("click", () => this.openMockup(item.path));
+      }
+      if (!expanded && g.items.length > 3) {
+        const more = root.createEl("button", { cls: "rv-more", text: `看全部 ${g.items.length} 份` });
+        more.addEventListener("click", () => { this.recentOpen.add(g.group); this.render(); });
+      }
+    }
   }
 
   drawNear(root, d) {
@@ -634,7 +701,8 @@ class RoadmapView extends ItemView {
     const f = this.app.vault.getAbstractFileByPath(path);
     const reg = this.app.viewRegistry;
     if (f && reg && reg.getTypeByExtension && reg.getTypeByExtension("html")) return this.app.workspace.getLeaf(true).openFile(f);
-    if (this.app.openWithDefaultApp) return this.app.openWithDefaultApp(path);
+    if (this.app.openWithDefaultApp) return Promise.resolve(this.app.openWithDefaultApp(path))
+      .then(() => this.plugin.markOpened(path, f && f.stat && f.stat.mtime));
     new Notice(`沒有可以打開 HTML 的檢視器：${path}`);
   }
 
@@ -715,7 +783,7 @@ class RoadmapView extends ItemView {
     if (!entry) { if (on.missing) on.missing(); else box.setText("沒有現況"); return; }
     this.chosen.set(slot, got.key);
     if (on.label) on.label(entry.label);
-    box.addEventListener("click", (e) => {
+    if (on.zoom !== false) box.addEventListener("click", (e) => {
       e.stopPropagation();   // a thumbnail tap zooms; it does not open the card
       new ZoomModal(this.app, got.title, entry.doc).open();
     });
@@ -738,17 +806,71 @@ class RoadmapView extends ItemView {
   }
 }
 
+// ---------------------------------------------------------------- recent HTML (pure)
+
+function recentKind(path, projectsDir, researchDir) {
+  if (!path || !/\.html$/i.test(path)) return null;
+  if (path.split("/").some((p) => p === "_archive" || p.endsWith(".evidence"))) return null;
+  if (path.startsWith(`${projectsDir}/`)) {
+    const parts = path.slice(projectsDir.length + 1).split("/");
+    if (parts.length < 3) return null;
+    const folder = parts[1];
+    if (folder === "Proposals" && parts[2] === "mockups" && parts.length > 3) return "mockup";
+    if (folder === "Reports") return "report";
+    if (folder === "Research") return "research";
+    if (folder === "Specs" || folder === "Docs") return "doc";
+    if (folder === "Architecture" && /^index\.html$/i.test(parts[parts.length - 1])) return "architecture";
+    return null;
+  }
+  return path.startsWith(`${researchDir}/`) ? "research" : null;
+}
+
+function recentGroups(files, now, { projectsDir, researchDir, days }) {
+  const groups = new Map();
+  for (const { path, mtime } of files) {
+    const kind = recentKind(path, projectsDir, researchDir);
+    if (!kind || !(now - mtime <= days * 864e5)) continue;
+    const research = path.startsWith(`${researchDir}/`);
+    const rel = path.slice((research ? researchDir : projectsDir).length + 1).split("/");
+    const group = research ? researchDir : rel[0];
+    const where = research ? rel.slice(0, -1).join("/") : "";
+    if (!groups.has(group)) groups.set(group, { group, latest: mtime, items: [] });
+    const g = groups.get(group);
+    g.latest = Math.max(g.latest, mtime);
+    g.items.push({ path, kind, mtime, where });
+  }
+  for (const g of groups.values()) g.items.sort((a, b) => b.mtime - a.mtime);
+  return [...groups.values()].sort((a, b) => b.latest - a.latest || a.group.localeCompare(b.group));
+}
+
+function htmlTitle(html, path) {
+  const m = typeof html === "string" && html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+  const entities = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'" };
+  const title = m && m[1].replace(/&amp;|&lt;|&gt;|&quot;|&#39;/g, (s) => entities[s]).trim();
+  return title || path.split("/").pop().replace(/\.html$/i, "");
+}
+
+function isUnread(item, opened, since) {
+  return item.mtime >= since && !(opened[item.path] >= item.mtime);
+}
+
 // ---------------------------------------------------------------- plugin
 
 class RoadmapViewPlugin extends Plugin {
   async onload() {
     this.settings = Object.assign({}, DEFAULTS, await this.loadData());
+    this.settings.opened = { ...(this.settings.opened || {}) };
+    if (this.settings.recentSince === undefined) {
+      this.settings.recentSince = +this.now();
+      await this.saveSettings();
+    }
     this.current = null;   // the project dir on screen, set by the view
     this.registerView(VIEW, (leaf) => new RoadmapView(leaf, this));
     this.addRibbonIcon("layout-list", "Roadmap 檢視", () => this.activate());
     this.addCommand({ id: "open", name: "打開 Roadmap 檢視", callback: () => this.activate() });
     // After layout-ready, so the vault's start-up `create` burst is not replayed at us.
     this.app.workspace.onLayoutReady(() => {
+      this.registerEvent(this.app.workspace.on("file-open", (f) => this.markOpened(f && f.path, f && f.stat && f.stat.mtime)));
       // A project's ROADMAP.md appearing, going or moving changes the picker, even when
       // no project is on screen yet (the phone's first sync).
       const pre = () => `${this.settings.projectsDir}/`;
@@ -757,6 +879,8 @@ class RoadmapViewPlugin extends Plugin {
         this.registerEvent(this.app.vault.on(ev, (f, oldPath) => {
           const p = f && f.path;
           if (isWatched(p, this.current) || isWatched(oldPath, this.current)
+            || ((recentKind(p, this.settings.projectsDir, RESEARCH_DIR) || recentKind(oldPath, this.settings.projectsDir, RESEARCH_DIR))
+              && this.app.workspace.getLeavesOfType(VIEW).some((l) => l.view && l.view.tab === "recent"))
             || (ev !== "modify" && (isRoadmap(p) || isRoadmap(oldPath)))) this.refreshSoon();
         }));
       }
@@ -764,7 +888,25 @@ class RoadmapViewPlugin extends Plugin {
   }
   onunload() { clearTimeout(this.timer); clearTimeout(this.retry); }
   now() { return new Date(); }
-  async saveSettings() { await this.saveData(this.settings); }
+  async markOpened(path, mtime) {
+    if (!recentKind(path, this.settings.projectsDir, RESEARCH_DIR)) return;
+    if (this.settings.opened[path] >= mtime) return;
+    this.settings.opened[path] = Math.max(+this.now(), mtime || 0);   // a fast-clock device's mtime still counts as read
+    await this.saveSettings();
+    this.refreshSoon();
+  }
+  async saveSettings() {
+    const cutoff = +this.now() - RECENT_DAYS * 864e5;
+    this.settings.opened = Object.fromEntries(Object.entries(this.settings.opened || {}).filter(([, at]) => at >= cutoff));
+    await this.saveData(this.settings);
+  }
+  async onExternalSettingsChange() {
+    const disk = (await this.loadData()) || {};
+    const merged = { ...this.settings.opened };
+    for (const [path, at] of Object.entries(disk.opened || {})) merged[path] = Math.max(merged[path] || 0, at);
+    this.settings.opened = merged;
+    this.refreshSoon();
+  }
   refreshSoon() {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => this.refresh(), 500);
@@ -794,5 +936,6 @@ class RoadmapViewPlugin extends Plugin {
   }
 }
 
-Object.assign(RoadmapViewPlugin, { parseRoadmap, mockupsFor, statusOf, currentStateDoc, splitConditions, optionDoc });
+Object.assign(RoadmapViewPlugin, { parseRoadmap, mockupsFor, statusOf, currentStateDoc, splitConditions, optionDoc,
+  recentKind, recentGroups, htmlTitle, isUnread });
 module.exports = RoadmapViewPlugin;

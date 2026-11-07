@@ -46,11 +46,12 @@ function fakeApp(root, leaves = []) {
   const walk = (d, pre = "") => fs.readdirSync(d, { withFileTypes: true })
     .flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name), `${pre}${e.name}/`) : [`${pre}${e.name}`]));
   const handlers = {};
+  const wsHandlers = {};
   const opened = [];
   const app = {
-    handlers, opened, failRead: null,
+    handlers, wsHandlers, opened, failRead: null,
     vault: {
-      getFiles: () => walk(root).map((p) => ({ path: p })),
+      getFiles: () => walk(root).map((p) => ({ path: p, stat: { mtime: fs.statSync(path.join(root, p)).mtimeMs } })),
       getAbstractFileByPath: (p) => (fs.existsSync(path.join(root, p)) ? { path: p } : null),
       on: (ev, f) => { (handlers[ev] = handlers[ev] || []).push(f); return { ev }; },
       adapter: {
@@ -64,6 +65,7 @@ function fakeApp(root, leaves = []) {
     },
     workspace: {
       onLayoutReady: (f) => f(),
+      on: (ev, f) => { (wsHandlers[ev] = wsHandlers[ev] || []).push(f); return { ev }; },
       getLeavesOfType: () => leaves,
       openLinkText: (p, src, newLeaf) => opened.push(["link", p, newLeaf]),
       getLeaf: () => ({ openFile: async (f, st) => opened.push(["file", f.path, st]) }),
@@ -111,8 +113,8 @@ test("onload registers the view, a ribbon icon and 打開 Roadmap 檢視, with d
   assert.ok(plugin.views["roadmap-view"]);
   assert.equal(plugin.ribbons.length, 1);
   assert.deepEqual(plugin.commands.map((c) => c.name), ["打開 Roadmap 檢視"]);
-  assert.deepEqual(plugin.settings, { projectsDir: "10 Projects", recentDays: 14, project: "" });
-  assert.deepEqual(plugin.events.map((e) => e.ev).sort(), ["create", "delete", "modify", "rename"]);
+  assert.deepEqual(plugin.settings, { projectsDir: "10 Projects", recentDays: 14, project: "", opened: {}, recentSince: +NOW });
+  assert.deepEqual(plugin.events.map((e) => e.ev).sort(), ["create", "delete", "file-open", "modify", "rename"]);
 });
 
 test("the view never has its own `open` field — it would shadow View.open and blank the pane", async () => {
@@ -819,4 +821,317 @@ test("a caption cached for another option, or for one without a heading, is not 
   observed.forEach(seen);
   await flush();
   assert.equal(caps()[0], "方案 A · 甲版 · 點圖放大");
+});
+
+const H = 3600e3, DAY = 24 * H;
+const NEWEST = `${D}/Proposals/mockups/newest.html`;
+const RECENT_AGES = {
+  [NEWEST]: H,
+  [`${D}/Reports/report.html`]: 2 * H,
+  [`${D}/Proposals/mockups/third.html`]: 3 * H,
+  [`${D}/Reports/fourth.html`]: 4 * H,
+  [`${D}/Reports/fifth.html`]: 5 * H,
+  "10 Projects/other/Reports/other.html": 6 * H,
+};
+const RECENT_FILES = {
+  ...FILES,
+  [NEWEST]: `<title>最新 mockup</title>${MOCK("最新")}`,
+  [`${D}/Reports/report.html`]: `<title>報告標題</title>${MOCK("報告")}`,
+  [`${D}/Proposals/mockups/third.html`]: `<title>第三份</title>${MOCK("三")}`,
+  [`${D}/Reports/fourth.html`]: `<title>第四份</title>${MOCK("四")}`,
+  [`${D}/Reports/fifth.html`]: `<title>第五份</title>${MOCK("五")}`,
+  "10 Projects/other/Reports/other.html": `<title>另一專案報告</title>${MOCK("別")}`,
+  [`${D}/Reports/old.html`]: "<title>八天前</title>",
+};
+function aged(root, rel, ms) {
+  const at = new Date(NOW - ms);
+  fs.utimesSync(path.join(root, rel), at, at);
+}
+async function recentSetup(settings = null, ages = RECENT_AGES, extra = {}) {
+  const files = { ...RECENT_FILES, ...extra };
+  const root = vault(files);
+  for (const p of Object.keys(files)) aged(root, p, ages[p] ?? 8 * DAY);
+  const app = fakeApp(root);
+  const plugin = new P(app, { id: "roadmap-view" });
+  plugin.stored = settings;
+  plugin.now = () => NOW;
+  await plugin.onload();
+  const view = plugin.views["roadmap-view"]({ app });
+  await view.onOpen();
+  return { root, app, plugin, view };
+}
+async function showRecent(view) {
+  const button = byText(view.contentEl, "最近");
+  assert.ok(button, "the 最近 tab is available");
+  button.fire("click");
+  await flush();
+}
+const cards = (el) => el.findAll((e) => e.hasClass("rv-card"));
+
+test("recent: titles are read only for the rows drawn", async () => {
+  const ages = { ...RECENT_AGES, "10 Projects/other/Reports/other.html": 8 * DAY };
+  const { view, app } = await recentSetup(null, ages);
+  const reads = [];
+  const read = app.vault.adapter.read;
+  app.vault.adapter.read = async (p) => { reads.push(p); return read(p); };
+  await showRecent(view);   // IntersectionObserver never fires: no thumbnail reads
+  assert.deepEqual(reads, [NEWEST, `${D}/Reports/report.html`, `${D}/Proposals/mockups/third.html`]);
+  byText(view.contentEl, "看全部 5 份").fire("click");
+  await flush();
+  assert.deepEqual(reads.slice(3), [`${D}/Reports/fourth.html`, `${D}/Reports/fifth.html`]);
+});
+
+test("recent: a replaced render stops reading", async () => {
+  const { view, app } = await recentSetup();
+  let release;
+  const pending = new Promise((r) => { release = r; });
+  let released = false;
+  const afterRelease = [];
+  const read = app.vault.adapter.read;
+  app.vault.adapter.read = async (p) => {
+    if (released) afterRelease.push(p);
+    if (p === NEWEST) await pending;
+    return read(p);
+  };
+  view.tab = "recent";
+  const first = view.render();
+  await flush();
+  // The replacement sees an empty vault, so any later reads belong to the first render.
+  app.vault.getFiles = () => [];
+  await view.render();
+  released = true;
+  release();
+  await first;
+  assert.deepEqual(afterRelease, []);
+});
+
+test("最近: three tabs, no picker, groups with counts, 3 rows then 看全部 (R-039 AC-5)", async () => {
+  const { view } = await recentSetup();
+  await showRecent(view);
+  const root = view.contentEl;
+  const tabs = root.findAll((e) => e.hasClass("rv-tabs"))[0];
+  assert.deepEqual(tabs.children.map((e) => e.text), ["近況", "全部", "最近"]);
+  assert.equal(root.findAll((e) => e.hasClass("rv-project")).length, 0);
+  assert.deepEqual(root.findAll((e) => e.hasClass("rv-group")).map((e) => e.text), ["demo · 5 份", "other · 1 份"]);
+  assert.equal(cards(root).length, 4);
+  const more = byText(root, "看全部 5 份");
+  assert.ok(more);
+  more.fire("click");
+  await flush();
+  assert.equal(cards(root).length, 6);
+});
+test("最近: the first row's title is its HTML title", async () => {
+  const { view } = await recentSetup();
+  await showRecent(view);
+  assert.equal(cards(view.contentEl)[0].findAll((e) => e.hasClass("rv-title"))[0].text, "最新 mockup");
+});
+test("最近: the eight-day-old file is absent", async () => {
+  const { view } = await recentSetup();
+  await showRecent(view);
+  byText(view.contentEl, "看全部 5 份").fire("click");
+  await flush();
+  assert.ok(!view.contentEl.textContent.includes("八天前"));
+});
+test("最近: expansion survives a re-render", async () => {
+  const { view } = await recentSetup();
+  await showRecent(view);
+  byText(view.contentEl, "看全部 5 份").fire("click");
+  await flush();
+  assert.equal(cards(view.contentEl).length, 6);
+  await view.render();
+  assert.equal(cards(view.contentEl).length, 6, "expansion survives a live refresh");
+});
+test("最近: a row click opens the file (AC-6)", async () => {
+  const { view } = await recentSetup();
+  await showRecent(view);
+  const opened = [];
+  view.openMockup = (p) => opened.push(p);
+  cards(view.contentEl)[0].fire("click");
+  assert.deepEqual(opened, [NEWEST]);
+});
+test("recent: tapping the thumbnail opens the file", async () => {
+  const { view } = await recentSetup();
+  observed = [];
+  Modal.opened = [];
+  await showRecent(view);
+  const opened = [];
+  view.openMockup = (p) => opened.push(p);
+  const box = cards(view.contentEl)[0].findAll((e) => e.hasClass("rv-thumb"))[0];
+  seen(observed.find((o) => o.el === box));
+  await flush();
+  const frame = box.findAll((e) => e.tag === "iframe")[0];
+  assert.ok(frame, "the thumbnail was rendered before tapping");
+  frame.fire("load");
+  await flush();
+  box.fire("click");
+  assert.deepEqual(opened, [NEWEST]);
+  assert.equal(Modal.opened.length, 0);
+});
+test("recent: an unreadable file keeps its row, titled by its name", async () => {
+  const { view, app } = await recentSetup();
+  app.failRead = "newest.html";
+  await showRecent(view);
+  assert.equal(cards(view.contentEl)[0].findAll((e) => e.hasClass("rv-title"))[0].text, "newest");
+  assert.equal(view.contentEl.findAll((e) => e.hasClass("rv-err")).length, 0);
+});
+test("最近: an empty window says so", async () => {
+  const { view } = await recentSetup(null, {});
+  await showRecent(view);
+  assert.ok(byText(view.contentEl, "7 天內沒有新的 mockup、報告或研究"));
+  assert.equal(cards(view.contentEl).length, 0);
+});
+test("最近: row meta is local time; 20 Research rows carry their folder", async () => {
+  const research = "20 Research/LLM/research.html";
+  const { view } = await recentSetup(null, { ...RECENT_AGES, [research]: 3 * H }, { [research]: "<title>研究標題</title>" });
+  await showRecent(view);
+  const date = new Date(NOW - H);
+  const hhmm = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  assert.equal(cards(view.contentEl)[0].findAll((e) => e.hasClass("rv-exp"))[0].text, hhmm);
+  const row = cards(view.contentEl).find((c) => c.textContent.includes("研究標題"));
+  assert.match(row.findAll((e) => e.hasClass("rv-exp"))[0].text, /^LLM · /);
+});
+
+test("first load seeds recentSince; files older than it show no dot", async () => {
+  const { view, plugin } = await recentSetup();
+  assert.equal(plugin.settings.recentSince, +NOW);
+  assert.equal(plugin.stored.recentSince, +NOW);
+  await showRecent(view);
+  assert.equal(view.contentEl.findAll((e) => e.hasClass("rv-dot")).length, 0);
+});
+test("file-open marks a listed file read; a note is not stored (AC-7)", async () => {
+  const { view, plugin, app } = await recentSetup({ recentSince: 0 });
+  await showRecent(view);
+  assert.equal(cards(view.contentEl)[0].findAll((e) => e.hasClass("rv-dot")).length, 1);
+  assert.ok(app.wsHandlers["file-open"], "file-open is observed");
+  app.wsHandlers["file-open"][0]({ path: NEWEST });
+  await flush();
+  await view.render();
+  assert.equal(plugin.stored.opened[NEWEST], +NOW);
+  assert.equal(cards(view.contentEl)[0].findAll((e) => e.hasClass("rv-dot")).length, 0);
+  app.wsHandlers["file-open"][0]({ path: `${D}/notes.md` });
+  await flush();
+  assert.ok(!Object.hasOwn(plugin.stored.opened, `${D}/notes.md`));
+  plugin.onunload();
+});
+test("read state: a stale opened path is harmless and pruned", async () => {
+  const fresh = `${D}/Reports/gone.html`;
+  const { view, plugin } = await recentSetup({ recentSince: 0, opened: { [fresh]: +NOW - 1000, "x.html": +NOW - 8 * DAY } });
+  await showRecent(view);
+  assert.equal(view.contentEl.findAll((e) => e.hasClass("rv-err")).length, 0);
+  await plugin.markOpened(NEWEST);
+  assert.ok(!Object.hasOwn(plugin.stored.opened, "x.html"));
+  assert.equal(plugin.stored.opened[fresh], +NOW - 1000);
+  assert.equal(plugin.stored.opened[NEWEST], +NOW);
+  plugin.onunload();
+});
+test("a vault event on a listed path refreshes only while 最近 is shown (AC-8)", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const root = vault(RECENT_FILES);
+  for (const p of Object.keys(RECENT_FILES)) aged(root, p, RECENT_AGES[p] ?? 8 * DAY);
+  const leaves = [];
+  const app = fakeApp(root, leaves);
+  const plugin = new P(app, { id: "roadmap-view" });
+  plugin.now = () => NOW;
+  await plugin.onload();
+  t.after(() => plugin.onunload());
+  const view = plugin.views["roadmap-view"]({ app });
+  leaves.push({ view });
+  await view.onOpen();
+  await showRecent(view);
+  plugin.current = null;
+  let refreshed = 0;
+  const refreshSoon = plugin.refreshSoon.bind(plugin);
+  plugin.refreshSoon = () => { refreshed++; refreshSoon(); };
+  const newPath = "10 Projects/other/Proposals/mockups/new.html";
+  fs.mkdirSync(path.dirname(path.join(root, newPath)), { recursive: true });
+  fs.writeFileSync(path.join(root, newPath), "<title>新 mockup</title>");
+  aged(root, newPath, 0);
+  app.handlers.create[0]({ path: newPath });
+  assert.equal(refreshed, 1);
+  t.mock.timers.tick(499);
+  await flush();
+  assert.equal(byText(view.contentEl, "新 mockup"), undefined);
+  t.mock.timers.tick(1);
+  await flush();
+  assert.equal(view.contentEl.findAll((e) => e.hasClass("rv-group"))[0].text, "other · 2 份");
+  assert.equal(cards(view.contentEl)[0].findAll((e) => e.hasClass("rv-title"))[0].text, "新 mockup");
+  view.tab = "near";
+  app.handlers.create[0]({ path: newPath });
+  assert.equal(refreshed, 1);
+  app.handlers.create[0]({ path: `${D}/Notes/n.md` });
+  assert.equal(refreshed, 1);
+});
+
+test("file-open on an already-read file saves nothing", async (t) => {
+  const { plugin, app } = await recentSetup({ recentSince: 0, opened: { [NEWEST]: +NOW } });
+  t.after(() => plugin.onunload());
+  let saves = 0;
+  const save = plugin.saveData.bind(plugin);
+  plugin.saveData = async (data) => { saves++; await save(data); };
+  const mtime = +NOW - H;
+  await app.wsHandlers["file-open"][0]({ path: NEWEST, stat: { mtime } });
+  assert.equal(saves, 0);
+  plugin.settings.opened[NEWEST] = mtime;
+  await app.wsHandlers["file-open"][0]({ path: NEWEST, stat: { mtime } });
+  assert.equal(saves, 0);
+  plugin.settings.opened[NEWEST] = mtime - 1;
+  await app.wsHandlers["file-open"][0]({ path: NEWEST, stat: { mtime } });
+  assert.equal(saves, 1);
+  assert.equal(plugin.stored.opened[NEWEST], +NOW);
+});
+test("opening a file whose mtime is ahead of this clock clears its dot for good", async (t) => {
+  const { plugin, app } = await recentSetup({ recentSince: 0 });
+  t.after(() => plugin.onunload());
+  const ahead = +NOW + H;   // synced from a device whose clock runs fast
+  await app.wsHandlers["file-open"][0]({ path: NEWEST, stat: { mtime: ahead } });
+  assert.equal(P.isUnread({ path: NEWEST, mtime: ahead }, plugin.settings.opened, 0), false);
+  let saves = 0;
+  const save = plugin.saveData.bind(plugin);
+  plugin.saveData = async (data) => { saves++; await save(data); };
+  await app.wsHandlers["file-open"][0]({ path: NEWEST, stat: { mtime: ahead } });
+  assert.equal(saves, 0);
+});
+test("external settings change keeps this device's project and detail page (AC-12)", async (t) => {
+  const { plugin, view } = await setup(FILES, { project: "demo", recentSince: 0 });
+  t.after(() => plugin.onunload());
+  cardOf(view, "R-3").fire("click");
+  await flush();
+  const since = plugin.settings.recentSince;
+  plugin.settings.opened = { a: 10, b: 30 };
+  plugin.stored = { project: "other", recentSince: 1, opened: { a: 20, c: 5 } };
+  await plugin.onExternalSettingsChange();
+  await flush();
+  assert.deepEqual(plugin.settings.opened, { a: 20, b: 30, c: 5 });
+  assert.equal(plugin.settings.project, "demo");
+  assert.equal(plugin.settings.recentSince, since);
+  await view.render();
+  assert.equal(view.detail, "R-3");
+  assert.ok(byText(view.contentEl, "← 返回"));
+  assert.ok(byText(view.contentEl, "spec · Specs/R-3-did-it.md"));
+});
+
+test("recent: opening with the default app marks the file read", async () => {
+  const { view, plugin, app } = await recentSetup({ recentSince: 0 });
+  const opened = [];
+  app.openWithDefaultApp = async (p) => opened.push(p);
+  await showRecent(view);
+  assert.equal(cards(view.contentEl)[0].findAll((e) => e.hasClass("rv-dot")).length, 1);
+  cards(view.contentEl)[0].fire("click");
+  await flush();
+  assert.deepEqual(opened, [NEWEST]);
+  assert.equal(plugin.stored.opened && plugin.stored.opened[NEWEST], +NOW);
+  await view.render();
+  assert.equal(cards(view.contentEl)[0].findAll((e) => e.hasClass("rv-dot")).length, 0);
+  plugin.onunload();
+});
+test("external legacy settings preserve the launch unread baseline", async () => {
+  const { view, plugin } = await recentSetup();
+  await showRecent(view);
+  assert.equal(view.contentEl.findAll((e) => e.hasClass("rv-dot")).length, 0);
+  plugin.stored = { opened: {} };
+  await plugin.onExternalSettingsChange();
+  assert.equal(plugin.settings.recentSince, +NOW);
+  await view.render();
+  assert.equal(view.contentEl.findAll((e) => e.hasClass("rv-dot")).length, 0);
+  plugin.onunload();
 });

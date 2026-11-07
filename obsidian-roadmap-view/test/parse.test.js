@@ -5,6 +5,68 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const P = require("./load");
 
+const PD = "10 Projects", RD = "20 Research";
+test("recentKind classifies by folder (R-039 AC-1)", () => {
+  const k = (p) => P.recentKind(p, PD, RD);
+  assert.equal(k("10 Projects/a/Proposals/mockups/x.html"), "mockup");
+  assert.equal(k("10 Projects/a/Reports/r.html"), "report");
+  assert.equal(k("10 Projects/a/Research/sub/r.html"), "research");
+  assert.equal(k("20 Research/LLM/r.html"), "research");
+  assert.equal(k("10 Projects/a/Architecture/diagrams/html/index.html"), "architecture");
+  assert.equal(k("10 Projects/a/Architecture/diagrams/html/jobs.html"), null);
+  assert.equal(k("10 Projects/a/Specs/s.html"), "doc");
+  assert.equal(k("10 Projects/a/Docs/d.html"), "doc");
+  assert.equal(k("10 Projects/a/Reports/x.evidence/index.html"), null);
+  assert.equal(k("10 Projects/_archive/Reports/r.html"), null);
+  assert.equal(k("10 Projects/a/Reports/_archive/r.html"), null);
+  assert.equal(k("10 Projects/a/Reports/r.md"), null);
+  assert.equal(k("10 Projects/a/Notes/n.html"), null);
+});
+test("recentKind: spaces, CJK and .HTML", () => {
+  assert.equal(P.recentKind("10 Projects/my proj/Reports/觀察 報告.HTML", PD, RD), "report");
+});
+const NOW = new Date("2026-10-25T12:00:00Z"), H = 3600e3, DAY = 24 * H;
+test("recentGroups: 7-day window, groups by newest, items newest first (AC-2)", () => {
+  const f = (path, ago) => ({ path, mtime: NOW - ago });
+  const g = P.recentGroups([
+    f("10 Projects/a/Reports/old.html", 8 * DAY),
+    f("10 Projects/a/Reports/r1.html", 5 * H),
+    f("10 Projects/a/Proposals/mockups/m1.html", 1 * H),
+    f("10 Projects/b/Reports/r2.html", 2 * H),
+    f("20 Research/LLM/x.html", 3 * H),
+    f("10 Projects/a/Notes/n.md", 1 * H),
+  ], NOW, { projectsDir: PD, researchDir: RD, days: 7 });
+  assert.deepEqual(g.map((x) => x.group), ["a", "b", "20 Research"]);
+  assert.deepEqual(g[0].items.map((i) => i.path.split("/").pop()), ["m1.html", "r1.html"]);
+  assert.equal(g[2].items[0].where, "LLM");
+  assert.equal(g[0].latest, NOW - 1 * H);
+});
+test("recentGroups: the 7-day boundary is inclusive", () => {
+  const g = P.recentGroups([
+    { path: "10 Projects/a/Reports/boundary.html", mtime: +NOW - 7 * DAY },
+    { path: "10 Projects/a/Reports/expired.html", mtime: +NOW - 7 * DAY - 1 },
+  ], NOW, { projectsDir: PD, researchDir: RD, days: 7 });
+  assert.deepEqual(g.flatMap((group) => group.items.map((item) => item.path)), ["10 Projects/a/Reports/boundary.html"]);
+});
+test("recentGroups: a future mtime is kept and sorts first", () => {
+  const g = P.recentGroups([{ path: "10 Projects/a/Reports/r.html", mtime: +NOW - H },
+    { path: "10 Projects/a/Reports/f.html", mtime: +NOW + H }], NOW, { projectsDir: PD, researchDir: RD, days: 7 });
+  assert.equal(g[0].items[0].path, "10 Projects/a/Reports/f.html");
+});
+test("htmlTitle: first <title>, entities decoded, else the basename (AC-3)", () => {
+  assert.equal(P.htmlTitle("<title> A &amp; B &lt;x&gt; &quot;q&quot; &#39;s </title>", "a/b.html"), `A & B <x> "q" 's`);
+  assert.equal(P.htmlTitle("<title>  </title>", "a/R-1-x.html"), "R-1-x");
+  assert.equal(P.htmlTitle("<p>none</p>", "a/r.html"), "r");
+  assert.equal(P.htmlTitle(null, "a/r.HTML"), "r");
+});
+test("isUnread: changed after opening, never opened, older than since (AC-4)", () => {
+  const it = (mtime) => ({ path: "p", mtime });
+  assert.equal(P.isUnread(it(30), { p: 20 }, 0), true);
+  assert.equal(P.isUnread(it(30), { p: 40 }, 0), false);
+  assert.equal(P.isUnread(it(30), {}, 0), true);
+  assert.equal(P.isUnread(it(30), {}, 50), false);
+});
+
 const MD = `# ROADMAP
 
 ## 🔥 Now (3-5 items)

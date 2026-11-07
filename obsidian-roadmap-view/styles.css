@@ -53,3 +53,12 @@
 .rv-zoom-inner { overflow: hidden; }
 .rv-dw { margin: 6px 0 6px 18px; padding: 0; }
 .rv-dw li { margin: 3px 0; line-height: 1.45; color: var(--text-normal); }
+.rv-dot { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: var(--color-green); }
+.rv-k-mockup { color: var(--color-purple); }
+.rv-k-report { color: var(--color-blue); }
+.rv-k-research { color: var(--color-orange); }
+.rv-k-architecture { color: var(--color-cyan); }
+.rv-k-doc { color: var(--text-muted); }
+.rv-more { display: block; cursor: pointer; color: var(--interactive-accent); background: none;
+  border: 0; box-shadow: none; padding: 8px 10px; margin-bottom: 8px; }
+.rv-recent .rv-thumb { cursor: pointer; }

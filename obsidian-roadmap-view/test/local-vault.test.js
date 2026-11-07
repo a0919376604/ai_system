@@ -50,3 +50,24 @@ test("the real vault: every picked option whose opt panel exists yields an optio
     }
   }
 });
+
+test("the real vault: recent items have titles and no .evidence paths", { skip: !V && "no vault on this machine" }, () => {
+  const files = [];
+  const walk = (rel) => {
+    const full = path.join(V, rel);
+    if (!fs.existsSync(full)) return;
+    for (const e of fs.readdirSync(full, { withFileTypes: true })) {
+      const p = `${rel}/${e.name}`;
+      if (e.isDirectory()) walk(p);
+      else if (e.isFile()) files.push({ path: p, mtime: fs.statSync(path.join(V, p)).mtimeMs });
+    }
+  };
+  walk("10 Projects");
+  walk("20 Research");
+  const groups = P.recentGroups(files, new Date(), { projectsDir: "10 Projects", researchDir: "20 Research", days: 7 });
+  for (const g of groups) for (const item of g.items) {
+    assert.ok(!item.path.includes(".evidence/"), item.path);
+    assert.notEqual(P.htmlTitle(fs.readFileSync(path.join(V, item.path), "utf8"), item.path),
+      path.basename(item.path).replace(/\.html$/i, ""), item.path);
+  }
+});
